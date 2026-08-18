@@ -1,0 +1,22 @@
+{
+    "name": "VRSurgery.PlayModeTests",
+    "rootNamespace": "VRSurgery.Tests",
+    "references": [
+        "VRSurgery.Runtime",
+        "UnityEngine.TestRunner",
+        "Unity.XR.CoreUtils"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "nunit.framework.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [
+        "UNITY_INCLUDE_TESTS"
+    ],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

@@ -1,0 +1,39 @@
+# ---- Unity generated ----
+[Ll]ibrary/
+[Tt]emp/
+[Oo]bj/
+[Bb]uild/
+[Bb]uilds/
+[Ll]ogs/
+[Uu]ser[Ss]ettings/
+MemoryCaptures/
+Recordings/
+*.csproj
+*.unityproj
+*.sln
+*.suo
+*.user
+*.userprefs
+*.pidb
+*.booproj
+*.svd
+*.pdb
+*.mdb
+*.opendb
+*.VC.db
+sysinfo.txt
+
+# ---- editors ----
+.vs/
+.vscode/
+.idea/
+
+# ---- this project ----
+# Vendored skill repositories: 5.4 GB of third-party checkouts, not project source.
+.claude/
+# Unity's FBX texture extraction folders — regenerated on import.
+*.fbm/
+# Blender rolling backups.
+*.blend1
+# Editor crash dumps.
+mono_crash.*
