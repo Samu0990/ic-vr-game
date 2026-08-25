@@ -85,6 +85,16 @@ namespace VRSurgery.EditorTools
                 written += Shoot(camera, "surgical_field", 1100, 800,
                     field + new Vector3(0.18f, 0.30f, -0.28f), field, 40f);
 
+                // The decorative poster on the far wall, with enough room in frame to show that
+                // it sits clear of the surgical setup.
+                GameObject poster = GameObject.Find("WallPoster");
+                if (poster != null)
+                {
+                    written += Shoot(camera, "poster_view", 1280, 800,
+                        poster.transform.position + new Vector3(-1.6f, 0.25f, -0.9f),
+                        poster.transform.position, 55f);
+                }
+
                 // Along the body, to read the supine pose and the table fit.
                 written += Shoot(camera, "patient_length", 1280, 700,
                     new Vector3(1.5f, 1.45f, 0.3f), new Vector3(0f, 1.12f, 0.3f), 45f);

@@ -36,6 +36,7 @@ namespace VRSurgery.EditorTools
         private const string ScalpelAlbedo = "Assets/Models/Tools/BISTURI_Image_0.png";
         private const string ScalpelNormal = "Assets/Models/Tools/BISTURI_Image_2.png";
         private const string ScalpelMetallic = "Assets/Models/Tools/BISTURI_MetallicSmoothness.png";
+        private const string PosterTexture = "Assets/Textures/Que_atrevido.jpeg";
         private const string IncisionClip = "Assets/Audio/SFX_Incision.wav";
         private const string ScalpelDefinition = "Assets/Data/Tool_Scalpel.asset";
 
@@ -83,12 +84,29 @@ namespace VRSurgery.EditorTools
         /// it 128 deg off-axis, i.e. behind the shoulder line. A narrow pedestal hard against
         /// the table edge is what fits. Top matches the table so both surfaces are level.
         /// </summary>
+        // --- Decorative wall poster ------------------------------------------------------
+        // Pure background dressing, kept out of the working volume. Wall_Front's inner face sits
+        // at X 2.67 (SceneBoundsDump); the whole surgical setup lives below X 0.54, so a poster
+        // here cannot compete with anything the procedure needs. Walls span Y 0.30 to 2.44.
+        //
+        // Edit these three to move it — the scene is generated from code, so dragging the object
+        // in the Hierarchy is undone by the next rebuild.
+        private static readonly Vector3 PosterPosition = new Vector3(2.665f, 1.60f, 0.40f);
+
+        /// <summary>A Unity quad shows its face toward -Z, so yaw 90 turns it to face -X, into the room.</summary>
+        private static readonly Vector3 PosterRotationEuler = new Vector3(0f, 90f, 0f);
+
+        private const float PosterWidth = 0.45f;
+
         private static readonly Vector3 TrayStandPosition = new Vector3(0.44f, 0f, 0.80f);
 
         private const float TrayStandWidthX = 0.20f;
         private const float TrayStandDepthZ = 0.50f;
 
         /// <summary>0-based; index 0 is "Display 1", index 1 is "Display 2".</summary>
+        /// <summary>Layer for things only the operator should see: rig visuals, teleport markers.</summary>
+        private const string OperatorLayer = "OperatorOnly";
+
         private const int SpectatorDisplayIndex = 0;
         private const int ProjectionDisplayIndex = 1;
 
@@ -146,9 +164,11 @@ namespace VRSurgery.EditorTools
             BuildTissue(patient, surfaceY, systems.GetComponent<SurgeryTelemetry>());
             GameObject tray = BuildInstrumentTray();
             GameObject scalpel = BuildScalpel(tray);
+            HideOperatorVisualsFromProjection();
             BuildSpectatorCamera();
             BuildProjectionCamera();
             PlaceAnchor();
+            BuildWallPoster();
             BuildProbe(systems, scalpel);
 
             Report("Table", table);
@@ -231,6 +251,130 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
+        /// Smallest orthographic size that still contains everything the audience needs to see:
+        /// the patient, the table and the instrument on its tray. Derived from the scene's own
+        /// bounds rather than typed in, so moving the tray or the table cannot silently crop the
+        /// projected view.
+        /// </summary>
+        /// <summary>
+        /// Moves the rig's own visuals onto a dedicated layer so the projection can cull them.
+        ///
+        /// Only GameObjects that carry a Renderer and no Collider are moved. XRI resolves
+        /// interaction through physics layer masks, so relocating a collider — the teleport
+        /// anchor's in particular — would quietly break teleporting to reach a cosmetic goal.
+        /// </summary>
+        private static void HideOperatorVisualsFromProjection()
+        {
+            int layer = EnsureLayer(OperatorLayer);
+            if (layer < 0) { return; }
+
+            int moved = 0;
+            int skipped = 0;
+            foreach (string rootName in new[] { "XR Origin", "Teleport Area Setup" })
+            {
+                GameObject root = GameObject.Find(rootName);
+                if (root == null) { continue; }
+
+                // Renderers alone are not enough: world-space UI draws through CanvasRenderer,
+                // and the teleport anchor's disc plus every controller tooltip were still
+                // reaching the projector after the meshes were culled.
+                foreach (Transform t in root.GetComponentsInChildren<Transform>(true))
+                {
+                    bool draws = t.GetComponent<Renderer>() != null
+                              || t.GetComponent<Canvas>() != null
+                              || t.GetComponent<CanvasRenderer>() != null;
+                    if (!draws) { continue; }
+
+                    if (t.GetComponent<Collider>() != null) { skipped++; continue; }
+
+                    t.gameObject.layer = layer;
+                    moved++;
+                }
+            }
+
+            Debug.Log($"[SurgeryMVP] {moved} operator visuals moved to '{OperatorLayer}' " +
+                      $"({skipped} left alone because they carry a collider)");
+        }
+
+        /// <summary>Finds a layer by name, claiming the first free user slot if it does not exist.</summary>
+        private static int EnsureLayer(string layerName)
+        {
+            int existing = LayerMask.NameToLayer(layerName);
+            if (existing >= 0) { return existing; }
+
+            SerializedObject tagManager = new SerializedObject(
+                AssetDatabase.LoadAllAssetsAtPath("ProjectSettings/TagManager.asset")[0]);
+            SerializedProperty layers = tagManager.FindProperty("layers");
+
+            // 0-7 are Unity's built-ins; user layers start at 8.
+            for (int i = 8; i < layers.arraySize; i++)
+            {
+                SerializedProperty slot = layers.GetArrayElementAtIndex(i);
+                if (!string.IsNullOrEmpty(slot.stringValue)) { continue; }
+
+                slot.stringValue = layerName;
+                tagManager.ApplyModifiedProperties();
+                AssetDatabase.SaveAssets();
+                Debug.Log($"[SurgeryMVP] created layer '{layerName}' at index {i}");
+                return i;
+            }
+
+            Debug.LogError($"[SurgeryMVP] No free user layer for '{layerName}'.");
+            return -1;
+        }
+
+        private static float ProjectionSizeFor(Camera cam)
+        {
+            Bounds subject = default;
+            bool any = false;
+
+            foreach (string name in new[] { "Patient", "OperatingTable", "InstrumentStand", "Scalpel" })
+            {
+                GameObject go = GameObject.Find(name);
+                if (go == null) { continue; }
+
+                foreach (Renderer r in go.GetComponentsInChildren<Renderer>())
+                {
+                    if (!any) { subject = r.bounds; any = true; } else { subject.Encapsulate(r.bounds); }
+                }
+            }
+
+            if (!any)
+            {
+                Debug.LogWarning("[SurgeryMVP] Nothing to frame; falling back to a 1 m projection size.");
+                return 1f;
+            }
+
+            // Measure the subject in the camera's own space: the camera is rolled, so world X and
+            // Z do not map onto the image axes.
+            float halfWidth = 0f;
+            float halfHeight = 0f;
+            for (int i = 0; i < 8; i++)
+            {
+                Vector3 corner = new Vector3(
+                    (i & 1) == 0 ? subject.min.x : subject.max.x,
+                    (i & 2) == 0 ? subject.min.y : subject.max.y,
+                    (i & 4) == 0 ? subject.min.z : subject.max.z);
+
+                Vector3 local = cam.transform.InverseTransformPoint(corner);
+                halfWidth = Mathf.Max(halfWidth, Mathf.Abs(local.x));
+                halfHeight = Mathf.Max(halfHeight, Mathf.Abs(local.y));
+            }
+
+            // orthographicSize is the half-HEIGHT, and the half-width it buys is that times the
+            // aspect ratio. Camera.aspect is NOT serialized — it is a runtime override that
+            // resets to whatever the output surface is — so sizing against an assumed 16:9 here
+            // silently crops on anything narrower. Sizing for the square worst case costs some
+            // empty margin on a wide projector and can never crop.
+            const float margin = 1.06f;
+            float size = Mathf.Max(halfHeight, halfWidth) * margin;
+
+            Debug.Log($"[SurgeryMVP] framing subject {subject.size} -> half-width {halfWidth:F3}, " +
+                      $"half-height {halfHeight:F3}, orthographic size {size:F3}");
+            return size;
+        }
+
+        /// <summary>
         /// Flat camera that mirrors the headset, for the spectator screen. It carries no XR
         /// rendering of its own, so it never competes with the stereo path.
         /// </summary>
@@ -287,9 +431,20 @@ namespace VRSurgery.EditorTools
             cam.targetDisplay = ProjectionDisplayIndex;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = Color.black;
-            cam.fieldOfView = 70f;
+
+            // The audience must not see the operator's own furniture. Everything the rig draws
+            // for the person wearing the headset lives on its own layer, culled here only.
+            int operatorLayer = LayerMask.NameToLayer(OperatorLayer);
+            if (operatorLayer >= 0) { cam.cullingMask &= ~(1 << operatorLayer); }
+
+            // Orthographic, per the projection spec: an overhead perspective view makes the
+            // instrument look like it is leaning as it moves away from the centre, which reads
+            // as distortion to an audience watching a flat screen.
+            cam.orthographic = true;
+
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 12f;
+            cam.orthographicSize = ProjectionSizeFor(cam);
 
             // A second camera left on the XR rig's stereo path would fight the headset; this one
             // renders to its own display only.
@@ -301,7 +456,8 @@ namespace VRSurgery.EditorTools
             go.AddComponent<ProjectionDisplay>();
 
             Debug.Log($"[SurgeryMVP] projection camera at {go.transform.position} " +
-                      $"-> Display {ProjectionDisplayIndex + 1}, looking straight down at the field");
+                      $"-> Display {ProjectionDisplayIndex + 1}, orthographic size {cam.orthographicSize:F3}, " +
+                      "looking straight down");
         }
 
         private static GameObject BuildPatient()
@@ -637,6 +793,51 @@ namespace VRSurgery.EditorTools
             IncisionSystem system = Object.FindFirstObjectByType<IncisionSystem>();
             probe.Bind(tool, system);
             Debug.Log("[SurgeryMVP] surgery probe wired (runOnStart=false)");
+        }
+
+        /// <summary>
+        /// Decorative poster on the far wall. Unlit so the room's lighting does not wash it out,
+        /// and with no collider so it can never catch a grab or a raycast.
+        /// </summary>
+        private static void BuildWallPoster()
+        {
+            // Unity rescales non-power-of-two textures on import, so the imported Texture2D can
+            // report 512x512 for a 734x724 file. Turning that off keeps the real dimensions,
+            // which is what the board's proportions are derived from — otherwise any picture
+            // that is not already square comes out stretched.
+            TextureImporter importer = AssetImporter.GetAtPath(PosterTexture) as TextureImporter;
+            if (importer != null && importer.npotScale != TextureImporterNPOTScale.None)
+            {
+                importer.npotScale = TextureImporterNPOTScale.None;
+                importer.SaveAndReimport();
+                Debug.Log("[SurgeryMVP] disabled NPOT rescaling on " + PosterTexture);
+            }
+
+            Texture2D texture = AssetDatabase.LoadAssetAtPath<Texture2D>(PosterTexture);
+            if (texture == null)
+            {
+                Debug.LogWarning($"[SurgeryMVP] No image at {PosterTexture}; skipping the meme board.");
+                return;
+            }
+
+            GameObject board = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            board.name = "WallPoster";
+            board.transform.position = PosterPosition;
+            board.transform.rotation = Quaternion.Euler(PosterRotationEuler);
+
+            // Keep the picture's own proportions instead of stretching it into a square.
+            float aspect = texture.height / (float)Mathf.Max(1, texture.width);
+            board.transform.localScale = new Vector3(PosterWidth, PosterWidth * aspect, 1f);
+
+            Object.DestroyImmediate(board.GetComponent<Collider>());
+
+            Material m = new Material(Shader.Find("Universal Render Pipeline/Unlit"));
+            m.SetTexture("_BaseMap", texture);
+            board.GetComponent<MeshRenderer>().sharedMaterial = m;
+
+            Debug.Log($"[SurgeryMVP] wall poster at {PosterPosition} euler {PosterRotationEuler}, " +
+                      $"{PosterWidth:F2} x {PosterWidth * aspect:F2} m " +
+                      $"(source {texture.width}x{texture.height})");
         }
 
         private static void PlaceAnchor()

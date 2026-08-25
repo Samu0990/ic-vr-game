@@ -149,6 +149,57 @@ namespace VRSurgery.EditorTools
             Require("Clear Flags = Solid Color", projection != null &&
                 projection.clearFlags == CameraClearFlags.SolidColor,
                 projection != null ? projection.clearFlags.ToString() : "sem camera");
+            Require("Fundo preto", projection != null && projection.backgroundColor.r < 0.02f &&
+                projection.backgroundColor.g < 0.02f && projection.backgroundColor.b < 0.02f,
+                projection != null ? projection.backgroundColor.ToString() : "sem camera");
+            Require("Projection = Orthographic", projection != null && projection.orthographic,
+                projection != null
+                    ? (projection.orthographic ? $"ortho, size {projection.orthographicSize:F3}" : "Perspective")
+                    : "sem camera");
+            // This check exists because a naive "is a culling mask set" reading passed while the
+            // projector was showing both controllers, every affordance tooltip and the teleport
+            // marker. It now asserts against what the camera actually renders.
+            int operatorLayer = LayerMask.NameToLayer("OperatorOnly");
+            Require("Layer do operador existe", operatorLayer >= 0,
+                operatorLayer >= 0 ? $"OperatorOnly (indice {operatorLayer})" : "nao criada");
+            Require("Culling Mask exclui o operador",
+                projection != null && operatorLayer >= 0 &&
+                (projection.cullingMask & (1 << operatorLayer)) == 0,
+                projection != null ? $"mask 0x{projection.cullingMask:X}" : "sem camera");
+
+            if (projection != null)
+            {
+                Plane[] planes = GeometryUtility.CalculateFrustumPlanes(projection);
+                List<string> leaks = new List<string>();
+
+                foreach (Renderer r in Object.FindObjectsByType<Renderer>(FindObjectsSortMode.None))
+                {
+                    if (!r.enabled || !r.gameObject.activeInHierarchy) { continue; }
+                    if ((projection.cullingMask & (1 << r.gameObject.layer)) == 0) { continue; }
+                    if (!GeometryUtility.TestPlanesAABB(planes, r.bounds)) { continue; }
+
+                    Transform root = r.transform.root;
+                    if (root.name == "XR Origin" || root.name == "Teleport Area Setup")
+                    {
+                        leaks.Add(r.name);
+                    }
+                }
+
+                foreach (Canvas c in Object.FindObjectsByType<Canvas>(FindObjectsSortMode.None))
+                {
+                    if (!c.isActiveAndEnabled || c.renderMode != RenderMode.WorldSpace) { continue; }
+                    if ((projection.cullingMask & (1 << c.gameObject.layer)) == 0) { continue; }
+
+                    Transform root = c.transform.root;
+                    if (root.name == "XR Origin" || root.name == "Teleport Area Setup")
+                    {
+                        leaks.Add("[canvas] " + c.name);
+                    }
+                }
+
+                Require("Nada do operador no quadro projetado", leaks.Count == 0,
+                    leaks.Count == 0 ? "limpo" : $"{leaks.Count} vazando: {string.Join(", ", leaks.GetRange(0, Mathf.Min(3, leaks.Count)))}");
+            }
             Require("Ativacao do display em runtime",
                 projection != null && projection.GetComponent<ProjectionDisplay>() != null,
                 projection != null ? "ProjectionDisplay" : "sem camera");
