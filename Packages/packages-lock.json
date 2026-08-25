@@ -147,15 +147,6 @@
         "com.unity.render-pipelines.core": "17.0.3"
       }
     },
-    "com.unity.sdk.linux-x86_64": {
-      "version": "1.1.0",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {
-        "com.unity.sysroot.base": "1.1.0"
-      },
-      "url": "https://packages.unity.com"
-    },
     "com.unity.searcher": {
       "version": "4.9.5",
       "depth": 2,
@@ -213,15 +204,6 @@
       "dependencies": {
         "com.unity.test-framework": "1.4.5",
         "com.unity.settings-manager": "2.0.0"
-      },
-      "url": "https://packages.unity.com"
-    },
-    "com.unity.toolchain.linux-x86_64-linux": {
-      "version": "1.1.0",
-      "depth": 0,
-      "source": "registry",
-      "dependencies": {
-        "com.unity.sysroot.base": "1.1.0"
       },
       "url": "https://packages.unity.com"
     },
