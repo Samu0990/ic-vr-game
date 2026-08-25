@@ -107,6 +107,16 @@ namespace VRSurgery.EditorTools
         /// <summary>Layer for things only the operator should see: rig visuals, teleport markers.</summary>
         private const string OperatorLayer = "OperatorOnly";
 
+        private const string SimulatorPrefab =
+            "Assets/Samples/XR Interaction Toolkit/3.5.1/XR Interaction Simulator/XR Interaction Simulator.prefab";
+
+        /// <summary>
+        /// Lets the scene be played with keyboard and mouse. Without it, pressing Play on a
+        /// machine with no headset gives a frozen camera and no hands — the project looks broken
+        /// when it is only waiting for hardware that is not there.
+        /// </summary>
+        private const bool IncludeXrSimulator = true;
+
         private const int SpectatorDisplayIndex = 0;
         private const int ProjectionDisplayIndex = 1;
 
@@ -164,6 +174,7 @@ namespace VRSurgery.EditorTools
             BuildTissue(patient, surfaceY, systems.GetComponent<SurgeryTelemetry>());
             GameObject tray = BuildInstrumentTray();
             GameObject scalpel = BuildScalpel(tray);
+            BuildSimulator();
             HideOperatorVisualsFromProjection();
             BuildSpectatorCamera();
             BuildProjectionCamera();
@@ -263,6 +274,23 @@ namespace VRSurgery.EditorTools
         /// interaction through physics layer masks, so relocating a collider — the teleport
         /// anchor's in particular — would quietly break teleporting to reach a cosmetic goal.
         /// </summary>
+        private static void BuildSimulator()
+        {
+            if (!IncludeXrSimulator) { return; }
+
+            GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(SimulatorPrefab);
+            if (asset == null)
+            {
+                Debug.LogWarning("[SurgeryMVP] XR Interaction Simulator sample not found; " +
+                                 "the scene will need a headset to be playable.");
+                return;
+            }
+
+            GameObject instance = (GameObject)PrefabUtility.InstantiatePrefab(asset);
+            instance.name = "XR Interaction Simulator";
+            Debug.Log("[SurgeryMVP] XR Interaction Simulator added — playable without a headset");
+        }
+
         private static void HideOperatorVisualsFromProjection()
         {
             int layer = EnsureLayer(OperatorLayer);
@@ -270,7 +298,9 @@ namespace VRSurgery.EditorTools
 
             int moved = 0;
             int skipped = 0;
-            foreach (string rootName in new[] { "XR Origin", "Teleport Area Setup" })
+            // The simulator draws its own on-screen UI; that belongs to whoever is driving the
+            // editor, never to the audience.
+            foreach (string rootName in new[] { "XR Origin", "Teleport Area Setup", "XR Interaction Simulator" })
             {
                 GameObject root = GameObject.Find(rootName);
                 if (root == null) { continue; }

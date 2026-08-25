@@ -47,8 +47,32 @@ namespace VRSurgery.Tests
             }
 
             _hooked = true;
-            SceneManager.sceneLoaded += (_, __) => SuppressRendering();
+            SceneManager.sceneLoaded += (_, __) => { SuppressRendering(); RemoveSimulator(); };
             SuppressRendering();
+            RemoveSimulator();
+        }
+
+        /// <summary>
+        /// Takes the XR Interaction Simulator out of the scene under the null graphics device.
+        ///
+        /// The simulator exists so the project can be played with keyboard and mouse on a machine
+        /// with no headset, which is how anyone without hardware opens it. Its Start() reaches for
+        /// input devices that do not exist in batch mode and segfaults the editor before the first
+        /// test reports — the whole run dies, not one test. Removing it here keeps the scene
+        /// playable for people and runnable for the suite.
+        /// </summary>
+        private static void RemoveSimulator()
+        {
+            if (!NullGraphicsDevice)
+            {
+                return;
+            }
+
+            GameObject simulator = GameObject.Find("XR Interaction Simulator");
+            if (simulator != null)
+            {
+                Object.DestroyImmediate(simulator);
+            }
         }
 
         /// <summary>
