@@ -115,7 +115,15 @@ namespace VRSurgery.EditorTools
         /// machine with no headset gives a frozen camera and no hands — the project looks broken
         /// when it is only waiting for hardware that is not there.
         /// </summary>
+        /// <summary>
+        /// Keyboard and mouse simulator: only in the editor. On Android/Quest, input comes from
+        /// the headset and hand tracking; a keyboard simulator would break things.
+        /// </summary>
+#if UNITY_ANDROID
+        private const bool IncludeXrSimulator = false;
+#else
         private const bool IncludeXrSimulator = true;
+#endif
 
         private const int SpectatorDisplayIndex = 0;
         private const int ProjectionDisplayIndex = 1;
