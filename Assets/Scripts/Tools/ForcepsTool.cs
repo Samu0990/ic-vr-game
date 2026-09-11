@@ -75,14 +75,17 @@ namespace VRSurgery.Tools
         {
             float angle = Mathf.Lerp(openAngle, 0f, Closure01);
 
+            // A positive rotation about local X pitches the jaw's forward axis downward, so the
+            // upper jaw has to take the negative angle to swing away from the lower one. With the
+            // signs the other way round the two jaws open through each other.
             if (upperJaw != null)
             {
-                upperJaw.localRotation = Quaternion.Euler(angle, 0f, 0f);
+                upperJaw.localRotation = Quaternion.Euler(-angle, 0f, 0f);
             }
 
             if (lowerJaw != null)
             {
-                lowerJaw.localRotation = Quaternion.Euler(-angle, 0f, 0f);
+                lowerJaw.localRotation = Quaternion.Euler(angle, 0f, 0f);
             }
         }
 
