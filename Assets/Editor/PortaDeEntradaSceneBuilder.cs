@@ -199,31 +199,66 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
-        /// What transillumination looks like: the safe area as a pale ring on the skin, and the
-        /// vessel as a darker shadow crossing it. They overlap, which is the whole decision.
+        /// What transillumination looks like: the safe area as a pale disc on the skin, and the
+        /// vessel as a darker shadow overlapping it. They overlap, which is the whole decision.
+        ///
+        /// Discs, not quads. A quad is a square, and both zones are tested radially — so a square
+        /// marker does not merely look wrong, it lies about the rule: its corners reach 1.41x the
+        /// radius, and a player aiming at one is outside the zone the drawing promised.
         /// </summary>
         private static void BuildSiteVisual(Transform site, PortSpec spec)
         {
-            GameObject safe = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            safe.name = "SafeZone";
-            safe.transform.SetParent(site, false);
-            safe.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            safe.transform.localPosition = new Vector3(0f, 0.0012f, 0f);
-            safe.transform.localScale = Vector3.one * (spec.SafeRadius * 2f);
-            Object.DestroyImmediate(safe.GetComponent<Collider>());
-            safe.GetComponent<MeshRenderer>().sharedMaterial =
-                MakeUnlit(new Color(0.45f, 0.85f, 0.70f, 0.30f));
+            BuildDisc(site, "SafeZone", spec.SafeRadius, new Vector3(0f, 0.0012f, 0f),
+                new Color(0.45f, 0.85f, 0.70f, 0.30f));
 
-            GameObject vessel = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            vessel.name = "VesselShadow";
-            vessel.transform.SetParent(site, false);
-            vessel.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            vessel.transform.localPosition =
-                new Vector3(spec.VesselOffset.x, 0.0016f, spec.VesselOffset.y);
-            vessel.transform.localScale = Vector3.one * (spec.VesselRadius * 2f);
-            Object.DestroyImmediate(vessel.GetComponent<Collider>());
-            vessel.GetComponent<MeshRenderer>().sharedMaterial =
-                MakeUnlit(new Color(0.35f, 0.05f, 0.12f, 0.55f));
+            BuildDisc(site, "VesselShadow", spec.VesselRadius,
+                new Vector3(spec.VesselOffset.x, 0.0016f, spec.VesselOffset.y),
+                new Color(0.35f, 0.05f, 0.12f, 0.55f));
+        }
+
+        /// <summary>
+        /// A flat disc of the given radius on the site's XZ plane — the same plane, and the same
+        /// radius, the hit test uses.
+        /// </summary>
+        private static void BuildDisc(Transform parent, string name, float radius,
+            Vector3 localPosition, Color colour)
+        {
+            const int Segments = 40;
+
+            Vector3[] vertices = new Vector3[Segments + 1];
+            Vector3[] normals = new Vector3[Segments + 1];
+            int[] triangles = new int[Segments * 3];
+
+            vertices[0] = Vector3.zero;
+            normals[0] = Vector3.up;
+
+            for (int i = 0; i < Segments; i++)
+            {
+                float angle = (i / (float)Segments) * Mathf.PI * 2f;
+                vertices[i + 1] = new Vector3(Mathf.Cos(angle) * radius, 0f, Mathf.Sin(angle) * radius);
+                normals[i + 1] = Vector3.up;
+
+                // Wound so the face points up, at the player looking down onto the abdomen.
+                triangles[i * 3] = 0;
+                triangles[i * 3 + 1] = 1 + ((i + 1) % Segments);
+                triangles[i * 3 + 2] = 1 + i;
+            }
+
+            Mesh mesh = new Mesh { name = name + "Disc" };
+            mesh.vertices = vertices;
+            mesh.normals = normals;
+            mesh.triangles = triangles;
+            mesh.RecalculateBounds();
+
+            GameObject disc = new GameObject(name, typeof(MeshFilter), typeof(MeshRenderer));
+            disc.transform.SetParent(parent, false);
+            disc.transform.localPosition = localPosition;
+            disc.GetComponent<MeshFilter>().sharedMesh = mesh;
+
+            MeshRenderer renderer = disc.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = MakeUnlit(colour);
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
         }
 
         // ---------------------------------------------------------------- instrumentos
@@ -260,22 +295,46 @@ namespace VRSurgery.EditorTools
 
             GameObject mesh = Instantiate(TrocarGlb, trocar.transform);
             mesh.name = "TrocarMesh";
-            // Modelled tip-at-origin pointing +Y; the tool works along -Y into the wall, and the
-            // instrument lies on the tray with its tip toward the patient.
-            mesh.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            mesh.transform.localPosition = new Vector3(0f, 0f, -0.02f);
+
+            // No rotation. The glTF exporter already turned the model's long axis onto Z on the
+            // way out, and the 90 degrees this used to apply on top stood the instrument upright
+            // on the tray like a tap. Orientation is measured below rather than assumed again.
+            mesh.transform.localRotation = Quaternion.identity;
+            mesh.transform.localPosition = Vector3.zero;
+
             foreach (MeshRenderer r in mesh.GetComponentsInChildren<MeshRenderer>())
             {
                 r.sharedMaterial = MakeMaterial(new Color(0.76f, 0.78f, 0.82f), 0.80f, 0.70f);
             }
 
+            // Where the geometry actually is, in the tool's own space. The tip is the narrow end:
+            // the valve housing is three times the cannula's diameter, so the end whose cross
+            // section is thinner is the one that goes into the patient.
+            Bounds local = LocalBounds(mesh, trocar.transform);
+            bool tipAtMinZ = ThicknessNear(mesh, trocar.transform, local.min.z) <
+                             ThicknessNear(mesh, trocar.transform, local.max.z);
+
+            float tipZ = tipAtMinZ ? local.min.z : local.max.z;
+            float buttZ = tipAtMinZ ? local.max.z : local.min.z;
+
             GameObject tip = new GameObject("TrocarTip");
             tip.transform.SetParent(trocar.transform, false);
-            tip.transform.localPosition = new Vector3(0f, 0f, -0.02f);
+            tip.transform.localPosition = new Vector3(0f, 0f, tipZ);
 
+            // Held at the valve housing, which is where a hand actually grips a trocar.
             GameObject grip = new GameObject("GripPoint");
             grip.transform.SetParent(trocar.transform, false);
-            grip.transform.localPosition = new Vector3(0f, 0f, 0.075f);
+            grip.transform.localPosition = new Vector3(0f, 0f, Mathf.Lerp(buttZ, tipZ, 0.22f));
+
+            // Seat it on the tray instead of hovering: lift the root by however far the geometry
+            // hangs below it, so the widest part of the housing is what rests on the surface.
+            float trayTop = tray.transform.position.y + TableTopY + 0.0236f;
+            trocar.transform.position = new Vector3(
+                trocar.transform.position.x, trayTop - local.min.y, trocar.transform.position.z);
+
+            Debug.Log($"[Porta] trocáter: comprimento {local.size.z * 100f:F1} cm, " +
+                      $"corpo {local.size.y * 100f:F1} cm, ponta em z={tipZ:F3}, pega em " +
+                      $"z={grip.transform.localPosition.z:F3}, apoiado em Y={trocar.transform.position.y:F4}");
 
             BoxCollider box = trocar.AddComponent<BoxCollider>();
             box.size = new Vector3(0.034f, 0.034f, 0.10f);
@@ -397,14 +456,15 @@ namespace VRSurgery.EditorTools
                 return;
             }
 
-            // A ring on the head, just past the near plane, facing the eyes. Peripheral by
-            // construction: the middle is open, so it never sits between the player and the site.
-            GameObject ring = GameObject.CreatePrimitive(PrimitiveType.Quad);
-            ring.name = "UrgencyVignette";
+            // An actual annulus on the head, just past the near plane. It has to be a ring and not
+            // a filled quad: a full-field red wash inside a headset is the fastest way to make
+            // someone queasy, and it would also sit between the player and the site being aimed
+            // at. The hole in the middle is the whole point.
+            GameObject ring = new GameObject("UrgencyVignette", typeof(MeshFilter), typeof(MeshRenderer));
             ring.transform.SetParent(head.transform, false);
             ring.transform.localPosition = new Vector3(0f, 0f, 0.12f);
-            ring.transform.localScale = new Vector3(0.60f, 0.42f, 1f);
-            Object.DestroyImmediate(ring.GetComponent<Collider>());
+            ring.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+            ring.GetComponent<MeshFilter>().sharedMesh = MakeAnnulus(0.085f, 0.20f, 64);
 
             Material mat = MakeUnlit(new Color(0.85f, 0.05f, 0.05f, 0f));
             MeshRenderer renderer = ring.GetComponent<MeshRenderer>();
@@ -518,6 +578,97 @@ namespace VRSurgery.EditorTools
         }
 
         // ---------------------------------------------------------------- helpers
+
+        /// <summary>
+        /// A flat ring on the XZ plane: opaque between the two radii, open in the middle. Faded in
+        /// from the inner edge so the vignette has no hard line running across the player's view.
+        /// </summary>
+        private static Mesh MakeAnnulus(float innerRadius, float outerRadius, int segments)
+        {
+            Vector3[] vertices = new Vector3[segments * 2];
+            Color[] colours = new Color[segments * 2];
+            int[] triangles = new int[segments * 6];
+
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = (i / (float)segments) * Mathf.PI * 2f;
+                float cos = Mathf.Cos(angle);
+                float sin = Mathf.Sin(angle);
+
+                vertices[i * 2] = new Vector3(cos * innerRadius, 0f, sin * innerRadius);
+                vertices[i * 2 + 1] = new Vector3(cos * outerRadius, 0f, sin * outerRadius);
+
+                // Transparent at the inner edge, solid at the rim.
+                colours[i * 2] = new Color(1f, 1f, 1f, 0f);
+                colours[i * 2 + 1] = Color.white;
+
+                int next = (i + 1) % segments;
+                int t = i * 6;
+                triangles[t] = i * 2;
+                triangles[t + 1] = next * 2;
+                triangles[t + 2] = i * 2 + 1;
+                triangles[t + 3] = next * 2;
+                triangles[t + 4] = next * 2 + 1;
+                triangles[t + 5] = i * 2 + 1;
+            }
+
+            Mesh mesh = new Mesh { name = "UrgencyAnnulus" };
+            mesh.vertices = vertices;
+            mesh.colors = colours;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        /// <summary>Bounds of every mesh under <paramref name="go"/>, expressed in <paramref name="space"/>.</summary>
+        private static Bounds LocalBounds(GameObject go, Transform space)
+        {
+            bool any = false;
+            Bounds bounds = new Bounds();
+
+            foreach (MeshFilter filter in go.GetComponentsInChildren<MeshFilter>())
+            {
+                Mesh mesh = filter.sharedMesh;
+                if (mesh == null) { continue; }
+
+                foreach (Vector3 v in mesh.vertices)
+                {
+                    Vector3 p = space.InverseTransformPoint(filter.transform.TransformPoint(v));
+                    if (!any) { bounds = new Bounds(p, Vector3.zero); any = true; }
+                    else { bounds.Encapsulate(p); }
+                }
+            }
+
+            return bounds;
+        }
+
+        /// <summary>
+        /// Widest radius off the tool's axis within a centimetre of <paramref name="z"/>. Used to
+        /// tell the cannula's tip from the valve housing without hardcoding which way the
+        /// exporter happened to face the model.
+        /// </summary>
+        private static float ThicknessNear(GameObject go, Transform space, float z)
+        {
+            float widest = 0f;
+
+            foreach (MeshFilter filter in go.GetComponentsInChildren<MeshFilter>())
+            {
+                Mesh mesh = filter.sharedMesh;
+                if (mesh == null) { continue; }
+
+                foreach (Vector3 v in mesh.vertices)
+                {
+                    Vector3 p = space.InverseTransformPoint(filter.transform.TransformPoint(v));
+                    if (Mathf.Abs(p.z - z) > 0.01f) { continue; }
+
+                    float radius = new Vector2(p.x, p.y).magnitude;
+                    if (radius > widest) { widest = radius; }
+                }
+            }
+
+            return widest;
+        }
 
         private static GameObject Instantiate(string path, Transform parent)
         {
