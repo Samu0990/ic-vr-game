@@ -12,12 +12,26 @@ namespace VRSurgery.Session
         public float Seconds;
         public int Score;
 
-        public LeaderboardEntry(string name, float seconds, int score)
+        /// <summary>
+        /// Ticks when this run was filed. Breaks ties: the concept is explicit that on an equal
+        /// time, whoever reached it first keeps the higher place — the visitor who set the bar
+        /// should not be pushed down by someone who merely matched it.
+        /// </summary>
+        public long AchievedAtTicks;
+
+        /// <summary>Whole milliseconds, which is the unit the stand's scoreboard shows.</summary>
+        public int Milliseconds => Mathf.RoundToInt(Seconds * 1000f);
+
+        public LeaderboardEntry(string name, float seconds, int score, long achievedAtTicks)
         {
             Name = name;
             Seconds = seconds;
             Score = score;
+            AchievedAtTicks = achievedAtTicks;
         }
+
+        /// <summary>"12.487s" — the stand reads to the millisecond, so ties are rare and real.</summary>
+        public string TimeLabel => $"{Seconds:F3}s";
     }
 
     /// <summary>
@@ -114,9 +128,10 @@ namespace VRSurgery.Session
             _entries.Add(new LeaderboardEntry(
                 string.IsNullOrWhiteSpace(name) ? "Anônimo" : name.Trim(),
                 result.ElapsedSeconds,
-                result.Score));
+                result.Score,
+                DateTime.UtcNow.Ticks));
 
-            _entries.Sort((a, b) => a.Seconds.CompareTo(b.Seconds));
+            SortEntries();
 
             if (_entries.Count > capacity)
             {
@@ -129,6 +144,21 @@ namespace VRSurgery.Session
             // Whether the run actually made the table, which is what the result screen wants to
             // shout about — not merely that it was fast enough to finish.
             return _entries.Exists(e => Mathf.Approximately(e.Seconds, result.ElapsedSeconds));
+        }
+
+        /// <summary>
+        /// Fastest first; on an identical time, whoever got there first stays ahead. Compared on
+        /// whole milliseconds rather than raw floats, so two runs the scoreboard displays as
+        /// equal are actually treated as equal instead of being separated by float noise the
+        /// audience cannot see.
+        /// </summary>
+        private void SortEntries()
+        {
+            _entries.Sort((a, b) =>
+            {
+                int byTime = a.Milliseconds.CompareTo(b.Milliseconds);
+                return byTime != 0 ? byTime : a.AchievedAtTicks.CompareTo(b.AchievedAtTicks);
+            });
         }
 
         public void Clear()
@@ -161,7 +191,7 @@ namespace VRSurgery.Session
                 if (payload?.entries != null)
                 {
                     _entries.AddRange(payload.entries);
-                    _entries.Sort((a, b) => a.Seconds.CompareTo(b.Seconds));
+                    SortEntries();
                 }
             }
             catch (Exception exception)
