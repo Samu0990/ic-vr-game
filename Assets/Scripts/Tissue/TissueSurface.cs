@@ -58,6 +58,32 @@ namespace VRSurgery.Tissue
 
         public Vector3 TissueLocalToWorld(Vector3 localPoint) => transform.TransformPoint(localPoint);
 
+        /// <summary>
+        /// Distance from a world point to the recorded incision, in metres, measured against the
+        /// polyline rather than the nearest recorded vertex — points are only laid down every few
+        /// millimetres, so a vertex-only test would report a sawtooth distance along the cut.
+        ///
+        /// Returns <see cref="float.PositiveInfinity"/> while no incision exists: there is nothing
+        /// to press on yet, and returning 0 would make an untouched patient count as a hit.
+        /// </summary>
+        public float DistanceToIncision(Vector3 worldPoint)
+        {
+            if (_incisionPoints.Count == 0)
+            {
+                return float.PositiveInfinity;
+            }
+
+            Vector3 local = WorldToTissueLocal(worldPoint);
+            local.y = 0f;
+
+            if (_incisionPoints.Count == 1)
+            {
+                return Vector3.Distance(local, _incisionPoints[0]);
+            }
+
+            return IncisionGeometry.DistanceToPolyline(local, _incisionPoints);
+        }
+
         public void Configure(Vector2 newHalfExtents, float newMaxPenetration)
         {
             halfExtents = newHalfExtents;

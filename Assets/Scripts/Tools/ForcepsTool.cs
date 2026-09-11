@@ -31,6 +31,12 @@ namespace VRSurgery.Tools
         [SerializeField] private float contactRadius = 0.02f;
         [SerializeField] private LayerMask tissueLayers = ~0;
 
+        [Tooltip("How close the jaw tip must be to the incision itself for pressure to count, in " +
+                 "metres. The tissue collider spans the whole operative field, so without this " +
+                 "the jaws control the bleeding from anywhere on the patch — including several " +
+                 "centimetres from the wound.")]
+        [SerializeField] private float woundRadius = 0.006f;
+
         [SerializeField, Range(0f, 1f)] private float closedThreshold = 0.85f;
 
         private readonly Collider[] _overlapResults = new Collider[8];
@@ -47,6 +53,11 @@ namespace VRSurgery.Tools
 
         private float _targetClosure;
         private BleedingSystem _contactBleeding;
+
+        // Cache for the per-frame collider -> tissue -> bleeding walk.
+        private Collider _cachedCollider;
+        private TissueSurface _cachedTissue;
+        private BleedingSystem _bleedingByTissue;
 
         public Transform JawTip => jawTip;
 
@@ -93,20 +104,13 @@ namespace VRSurgery.Tools
         {
             if (jawTip == null)
             {
-                IsGrippingTissue = false;
+                LoseContact();
                 return;
             }
 
-            bool closedEnough = Closure01 >= closedThreshold;
-            if (!closedEnough)
+            if (Closure01 < closedThreshold)
             {
-                if (_contactBleeding != null)
-                {
-                    _contactBleeding.ReleasePressure();
-                }
-
-                IsGrippingTissue = false;
-                _contactBleeding = null;
+                LoseContact();
                 return;
             }
 
@@ -121,19 +125,62 @@ namespace VRSurgery.Tools
                     continue;
                 }
 
-                TissueSurface tissue = collider.GetComponentInParent<TissueSurface>();
+                TissueSurface tissue = ResolveTissue(collider);
                 if (tissue == null)
                 {
                     continue;
                 }
 
+                // Touching the field is not the same as pressing on the wound. The collider covers
+                // the whole 14x10 cm patch, so without this the bleeding could be controlled from
+                // the far side of the operative field.
+                if (tissue.DistanceToIncision(jawTip.position) > woundRadius)
+                {
+                    continue;
+                }
+
                 IsGrippingTissue = true;
-                _contactBleeding = tissue.GetComponent<BleedingSystem>();
+                _contactBleeding = _bleedingByTissue;
                 return;
+            }
+
+            LoseContact();
+        }
+
+        /// <summary>
+        /// Drops tissue contact and, crucially, tells the wound the pressure stopped.
+        ///
+        /// This used to be skipped on the "jaws shut but off the tissue" path, which left the
+        /// pressure timer running across gaps in contact: a player could hold the trigger and dab
+        /// at the wound, accumulating the required seconds in fragments instead of holding still.
+        /// </summary>
+        private void LoseContact()
+        {
+            if (_contactBleeding != null)
+            {
+                _contactBleeding.ReleasePressure();
             }
 
             IsGrippingTissue = false;
             _contactBleeding = null;
+        }
+
+        /// <summary>
+        /// Resolves the collider's tissue, caching the lookup. Called every frame the jaws are
+        /// shut, and the component walk plus the BleedingSystem fetch were both being redone from
+        /// scratch each time on a headset that cannot spare it.
+        /// </summary>
+        private TissueSurface ResolveTissue(Collider collider)
+        {
+            if (collider == _cachedCollider)
+            {
+                return _cachedTissue;
+            }
+
+            _cachedCollider = collider;
+            _cachedTissue = collider.GetComponentInParent<TissueSurface>();
+            _bleedingByTissue = _cachedTissue != null ? _cachedTissue.GetComponent<BleedingSystem>() : null;
+            return _cachedTissue;
         }
 
         private void UpdatePinchState(float previousClosure)

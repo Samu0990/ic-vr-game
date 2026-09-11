@@ -625,6 +625,11 @@ namespace VRSurgery.EditorTools
             IncisionGuide guide = guideObject.AddComponent<IncisionGuide>();
             guide.Configure(new Vector3(-0.045f, 0f, 0f), new Vector3(0.045f, 0f, 0f));
 
+            // Surgical bands, set here rather than left to the component's defaults so the numbers
+            // that decide whether a cut is good live next to the path they are measured against.
+            // 1.5 mm is a clean line on a 9 cm incision; 10 mm misses.
+            guide.SetTolerances(0.0015f, 0.004f, 0.010f);
+
             GameObject guideVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             guideVisual.name = "GuideMarker";
             guideVisual.transform.SetParent(guideObject.transform, false);

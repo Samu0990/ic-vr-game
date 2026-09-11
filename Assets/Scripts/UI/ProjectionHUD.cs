@@ -53,6 +53,9 @@ namespace VRSurgery.Surgery
 
         public string Headline { get; private set; } = string.Empty;
 
+        /// <summary>Last whole second put on the clock; -1 forces the first frame to draw.</summary>
+        private int _shownSecond = -1;
+
         private void OnEnable()
         {
             if (session != null)
@@ -104,11 +107,22 @@ namespace VRSurgery.Surgery
             // Ceil, not round: a clock that shows 0 while the round is still winnable is a lie the
             // audience can see, and one that shows 1 for half a second at the end is not.
             int whole = Mathf.CeilToInt(remaining);
-            ClockLabel = $"{whole / 60:0}:{whole % 60:00}";
+
+            // Only rebuild the string when the digits actually change. Formatting every frame
+            // allocated a new string ~90 times a second for a label that changes once.
+            if (whole != _shownSecond)
+            {
+                _shownSecond = whole;
+                ClockLabel = $"{whole / 60:0}:{whole % 60:00}";
+
+                if (clockText != null)
+                {
+                    clockText.text = ClockLabel;
+                }
+            }
 
             if (clockText != null)
             {
-                clockText.text = ClockLabel;
                 clockText.color = Color.Lerp(clockCalm, clockUrgent, session.Urgency01);
             }
         }
