@@ -77,7 +77,9 @@ namespace VRSurgery.EditorTools
             GameObject heart = BuildHeart(patient, thorax);
             GameObject sternum = BuildSternum(patient, thorax, heart, WorldBounds(ribcage));
 
-            WireProcedure(systems, sternum, heart);
+            GameObject donor = BuildDonorHeart(thorax);
+            VesselAnastomosis[] vessels = BuildVessels(systems, thorax);
+            WireProcedure(systems, sternum, heart, donor, vessels);
             PlaceAnchor(thorax);
             EnsureMainCamera();
 
@@ -324,7 +326,86 @@ namespace VRSurgery.EditorTools
             return systems;
         }
 
-        private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart)
+        /// <summary>
+        /// The replacement organ, waiting on its own stand beside the table.
+        ///
+        /// It starts outside the patient because that is where a donor heart is: brought in cold,
+        /// in a basin, and lifted into a chest that is already empty. Putting it in the thorax
+        /// from the start would make the middle of the operation meaningless.
+        /// </summary>
+        private static GameObject BuildDonorHeart(Vector3 thorax)
+        {
+            GameObject stand = new GameObject("DonorStand");
+            stand.transform.position = new Vector3(thorax.x + 0.50f, 0f, thorax.z - 0.35f);
+
+            GameObject pedestal = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            pedestal.name = "StandColumn";
+            pedestal.transform.SetParent(stand.transform, false);
+            pedestal.transform.localScale = new Vector3(0.26f, 0.90f, 0.26f);
+            pedestal.transform.localPosition = new Vector3(0f, 0.45f, 0f);
+            pedestal.GetComponent<MeshRenderer>().sharedMaterial =
+                MakeMaterial(new Color(0.55f, 0.58f, 0.62f), 0f, 0.3f);
+
+            GameObject basin = GameObject.CreatePrimitive(PrimitiveType.Cylinder);
+            basin.name = "Basin";
+            basin.transform.SetParent(stand.transform, false);
+            basin.transform.localScale = new Vector3(0.24f, 0.03f, 0.24f);
+            basin.transform.localPosition = new Vector3(0f, 0.92f, 0f);
+            Object.DestroyImmediate(basin.GetComponent<Collider>());
+            basin.GetComponent<MeshRenderer>().sharedMaterial =
+                MakeMaterial(new Color(0.72f, 0.75f, 0.78f), 0.8f, 0.6f);
+
+            GameObject organ = new GameObject("DonorHeart");
+            organ.transform.SetParent(stand.transform, true);
+            organ.transform.position = stand.transform.position + new Vector3(0f, 1.0f, 0f);
+            organ.transform.rotation = Quaternion.Euler(0f, 0f, 12f);
+
+            GameObject model = Instantiate(HeartGlb, organ.transform);
+            model.name = "DonorHeartModel";
+            ConvertGltfMaterials(model);
+
+            DressAsGrabbable(organ, model);
+            organ.AddComponent<Heartbeat>().Bind(model.transform);
+
+            Debug.Log($"[Transplante] coração doador na bacia em {organ.transform.position}");
+            return organ;
+        }
+
+        /// <summary>
+        /// The five joins, placed around the recipient's seat in roughly the order they are sewn:
+        /// left atrium first and deepest, the great arteries last and most exposed.
+        /// </summary>
+        private static VesselAnastomosis[] BuildVessels(GameObject systems, Vector3 thorax)
+        {
+            (VesselSite site, Vector3 offset)[] layout =
+            {
+                (VesselSite.LeftAtrium,       new Vector3(-0.030f, -0.020f,  0.005f)),
+                (VesselSite.InferiorVenaCava, new Vector3( 0.028f, -0.015f, -0.045f)),
+                (VesselSite.SuperiorVenaCava, new Vector3( 0.032f,  0.015f,  0.050f)),
+                (VesselSite.Aorta,            new Vector3(-0.008f,  0.030f,  0.055f)),
+                (VesselSite.PulmonaryArtery,  new Vector3(-0.032f,  0.028f,  0.040f)),
+            };
+
+            GameObject root = new GameObject("Anastomoses");
+            root.transform.SetParent(systems.transform, true);
+
+            VesselAnastomosis[] built = new VesselAnastomosis[layout.Length];
+            for (int i = 0; i < layout.Length; i++)
+            {
+                GameObject site = new GameObject("Vessel_" + layout[i].site);
+                site.transform.SetParent(root.transform, true);
+                site.transform.position = thorax + layout[i].offset;
+
+                built[i] = site.AddComponent<VesselAnastomosis>();
+                built[i].Bind(layout[i].site, null, 0.022f);
+            }
+
+            Debug.Log($"[Transplante] {built.Length} anastomoses posicionadas ao redor do assento");
+            return built;
+        }
+
+        private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart,
+            GameObject donor, VesselAnastomosis[] vessels)
         {
             SurgeryTelemetry telemetry = systems.GetComponent<SurgeryTelemetry>();
 
@@ -347,6 +428,18 @@ namespace VRSurgery.EditorTools
             seat.transform.position = heart.transform.position;
 
             heart.GetComponent<GrabbableOrgan>().Bind(OrganRole.Native, seat.transform, procedure);
+            donor.GetComponent<GrabbableOrgan>().Bind(OrganRole.Donor, seat.transform, procedure);
+
+            foreach (VesselAnastomosis vessel in vessels)
+            {
+                vessel.Bind(vessel.Site, procedure, 0.022f);
+            }
+
+            // The payoff: the donor heart starts once the operation is finished. Wired here rather
+            // than inside Heartbeat so the organ knows nothing about the procedure that installed
+            // it, and can be reused wherever a beating heart is wanted.
+            Heartbeat beat = donor.GetComponent<Heartbeat>();
+            procedure.ProcedureCompleted += () => beat.StartBeating();
 
             Debug.Log($"[Transplante] procedimento ligado: {procedure.VesselCount} vasos, " +
                       $"rodada {definition.RoundSeconds:F0}s, assento pericárdico em {seat.transform.position}");
@@ -457,6 +550,14 @@ namespace VRSurgery.EditorTools
 
                 renderer.sharedMaterials = materials;
             }
+        }
+
+        private static Material MakeMaterial(Color colour, float metallic, float smoothness)
+        {
+            Material m = new Material(Shader.Find("Universal Render Pipeline/Lit")) { color = colour };
+            m.SetFloat("_Metallic", metallic);
+            m.SetFloat("_Smoothness", smoothness);
+            return m;
         }
 
         private static GameObject Instantiate(string path, Transform parent)
