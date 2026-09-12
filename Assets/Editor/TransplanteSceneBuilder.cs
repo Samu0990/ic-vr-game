@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
@@ -79,7 +80,8 @@ namespace VRSurgery.EditorTools
 
             GameObject donor = BuildDonorHeart(thorax);
             VesselAnastomosis[] vessels = BuildVessels(systems, thorax);
-            WireProcedure(systems, sternum, heart, donor, vessels);
+            List<BypassSite> bypass = BuildBypassSites(systems, thorax);
+            WireProcedure(systems, sternum, heart, donor, vessels, bypass);
             PlaceAnchor(thorax);
             EnsureMainCamera();
 
@@ -404,15 +406,69 @@ namespace VRSurgery.EditorTools
             return built;
         }
 
+        /// <summary>
+        /// Where the pump is worked: the cannulation sites on the great vessels, the cross-clamp
+        /// on the ascending aorta, and the cardioplegia cannula in the aortic root.
+        ///
+        /// Entry and exit share their sites, because that is true of the real thing — the clamp
+        /// comes off the same aorta it went onto. The six holds come to roughly forty seconds,
+        /// which is the share of a four-minute operation bypass is allowed before it stops being
+        /// a procedure and becomes a minigame.
+        /// </summary>
+        private static List<BypassSite> BuildBypassSites(GameObject systems, Vector3 thorax)
+        {
+            GameObject root = new GameObject("BypassSites");
+            root.transform.SetParent(systems.transform, true);
+
+            (BypassStep step, Vector3 offset, float seconds)[] layout =
+            {
+                (BypassStep.Cannulate,    new Vector3( 0.035f,  0.020f,  0.030f), 7.0f),
+                (BypassStep.ClampAorta,   new Vector3(-0.010f,  0.035f,  0.060f), 6.0f),
+                (BypassStep.Cardioplegia, new Vector3(-0.005f,  0.030f,  0.048f), 7.0f),
+                (BypassStep.Unclamp,      new Vector3(-0.010f,  0.035f,  0.060f), 5.5f),
+                (BypassStep.DeAir,        new Vector3(-0.028f,  0.032f,  0.035f), 7.0f),
+                (BypassStep.Wean,         new Vector3( 0.060f,  0.010f, -0.060f), 4.0f),
+            };
+
+            List<BypassSite> sites = new List<BypassSite>();
+            float total = 0f;
+
+            foreach ((BypassStep step, Vector3 offset, float seconds) in layout)
+            {
+                GameObject point = new GameObject("Bypass_" + step);
+                point.transform.SetParent(root.transform, true);
+                point.transform.position = thorax + offset;
+
+                sites.Add(new BypassSite
+                {
+                    Step = step,
+                    Point = point.transform,
+                    Radius = 0.028f,
+                    Seconds = seconds,
+                });
+
+                total += seconds;
+            }
+
+            Debug.Log($"[Transplante] {sites.Count} pontos de CEC, {total:F0}s de gestos no total");
+            return sites;
+        }
+
         private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart,
-            GameObject donor, VesselAnastomosis[] vessels)
+            GameObject donor, VesselAnastomosis[] vessels, List<BypassSite> bypass)
         {
             SurgeryTelemetry telemetry = systems.GetComponent<SurgeryTelemetry>();
 
             TransplantProcedure procedure = systems.AddComponent<TransplantProcedure>();
 
             EventSessionDefinition definition = EventSessionDefinition.Create(
-                round: 90f, briefingTimeout: 45f, resultHold: 5f, scoreboardHold: 8f,
+                // Four minutes, not the ninety seconds the booth concept was written around.
+                // Bypass alone is six steps and about forty seconds of them, and the operation now
+                // has six stages rather than five. A ninety second clock would cut every visitor
+                // off somewhere around the cardioplegia. Worth knowing that this is a different
+                // kind of attraction from the one the event document described: a queue moves at
+                // a quarter of the rate.
+                round: 240f, briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
                 startOnGrab: true, pointsPerSecond: 100f);
 
             EventSessionController session = systems.AddComponent<EventSessionController>();
@@ -438,8 +494,16 @@ namespace VRSurgery.EditorTools
             // The payoff: the donor heart starts once the operation is finished. Wired here rather
             // than inside Heartbeat so the organ knows nothing about the procedure that installed
             // it, and can be reused wherever a beating heart is wanted.
+            // The beat waits for the pump, not for the last stage. Coming off bypass is what
+            // hands the circulation back; declaring the operation finished is bookkeeping that
+            // happens afterwards.
             Heartbeat beat = donor.GetComponent<Heartbeat>();
-            procedure.ProcedureCompleted += () => beat.StartBeating();
+            procedure.Bypass.WeanedOff += () => beat.StartBeating();
+
+            // The cannulae and the clamp are worked with the hand itself rather than a dedicated
+            // instrument, so the worker lives on the systems object and asks for no grab.
+            BypassWorker worker = systems.AddComponent<BypassWorker>();
+            worker.Bind(null, bypass, procedure);
 
             Debug.Log($"[Transplante] procedimento ligado: {procedure.VesselCount} vasos, " +
                       $"rodada {definition.RoundSeconds:F0}s, assento pericárdico em {seat.transform.position}");

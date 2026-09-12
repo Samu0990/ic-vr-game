@@ -20,6 +20,13 @@ namespace VRSurgery.Transplant
         /// <summary>Sternotomy: the chest has to be opened before anything else is possible.</summary>
         OpenChest,
 
+        /// <summary>
+        /// Onto cardiopulmonary bypass: cannulate, cross-clamp, cardioplegia. Without this the
+        /// patient has no circulation at all from the moment the heart comes out until the new
+        /// one starts — the pump is what keeps them alive across that gap.
+        /// </summary>
+        GoOnBypass,
+
         /// <summary>Cardiectomy: the failing heart comes out.</summary>
         RemoveNativeHeart,
 
@@ -29,7 +36,10 @@ namespace VRSurgery.Transplant
         /// <summary>The connections that make it a transplant rather than a placement.</summary>
         ConnectVessels,
 
-        /// <summary>The heart is restarted and takes over the circulation.</summary>
+        /// <summary>
+        /// Off bypass: unclamp, de-air, wean. The new heart takes the circulation back, and only
+        /// at the end of this does it beat.
+        /// </summary>
         Restart,
 
         /// <summary>Every stage cleared.</summary>
@@ -57,6 +67,7 @@ namespace VRSurgery.Transplant
         private readonly List<TransplantStage> _order = new List<TransplantStage>
         {
             TransplantStage.OpenChest,
+            TransplantStage.GoOnBypass,
             TransplantStage.RemoveNativeHeart,
             TransplantStage.PlaceDonorHeart,
             TransplantStage.ConnectVessels,
@@ -65,12 +76,25 @@ namespace VRSurgery.Transplant
 
         public TransplantStage Stage { get; private set; } = TransplantStage.Idle;
 
+        /// <summary>
+        /// The pump. Owned here because its two halves bracket the operation, and exposed so the
+        /// worker that knows where the surgeon's hands are can drive it without this class
+        /// learning anything about hands.
+        /// </summary>
+        public BypassProcedure Bypass { get; } = new BypassProcedure();
+
         /// <summary>Vessels connected so far. Only meaningful during ConnectVessels.</summary>
         public int VesselsConnected { get; private set; }
 
         public int VesselCount => vesselCount;
 
         public bool IsComplete => Stage == TransplantStage.Complete;
+
+        /// <summary>
+        /// True once every vessel is sewn. The pump asks this before it will let the cross-clamp
+        /// off, because unclamping onto open anastomoses empties the patient into the chest.
+        /// </summary>
+        public bool IsImplantComplete => VesselsConnected >= vesselCount;
 
         /// <summary>0..1 across the whole operation, for the audience's progress readout.</summary>
         public float Progress01
@@ -96,12 +120,14 @@ namespace VRSurgery.Transplant
         public void Begin()
         {
             VesselsConnected = 0;
+            Bypass.Reset();
             SetStage(_order[0]);
         }
 
         public void ResetProcedure()
         {
             VesselsConnected = 0;
+            Bypass.Reset();
             SetStage(TransplantStage.Idle);
         }
 
@@ -119,6 +145,20 @@ namespace VRSurgery.Transplant
 
             int index = _order.IndexOf(stage);
             if (index < 0)
+            {
+                return false;
+            }
+
+            // The two stages the pump brackets cannot be declared finished by whatever performed
+            // them; the pump decides. Cutting a heart out of a patient who is not arrested, or
+            // calling the operation done while still on bypass, are the two ways this procedure
+            // could quietly kill someone.
+            if (stage == TransplantStage.GoOnBypass && !Bypass.IsArrested)
+            {
+                return false;
+            }
+
+            if (stage == TransplantStage.Restart && !Bypass.IsOff)
             {
                 return false;
             }
@@ -150,10 +190,11 @@ namespace VRSurgery.Transplant
         public string CurrentInstruction => Stage switch
         {
             TransplantStage.OpenChest => "Abra o tórax com a serra esternal",
+            TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
             TransplantStage.RemoveNativeHeart => "Retire o coração doente",
             TransplantStage.PlaceDonorHeart => "Posicione o coração do doador",
             TransplantStage.ConnectVessels => $"Conecte os vasos — {VesselsConnected}/{vesselCount}",
-            TransplantStage.Restart => "Aplique o choque para religar o coração",
+            TransplantStage.Restart => Bypass.CurrentInstruction,
             TransplantStage.Complete => "Coração batendo",
             _ => "Aguardando",
         };

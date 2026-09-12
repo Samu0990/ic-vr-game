@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: scalpel
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Data.ToolDefinition
   toolId: scalpel
-  displayName: Scalpel
+  displayName: Bisturi
   toolType: 0
   capabilities: 1
   hapticProfile: {fileID: 11400000, guid: eb977ddd6a9e8f6f9b8a0b7a49bb74d1, type: 2}

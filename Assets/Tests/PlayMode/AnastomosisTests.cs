@@ -31,6 +31,10 @@ namespace VRSurgery.Tests
             // Walk the procedure to the stage where vessels can be joined.
             _procedure.Begin();
             _procedure.CompleteStage(TransplantStage.OpenChest);
+            _procedure.Bypass.Attempt(BypassStep.Cannulate);
+            _procedure.Bypass.Attempt(BypassStep.ClampAorta);
+            _procedure.Bypass.Attempt(BypassStep.Cardioplegia);
+            _procedure.CompleteStage(TransplantStage.GoOnBypass);
             _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
             _procedure.CompleteStage(TransplantStage.PlaceDonorHeart);
         }
@@ -150,6 +154,16 @@ namespace VRSurgery.Tests
             for (int i = 1; i < _procedure.VesselCount; i++) { _procedure.ConnectVessel(); }
 
             Assert.AreEqual(TransplantStage.Restart, _procedure.Stage);
+
+            // The restart is coming off bypass, so it cannot be declared done while the pump is
+            // still carrying the patient.
+            Assert.IsFalse(_procedure.CompleteStage(TransplantStage.Restart),
+                "Calling the operation finished while still on bypass would leave the patient on the pump.");
+
+            _procedure.Bypass.Attempt(BypassStep.Unclamp, true);
+            _procedure.Bypass.Attempt(BypassStep.DeAir, true);
+            _procedure.Bypass.Attempt(BypassStep.Wean, true);
+
             Assert.IsTrue(_procedure.CompleteStage(TransplantStage.Restart));
             Assert.IsTrue(_procedure.IsComplete);
         }

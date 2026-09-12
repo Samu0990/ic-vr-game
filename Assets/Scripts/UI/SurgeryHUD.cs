@@ -44,13 +44,13 @@ namespace VRSurgery.Surgery
 
         private void HandleObjectiveChanged(SurgeryObjectiveSystem.ObjectiveRuntime objective) => Refresh();
 
-        private void HandleSurgeryCompleted() => SetText("PROCEDURE COMPLETE");
+        private void HandleSurgeryCompleted() => SetText("PROCEDIMENTO CONCLUÍDO");
 
         private void Refresh()
         {
             if (objectiveSystem == null)
             {
-                SetText("STANDBY");
+                SetText("AGUARDANDO");
                 return;
             }
 
@@ -63,7 +63,7 @@ namespace VRSurgery.Surgery
 
             int step = objectiveSystem.CompletedCount + 1;
             int total = objectiveSystem.Objectives.Count;
-            SetText($"STEP {step}/{total}\n\n{active.Description}");
+            SetText($"ETAPA {step}/{total}\n\n{active.Description}");
         }
 
         private void SetText(string value)

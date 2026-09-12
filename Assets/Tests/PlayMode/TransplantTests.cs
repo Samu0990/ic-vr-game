@@ -30,6 +30,26 @@ namespace VRSurgery.Tests
             if (_host != null) { Object.DestroyImmediate(_host); }
         }
 
+        /// <summary>
+        /// Onto the pump. Every stage past the sternotomy is now behind it, because a patient
+        /// whose heart is about to come out has to be on bypass first.
+        /// </summary>
+        private void GoOnPump()
+        {
+            _procedure.Bypass.Attempt(BypassStep.Cannulate);
+            _procedure.Bypass.Attempt(BypassStep.ClampAorta);
+            _procedure.Bypass.Attempt(BypassStep.Cardioplegia);
+            _procedure.CompleteStage(TransplantStage.GoOnBypass);
+        }
+
+        /// <summary>Off the pump, which is what the restart stage now consists of.</summary>
+        private void ComeOffPump()
+        {
+            _procedure.Bypass.Attempt(BypassStep.Unclamp, true);
+            _procedure.Bypass.Attempt(BypassStep.DeAir, true);
+            _procedure.Bypass.Attempt(BypassStep.Wean, true);
+        }
+
         [Test]
         public void NothingHappensBeforeTheOperationStarts()
         {
@@ -46,6 +66,10 @@ namespace VRSurgery.Tests
             Assert.AreEqual(TransplantStage.OpenChest, _procedure.Stage);
 
             Assert.IsTrue(_procedure.CompleteStage(TransplantStage.OpenChest));
+            Assert.AreEqual(TransplantStage.GoOnBypass, _procedure.Stage,
+                "The pump comes before the heart does.");
+
+            GoOnPump();
             Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage);
 
             Assert.IsTrue(_procedure.CompleteStage(TransplantStage.RemoveNativeHeart));
@@ -74,7 +98,7 @@ namespace VRSurgery.Tests
 
             // The saw reports again — a controller held down, or a second collision.
             Assert.IsFalse(_procedure.CompleteStage(TransplantStage.OpenChest));
-            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage);
+            Assert.AreEqual(TransplantStage.GoOnBypass, _procedure.Stage);
         }
 
         [Test]
@@ -82,6 +106,7 @@ namespace VRSurgery.Tests
         {
             _procedure.Begin();
             _procedure.CompleteStage(TransplantStage.OpenChest);
+            GoOnPump();
             _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
             _procedure.CompleteStage(TransplantStage.PlaceDonorHeart);
 
@@ -107,9 +132,11 @@ namespace VRSurgery.Tests
 
             _procedure.Begin();
             _procedure.CompleteStage(TransplantStage.OpenChest);
+            GoOnPump();
             _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
             _procedure.CompleteStage(TransplantStage.PlaceDonorHeart);
             for (int i = 0; i < _procedure.VesselCount; i++) { _procedure.ConnectVessel(); }
+            ComeOffPump();
             _procedure.CompleteStage(TransplantStage.Restart);
 
             Assert.IsTrue(_procedure.IsComplete);
@@ -122,6 +149,7 @@ namespace VRSurgery.Tests
         {
             _procedure.Begin();
             _procedure.CompleteStage(TransplantStage.OpenChest);
+            GoOnPump();
             _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
             _procedure.CompleteStage(TransplantStage.PlaceDonorHeart);
 
@@ -138,6 +166,7 @@ namespace VRSurgery.Tests
         {
             _procedure.Begin();
             _procedure.CompleteStage(TransplantStage.OpenChest);
+            GoOnPump();
             _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
 
             _procedure.ResetProcedure();

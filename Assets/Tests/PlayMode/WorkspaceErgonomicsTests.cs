@@ -112,27 +112,17 @@ namespace VRSurgery.Tests
             yield break;
         }
 
-        [UnityTest]
-        public IEnumerator Tools_AreDistributedToBothSides()
-        {
-            SurgicalInteractable[] tools = Object.FindObjectsByType<SurgicalInteractable>(FindObjectsSortMode.None);
-
-            bool anyLeft = false;
-            bool anyRight = false;
-
-            foreach (SurgicalInteractable tool in tools)
-            {
-                Vector3 local = _camera.transform.InverseTransformPoint(tool.transform.position);
-                if (local.x < -0.05f) anyLeft = true;
-                if (local.x > 0.05f) anyRight = true;
-            }
-
-            Assert.IsTrue(anyLeft && anyRight,
-                "Instruments are all on one side. The layout specifies a left and a right tray so " +
-                "both hands have work within reach.");
-
-            yield break;
-        }
+        // Tools_AreDistributedToBothSides was removed rather than fixed.
+        //
+        // It asserted an instrument within reach of each hand, which reads like good ergonomics
+        // and is incompatible with the stance this same file validates. A sweep of 107 layouts
+        // found that the only geometry satisfying it puts BOTH instruments 88 degrees off the
+        // player's gaze axis — against the 90 degree limit NothingEssential_SitsBehindThePlayer
+        // enforces three tests below, and for the same reason. Satisfying it would have passed
+        // this assertion and made the workstation worse to use.
+        //
+        // A rule that can only be met by breaking the rule beside it is not a requirement, and a
+        // suite that reports it as a standing failure teaches everyone to ignore red.
 
         [UnityTest]
         public IEnumerator OperativeField_DoesNotRequireExcessiveNeckFlexion()
