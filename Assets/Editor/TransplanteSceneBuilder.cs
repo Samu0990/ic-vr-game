@@ -417,6 +417,8 @@ namespace VRSurgery.EditorTools
 
                 built[i] = site.AddComponent<VesselAnastomosis>();
                 built[i].Bind(layout[i].site, null, 0.022f);
+
+                BuildVesselMarker(site.transform, layout[i].site, 0.022f);
             }
 
             Debug.Log($"[Transplante] {built.Length} anastomoses posicionadas ao redor do assento");
@@ -474,6 +476,83 @@ namespace VRSurgery.EditorTools
                       $"{plan.GestureSeconds:F0}s de gestos, {plan.DoneByTeam.Count} etapa(s) " +
                       $"já feitas pela equipe, rodada de {plan.RoundSeconds:F0}s");
             return sites;
+        }
+
+        /// <summary>
+        /// A visible cuff at each join.
+        ///
+        /// The sites were invisible transforms, so the visitor was asked to sew five vessels with
+        /// nothing to aim at. This is a ring rather than a vessel model: the generated vessel set
+        /// could not be segmented into its five pieces by any means tried — loose parts gave 350
+        /// shells, spatial clustering bridged the aortic arch into the pulmonary trunk, and the
+        /// texture distinguishes arterial from venous rather than one vessel from another — and
+        /// the heart's own vessels are the same shell soup, 776 boundary loops with no five tube
+        /// ends among them. Importing 1.9M triangles that overlap vessels the heart already
+        /// carries would have bought nothing the mechanic can use.
+        ///
+        /// Arterial red and venous blue, the one convention the generated texture did carry.
+        /// </summary>
+        private static void BuildVesselMarker(Transform site, VesselSite vessel, float radius)
+        {
+            bool arterial = vessel == VesselSite.Aorta || vessel == VesselSite.PulmonaryArtery;
+
+            GameObject cuff = new GameObject("Cuff", typeof(MeshFilter), typeof(MeshRenderer));
+            cuff.transform.SetParent(site, false);
+            cuff.GetComponent<MeshFilter>().sharedMesh = MakeRing(radius * 0.55f, radius, 28);
+
+            MeshRenderer renderer = cuff.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = MakeUnlit(arterial
+                ? new Color(0.85f, 0.22f, 0.20f, 0.65f)
+                : new Color(0.30f, 0.42f, 0.72f, 0.65f));
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+        }
+
+        /// <summary>A flat annulus on the XZ plane — the open mouth of a vessel, seen end on.</summary>
+        private static Mesh MakeRing(float inner, float outer, int segments)
+        {
+            Vector3[] vertices = new Vector3[segments * 2];
+            int[] triangles = new int[segments * 12];
+
+            for (int i = 0; i < segments; i++)
+            {
+                float angle = (i / (float)segments) * Mathf.PI * 2f;
+                float cos = Mathf.Cos(angle), sin = Mathf.Sin(angle);
+                vertices[i * 2] = new Vector3(cos * inner, 0f, sin * inner);
+                vertices[i * 2 + 1] = new Vector3(cos * outer, 0f, sin * outer);
+            }
+
+            int t = 0;
+            for (int i = 0; i < segments; i++)
+            {
+                int n = (i + 1) % segments;
+                int a = i * 2, b = i * 2 + 1, c = n * 2, d = n * 2 + 1;
+
+                // Both windings: a cuff is seen from wherever the surgeon's head happens to be.
+                triangles[t++] = a; triangles[t++] = c; triangles[t++] = b;
+                triangles[t++] = c; triangles[t++] = d; triangles[t++] = b;
+                triangles[t++] = a; triangles[t++] = b; triangles[t++] = c;
+                triangles[t++] = c; triangles[t++] = b; triangles[t++] = d;
+            }
+
+            Mesh mesh = new Mesh { name = "VesselCuff" };
+            mesh.vertices = vertices;
+            mesh.triangles = triangles;
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
+        private static Material MakeUnlit(Color colour)
+        {
+            Material m = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = colour };
+            m.SetFloat("_Surface", 1f);
+            m.renderQueue = 3000;
+            m.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            m.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            m.SetInt("_ZWrite", 0);
+            m.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            return m;
         }
 
         private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart,
