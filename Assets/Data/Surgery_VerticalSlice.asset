@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: vertical-slice
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Surgery.SurgeryDefinition
   surgeryId: vertical-slice
-  displayName: Test Incision
+  displayName: Incisão de teste
   description: 
   difficulty: 1
   objectives:

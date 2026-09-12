@@ -1,12 +1,14 @@
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using VRSurgery.Audio;
 using VRSurgery.Data;
 using VRSurgery.Diagnostics;
 using VRSurgery.Interaction;
+using VRSurgery.Session;
 using VRSurgery.Surgery;
 using VRSurgery.Tissue;
 using VRSurgery.Tools;
@@ -31,7 +33,7 @@ namespace VRSurgery.EditorTools
         private const string BodyFbx = "Assets/Models/Patient/PATIENT_ExternalBody.fbx";
         private const string VertebraeFbx = "Assets/Models/Patient/PATIENT_Vertebrae.fbx";
         private const string TrayFbx = "Assets/Models/Environment/PROP_InstrumentTray.fbx";
-        private const string TableFbx = "Assets/Models/Environment/PROP_OperatingTable.fbx";
+        private const string TableFbx = "Assets/Models/Environment/PROP_OperatingTable.glb";
         private const string ScalpelFbx = "Assets/Models/Tools/SCALPEL_FromGLB.fbx";
         private const string ScalpelAlbedo = "Assets/Models/Tools/BISTURI_Image_0.png";
         private const string ScalpelNormal = "Assets/Models/Tools/BISTURI_Image_2.png";
@@ -39,14 +41,21 @@ namespace VRSurgery.EditorTools
         private const string PosterTexture = "Assets/Textures/Que_atrevido.jpeg";
         private const string IncisionClip = "Assets/Audio/SFX_Incision.wav";
         private const string ScalpelDefinition = "Assets/Data/Tool_Scalpel.asset";
+        private const string ForcepsDefinition = "Assets/Data/Tool_Forceps.asset";
+        private const string SurgeryAsset = "Assets/Data/Surgery_VerticalSlice.asset";
+        private const string SessionAsset = "Assets/Data/Session_EventBooth.asset";
 
         private const string ScalpelTag = "Scalpel";
 
         /// <summary>Table top height. Fixed for the MVP — not swept, not derived.</summary>
         private const float TableTopY = 0.95f;
 
-        private const float TableWidthX = 0.50f;
-        private const float TableLengthZ = 1.90f;
+        // Measured off PROP_OperatingTable.glb, not chosen. The model that replaced the first
+        // table is a real hospital table — wheeled base, hydraulic column, segmented padded top —
+        // and it is wider and longer than the block it replaced. VerifyTableTop compares against
+        // these, so they describe the model rather than an intention.
+        private const float TableWidthX = 0.575f;
+        private const float TableLengthZ = 2.002f;
 
         /// <summary>Migrated scalpel metrics. They describe the model, so they survive the move.</summary>
         private const float ScalpelGripLocalZ = -0.02f;
@@ -102,6 +111,29 @@ namespace VRSurgery.EditorTools
 
         private const float TrayStandWidthX = 0.20f;
         private const float TrayStandDepthZ = 0.50f;
+
+        /// <summary>
+        /// Forceps, laid on the same tray as the scalpel and 6 cm nearer the table edge.
+        ///
+        /// It belongs on the player's other side — the layout calls for a tray per hand — but the
+        /// validated stance cannot produce that. Facing the work centre, everything reachable on
+        /// the player's left is over the patient; the only facing that straddles two trays is
+        /// square to the field, and it pushes BOTH instruments to 88 deg off-axis, right against
+        /// the limit that forbids reaching behind the shoulder line. Beside the scalpel measures
+        /// 39 deg off-axis at Precision reach — better than the scalpel's own 48 — so the
+        /// instrument is comfortable here even though the two-tray rule stays unmet.
+        /// </summary>
+        private static readonly Vector3 ForcepsRestPosition = new Vector3(0.38f, 0f, 0.80f);
+
+        /// <summary>
+        /// Objective monitor, 1.15 m straight down the player's line of sight and slightly above
+        /// eye level, past the patient's head where it clears the table and the tray. Placed from
+        /// the stance rather than by eye: the ergonomics rule is a glance, not a turn.
+        /// </summary>
+        private static readonly Vector3 MonitorPosition = new Vector3(-0.423f, 1.501f, 1.154f);
+
+        private const float MonitorWidth = 0.52f;
+        private const float MonitorHeight = 0.32f;
 
         /// <summary>0-based; index 0 is "Display 1", index 1 is "Display 2".</summary>
         /// <summary>Layer for things only the operator should see: rig visuals, teleport markers.</summary>
@@ -179,9 +211,14 @@ namespace VRSurgery.EditorTools
                       $"({(surfaceY - TableTopY) * 100f:F1} cm above the table)");
 
             GameObject systems = BuildSystems();
-            BuildTissue(patient, surfaceY, systems.GetComponent<SurgeryTelemetry>());
+            GameObject region = BuildTissue(patient, surfaceY, systems.GetComponent<SurgeryTelemetry>());
             GameObject tray = BuildInstrumentTray();
             GameObject scalpel = BuildScalpel(tray);
+            GameObject forceps = BuildForceps(tray);
+            GameObject monitor = BuildObjectiveMonitor();
+            WireEventSession(systems, monitor, region, scalpel, forceps);
+            GameObject projectionHud = BuildProjectionHUD(systems, region);
+            WireUrgencyTint(systems);
             BuildSimulator();
             HideOperatorVisualsFromProjection();
             BuildSpectatorCamera();
@@ -193,6 +230,9 @@ namespace VRSurgery.EditorTools
             Report("Table", table);
             Report("Patient", patient);
             Report("Scalpel", scalpel);
+            Report("Forceps", forceps);
+            Report("Monitor", monitor);
+            Report("ProjectionHUD", projectionHud);
 
             EnsureMainCamera();
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), TargetScene, true);
@@ -213,10 +253,11 @@ namespace VRSurgery.EditorTools
             // seats at the origin with no offset — the same trick the patient meshes use.
             GameObject top = Instantiate(TableFbx, root.transform);
             top.name = "TableTop";
-            foreach (MeshRenderer r in top.GetComponentsInChildren<MeshRenderer>())
-            {
-                r.sharedMaterial = MakeMaterial(new Color(0.62f, 0.66f, 0.70f), 0.1f, 0.55f);
-            }
+
+            // The model arrives textured, so its surfaces are carried over rather than painted
+            // flat grey the way the untextured block it replaced had to be — but they are moved
+            // onto URP/Lit first. See ConvertGltfMaterials.
+            ConvertGltfMaterials(top);
 
             // A box collider stands in for the slab: the tool must not fall through the table,
             // and a mesh collider on furniture is wasted cost.
@@ -226,6 +267,72 @@ namespace VRSurgery.EditorTools
 
             VerifyTableTop(top);
             return root;
+        }
+
+        /// <summary>
+        /// Moves glTF-imported materials onto URP/Lit, carrying their textures across.
+        ///
+        /// gltFast brings models in on its own Shader Graph. That works, but it costs a Quest more
+        /// than Lit does and it drags extra shader variants into the build, and a Shader Graph
+        /// variant that is not compiled renders black — which is exactly how this table first
+        /// appeared in a headless capture.
+        ///
+        /// The metallic-roughness map is deliberately NOT carried over. glTF packs roughness in
+        /// green and metallic in blue; URP/Lit reads metallic from red and smoothness from alpha.
+        /// Assigning it straight across would look like it worked and be wrong in every channel,
+        /// so the two values are set as scalars instead.
+        /// </summary>
+        private static void ConvertGltfMaterials(GameObject model)
+        {
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) { return; }
+
+            int converted = 0;
+            foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>())
+            {
+                Material[] materials = renderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    Material source = materials[i];
+                    if (source == null || !source.shader.name.Contains("glTF")) { continue; }
+
+                    Material target = new Material(lit) { name = source.name + "_URP" };
+
+                    if (source.HasProperty("baseColorTexture"))
+                    {
+                        Texture albedo = source.GetTexture("baseColorTexture");
+                        if (albedo != null) { target.SetTexture("_BaseMap", albedo); }
+                    }
+
+                    if (source.HasProperty("normalTexture"))
+                    {
+                        Texture normal = source.GetTexture("normalTexture");
+                        if (normal != null)
+                        {
+                            target.SetTexture("_BumpMap", normal);
+                            target.EnableKeyword("_NORMALMAP");
+                        }
+                    }
+
+                    if (source.HasProperty("baseColorFactor"))
+                    {
+                        target.SetColor("_BaseColor", source.GetColor("baseColorFactor"));
+                    }
+
+                    target.SetFloat("_Metallic", 0.15f);
+                    target.SetFloat("_Smoothness", 0.45f);
+
+                    materials[i] = target;
+                    converted++;
+                }
+
+                renderer.sharedMaterials = materials;
+            }
+
+            if (converted > 0)
+            {
+                Debug.Log($"[SurgeryMVP] {converted} material(is) glTF convertido(s) para URP/Lit.");
+            }
         }
 
         /// <summary>
@@ -546,7 +653,7 @@ namespace VRSurgery.EditorTools
         // Tissue
         // ------------------------------------------------------------------
 
-        private static void BuildTissue(GameObject patient, float surfaceY, SurgeryTelemetry telemetry)
+        private static GameObject BuildTissue(GameObject patient, float surfaceY, SurgeryTelemetry telemetry)
         {
             // Tissue local +Y is the outward normal, which is what IncisionGeometry assumes.
             GameObject region = new GameObject("SurgicalRegion");
@@ -589,6 +696,11 @@ namespace VRSurgery.EditorTools
             IncisionGuide guide = guideObject.AddComponent<IncisionGuide>();
             guide.Configure(new Vector3(-0.045f, 0f, 0f), new Vector3(0.045f, 0f, 0f));
 
+            // Surgical bands, set here rather than left to the component's defaults so the numbers
+            // that decide whether a cut is good live next to the path they are measured against.
+            // 1.5 mm is a clean line on a 9 cm incision; 10 mm misses.
+            guide.SetTolerances(0.0015f, 0.004f, 0.010f);
+
             GameObject guideVisual = GameObject.CreatePrimitive(PrimitiveType.Cube);
             guideVisual.name = "GuideMarker";
             guideVisual.transform.SetParent(guideObject.transform, false);
@@ -621,6 +733,7 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[SurgeryMVP] surgical region at {region.transform.position} " +
                       $"| log file -> {incisable.LogFilePath}");
+            return region;
         }
 
         // ------------------------------------------------------------------
@@ -802,6 +915,124 @@ namespace VRSurgery.EditorTools
             return scalpel;
         }
 
+        /// <summary>
+        /// The instrument that answers the bleeding. Built from primitives: there is no forceps
+        /// in Assets/Models, and the procedure cannot be finished without one, so a blockout that
+        /// hinges and pinches correctly is worth more than waiting for the art.
+        ///
+        /// Proportions are a haemostat's — a 9 cm shank the hand closes on, a hinge, and 4.8 cm
+        /// jaws — because the jaw tip is a gameplay position, not decoration: it is the point
+        /// BleedingSystem tests for pressure.
+        /// </summary>
+        private static GameObject BuildForceps(GameObject tray)
+        {
+            GameObject forceps = new GameObject("Forceps");
+            forceps.transform.position = new Vector3(
+                ForcepsRestPosition.x,
+                tray.transform.position.y + TableTopY + 0.0236f + 0.01f,
+                ForcepsRestPosition.z);
+
+            Material steel = MakeMaterial(new Color(0.74f, 0.76f, 0.80f), 0.85f, 0.72f);
+
+            // Shank. The grip sits at the same local Z as the scalpel's so both instruments end
+            // up in the hand the same way round.
+            GameObject shank = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            shank.name = "Shank";
+            shank.transform.SetParent(forceps.transform, false);
+            shank.transform.localPosition = new Vector3(0f, 0f, -0.030f);
+            shank.transform.localScale = new Vector3(0.009f, 0.012f, 0.090f);
+            Object.DestroyImmediate(shank.GetComponent<Collider>());
+            shank.GetComponent<MeshRenderer>().sharedMaterial = steel;
+
+            GameObject hinge = new GameObject("Hinge");
+            hinge.transform.SetParent(forceps.transform, false);
+            hinge.transform.localPosition = new Vector3(0f, 0f, 0.015f);
+
+            // Each jaw pivots at the hinge, so the rotating object is an empty there and the bar
+            // is its child, offset forward. Rotating a primitive directly would swing it about
+            // its own centre and the jaws would slide instead of opening.
+            Transform upper = BuildJaw(hinge.transform, "UpperJaw", 1f, steel);
+            Transform lower = BuildJaw(hinge.transform, "LowerJaw", -1f, steel);
+
+            GameObject jawTip = new GameObject("JawTip");
+            jawTip.transform.SetParent(forceps.transform, false);
+            jawTip.transform.localPosition = new Vector3(0f, 0f, 0.063f);
+
+            GameObject gripPoint = new GameObject("GripPoint");
+            gripPoint.transform.SetParent(forceps.transform, false);
+            gripPoint.transform.localPosition = new Vector3(0f, 0f, ScalpelGripLocalZ);
+
+            // Same reasoning as the scalpel: the grab volume is sized for the hand, not for the
+            // silhouette, or a 9 mm shank becomes miserable to pick up.
+            BoxCollider grabBox = forceps.AddComponent<BoxCollider>();
+            grabBox.size = new Vector3(0.024f, 0.024f, 0.110f);
+            grabBox.center = new Vector3(0f, 0f, -0.025f);
+
+            Rigidbody body = forceps.AddComponent<Rigidbody>();
+            body.mass = 0.06f;
+            body.interpolation = RigidbodyInterpolation.Interpolate;
+            body.collisionDetectionMode = CollisionDetectionMode.ContinuousSpeculative;
+            body.useGravity = false;
+            body.isKinematic = true;
+
+            ToolDefinition definition = AssetDatabase.LoadAssetAtPath<ToolDefinition>(ForcepsDefinition);
+            if (definition == null)
+            {
+                Debug.LogWarning("[SurgeryMVP] Tool_Forceps.asset not found; the tool will run undefined.");
+            }
+
+            SurgicalInteractable interactable = forceps.AddComponent<SurgicalInteractable>();
+            SetPrivateField(interactable, "toolDefinition", definition);
+            SetPrivateField(interactable, "gripPoint", gripPoint.transform);
+
+            ForcepsTool tool = forceps.AddComponent<ForcepsTool>();
+            tool.SetToolDefinition(definition);
+            SetPrivateField(tool, "upperJaw", upper);
+            SetPrivateField(tool, "lowerJaw", lower);
+            SetPrivateField(tool, "jawTip", jawTip.transform);
+
+            XRGrabInteractable grab = forceps.AddComponent<XRGrabInteractable>();
+            grab.attachTransform = gripPoint.transform;
+            grab.useDynamicAttach = false;
+            grab.throwOnDetach = false;
+            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+
+            // Without this the jaws never move: ForcepsTool takes a closure value and deliberately
+            // knows nothing about input, so something has to hand it the trigger.
+            forceps.AddComponent<ForcepsGripInput>();
+
+            forceps.AddComponent<ToolReleasePhysics>();
+
+            ToolHoverHighlight highlight = forceps.AddComponent<ToolHoverHighlight>();
+            Material highlightMat = new Material(Shader.Find("Universal Render Pipeline/Lit"))
+            {
+                color = new Color(0.30f, 0.62f, 1f)
+            };
+            highlightMat.SetFloat("_Smoothness", 0.9f);
+            SetPrivateField(highlight, "highlightMaterial", highlightMat);
+            SetPrivateField(highlight, "renderers", forceps.GetComponentsInChildren<MeshRenderer>());
+
+            Debug.Log($"[SurgeryMVP] forceps at {forceps.transform.position}, jaw tip {0.063f - ScalpelGripLocalZ:F3} m from the grip");
+            return forceps;
+        }
+
+        /// <summary>One hinged jaw. <paramref name="side"/> is +1 for the upper bar, -1 for the lower.</summary>
+        private static Transform BuildJaw(Transform hinge, string name, float side, Material material)
+        {
+            GameObject pivot = new GameObject(name);
+            pivot.transform.SetParent(hinge, false);
+
+            GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bar.name = name + "Bar";
+            bar.transform.SetParent(pivot.transform, false);
+            bar.transform.localPosition = new Vector3(0f, side * 0.0022f, 0.024f);
+            bar.transform.localScale = new Vector3(0.007f, 0.0035f, 0.048f);
+            Object.DestroyImmediate(bar.GetComponent<Collider>());
+            bar.GetComponent<MeshRenderer>().sharedMaterial = material;
+
+            return pivot.transform;
+        }
+
         // ------------------------------------------------------------------
         // Systems
         // ------------------------------------------------------------------
@@ -816,6 +1047,358 @@ namespace VRSurgery.EditorTools
             SurgeryAudio audio = systems.AddComponent<SurgeryAudio>();
             SetPrivateField(audio, "source", source);
             return systems;
+        }
+
+        /// <summary>
+        /// The objective monitor, and with it the two readouts the procedure had no way to show:
+        /// which step the visitor is on, and how far the blade is from the guided line.
+        ///
+        /// It is a screen in the room, never a panel welded to the player's face — the same rule
+        /// the rest of the UI follows. Position comes from MonitorPosition, which is derived from
+        /// the stance rather than eyeballed.
+        /// </summary>
+        private static GameObject BuildObjectiveMonitor()
+        {
+            GameObject monitor = new GameObject("ObjectiveMonitor");
+            monitor.transform.position = MonitorPosition;
+
+            // Square on to the player. Yaw only: tilting the panel to chase the eye height makes
+            // the text keystone on the projected view for no readability gain.
+            Vector3 toPlayer = new Vector3(
+                PlayerStance.x - MonitorPosition.x, 0f, PlayerStance.z - MonitorPosition.z);
+            monitor.transform.rotation = Quaternion.LookRotation(toPlayer.normalized, Vector3.up);
+
+            GameObject screen = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            screen.name = "Screen";
+            screen.transform.SetParent(monitor.transform, false);
+            screen.transform.localScale = new Vector3(MonitorWidth, MonitorHeight, 1f);
+            // A Unity quad faces -Z, so it has to be turned to look back along the parent's +Z.
+            screen.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            Object.DestroyImmediate(screen.GetComponent<Collider>());
+            screen.GetComponent<MeshRenderer>().sharedMaterial =
+                MakeMaterial(new Color(0.06f, 0.08f, 0.11f), 0f, 0.1f);
+
+            // +Z is the player's side of the panel, so the text has to sit in front of the screen
+            // quad rather than behind it, or the panel occludes every word.
+            TextMesh objective = BuildScreenText(
+                monitor.transform, "ObjectiveText", new Vector3(0f, 0.055f, 0.004f), 0.030f);
+
+            TextMesh status = BuildScreenText(
+                monitor.transform, "StatusText", new Vector3(0f, -0.085f, 0.004f), 0.022f);
+
+            // Incision confirmation lamp, beside the status line.
+            GameObject lamp = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            lamp.name = "ConfirmationLamp";
+            lamp.transform.SetParent(monitor.transform, false);
+            lamp.transform.localPosition = new Vector3(-0.21f, -0.085f, -0.004f);
+            lamp.transform.localScale = new Vector3(0.03f, 0.03f, 1f);
+            lamp.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            Object.DestroyImmediate(lamp.GetComponent<Collider>());
+
+            // The components go on now; WireEventSession binds them once the tissue and the
+            // instruments they read actually exist.
+            monitor.AddComponent<SurgeryHUD>();
+            monitor.AddComponent<SurgicalFeedbackHUD>();
+
+            Debug.Log($"[SurgeryMVP] objective monitor at {MonitorPosition}, facing the stance " +
+                      $"({objective.name} + {status.name} + {lamp.name})");
+            return monitor;
+        }
+
+        /// <summary>
+        /// A line of text on the monitor. TextMesh rather than TextMeshPro on purpose: the two
+        /// HUD components already take TextMesh, and a legacy mesh costs the Quest less than a
+        /// world-space canvas for what is a handful of unchanging words.
+        /// </summary>
+        private static TextMesh BuildScreenText(Transform parent, string name, Vector3 localPosition, float height)
+        {
+            GameObject go = new GameObject(name);
+            go.transform.SetParent(parent, false);
+            go.transform.localPosition = localPosition;
+            go.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+
+            TextMesh text = go.AddComponent<TextMesh>();
+            text.anchor = TextAnchor.MiddleCenter;
+            text.alignment = TextAlignment.Center;
+            text.color = new Color(0.82f, 0.88f, 0.95f);
+
+            // A TextMesh with no font renders nothing and logs no error, which is the single
+            // easiest way to ship a monitor that is silently blank.
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            if (font == null)
+            {
+                Debug.LogError("[SurgeryMVP] Built-in font not found; the monitor will render empty.");
+            }
+            else
+            {
+                text.font = font;
+                go.GetComponent<MeshRenderer>().sharedMaterial = font.material;
+            }
+
+            // fontSize is the raster resolution and characterSize is the world scale; a glyph ends
+            // up (fontSize * characterSize / 10) units tall. Rastering large and scaling down is
+            // what keeps world-space text from looking chewed at reading distance.
+            text.fontSize = 96;
+            text.characterSize = height * 10f / text.fontSize;
+
+            return text;
+        }
+
+        /// <summary>
+        /// Connects the procedure to the booth loop. Every piece already existed and was already
+        /// covered by tests; none of it was ever placed in the scene, so the built scene could be
+        /// cut and bled in but never started, timed, won, lost or reset.
+        /// </summary>
+        private static void WireEventSession(
+            GameObject systems, GameObject monitor, GameObject region, params GameObject[] tools)
+        {
+            SurgeryTelemetry telemetry = systems.GetComponent<SurgeryTelemetry>();
+
+            SurgeryDefinition surgery = AssetDatabase.LoadAssetAtPath<SurgeryDefinition>(SurgeryAsset);
+            if (surgery == null)
+            {
+                Debug.LogError("[SurgeryMVP] " + SurgeryAsset + " not found; the procedure has no objectives.");
+            }
+
+            EventSessionDefinition session = AssetDatabase.LoadAssetAtPath<EventSessionDefinition>(SessionAsset);
+            if (session == null)
+            {
+                Debug.LogError("[SurgeryMVP] " + SessionAsset + " not found; the round falls back to its defaults.");
+            }
+
+            SurgeryObjectiveSystem objectives = systems.AddComponent<SurgeryObjectiveSystem>();
+            objectives.SetSurgeryDefinition(surgery);
+
+            // The booth, not the objective system, decides when a run starts: autoStart would arm
+            // the procedure at scene load, so the first visitor would inherit a surgery that had
+            // been running since the stand opened.
+            SetPrivateField(objectives, "autoStart", false);
+
+            IncisionSystem incision = region.GetComponent<IncisionSystem>();
+            BleedingSystem bleeding = region.GetComponent<BleedingSystem>();
+
+            SurgeryEvaluation evaluation = systems.AddComponent<SurgeryEvaluation>();
+            evaluation.Bind(objectives, incision, bleeding);
+
+            SurgicalInteractable[] interactables = new SurgicalInteractable[tools.Length];
+            for (int i = 0; i < tools.Length; i++)
+            {
+                interactables[i] = tools[i].GetComponent<SurgicalInteractable>();
+            }
+
+            SurgeryResetController reset = systems.AddComponent<SurgeryResetController>();
+            reset.Bind(incision, objectives, evaluation, telemetry, interactables);
+
+            EventSessionController controller = systems.AddComponent<EventSessionController>();
+            controller.Bind(session, reset, telemetry);
+
+            monitor.GetComponent<SurgeryHUD>().Bind(
+                objectives, monitor.transform.Find("ObjectiveText").GetComponent<TextMesh>());
+
+            BladeTip bladeTip = null;
+            foreach (GameObject tool in tools)
+            {
+                BladeTip candidate = tool.GetComponentInChildren<BladeTip>();
+                if (candidate != null) { bladeTip = candidate; break; }
+            }
+
+            Transform guideMarker = region.transform.Find("IncisionGuide/GuideMarker");
+            SurgicalFeedbackHUD feedback = monitor.GetComponent<SurgicalFeedbackHUD>();
+            feedback.Bind(
+                region.GetComponent<TissueSurface>(),
+                region.GetComponentInChildren<IncisionGuide>(),
+                region.GetComponent<IncisableSkin>(),
+                bladeTip,
+                guideMarker != null ? guideMarker.GetComponent<MeshRenderer>() : null,
+                monitor.transform.Find("ConfirmationLamp").GetComponent<MeshRenderer>(),
+                monitor.transform.Find("StatusText").GetComponent<TextMesh>());
+
+            feedback.BindMaterials(
+                MakeMaterial(new Color(0.15f, 0.55f, 0.95f), 0f, 0.2f),   // idle: the guide's own blue
+                MakeMaterial(new Color(0.25f, 0.90f, 0.40f), 0f, 0.2f),   // on target
+                MakeMaterial(new Color(0.98f, 0.78f, 0.20f), 0f, 0.2f),   // drifting
+                MakeMaterial(new Color(0.95f, 0.25f, 0.20f), 0f, 0.2f),   // off target
+                MakeMaterial(new Color(0.18f, 0.20f, 0.24f), 0f, 0.1f),   // lamp off
+                MakeMaterial(new Color(0.30f, 0.95f, 0.45f), 0f, 0.1f));  // lamp on
+
+            Debug.Log($"[SurgeryMVP] event session wired: {(surgery != null ? surgery.Objectives.Count : 0)} objectives, " +
+                      $"{interactables.Length} resettable instrument(s), round " +
+                      $"{(session != null ? session.RoundSeconds : 0f):F0} s");
+        }
+
+        /// <summary>
+        /// The audience's screen: clock, bleeding bar, risk colour, best time and the table
+        /// between visitors.
+        ///
+        /// Screen Space Overlay on the projector's display, not geometry in the room. An overlay
+        /// canvas is never rendered by the headset's camera, so there is no way for any of this
+        /// to end up floating in front of the player — and it costs the Quest nothing, because on
+        /// a Quest there is no second display for it to draw to at all.
+        /// </summary>
+        private static GameObject BuildProjectionHUD(GameObject systems, GameObject region)
+        {
+            GameObject root = new GameObject("ProjectionHUD");
+
+            Canvas canvas = root.AddComponent<Canvas>();
+            canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+            canvas.targetDisplay = ProjectionDisplayIndex;
+
+            CanvasScaler scaler = root.AddComponent<CanvasScaler>();
+            scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+            scaler.referenceResolution = new Vector2(1920f, 1080f);
+            // Match height: a projector's width varies with the throw and the lens, the height is
+            // what the crowd's eye level is set by.
+            scaler.matchWidthOrHeight = 1f;
+
+            // No GraphicRaycaster: nobody clicks a projection, and a raycaster on an overlay
+            // canvas quietly eats pointer events the editor's simulator wants.
+
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+
+            // Red edge that deepens with the clock. Behind everything else, so text stays legible.
+            Image vignette = BuildHudImage(root.transform, "UrgencyVignette",
+                new Vector2(0f, 0f), new Vector2(1f, 1f), Vector2.zero, Vector2.zero,
+                new Color(0.75f, 0.05f, 0.05f, 0f));
+
+            GameObject clockGroup = new GameObject("ClockGroup", typeof(RectTransform));
+            clockGroup.transform.SetParent(root.transform, false);
+            StretchFull(clockGroup.GetComponent<RectTransform>());
+
+            Text clock = BuildHudText(clockGroup.transform, "Clock", font, 220, TextAnchor.UpperCenter,
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -40f), new Vector2(900f, 260f));
+
+            // Bleeding bar. Filled horizontally so it grows the way the concept describes.
+            BuildHudImage(clockGroup.transform, "BleedTrack",
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -330f), new Vector2(1100f, 46f),
+                new Color(0.12f, 0.12f, 0.14f, 0.85f));
+
+            Image bleedFill = BuildHudImage(clockGroup.transform, "BleedFill",
+                new Vector2(0.5f, 1f), new Vector2(0.5f, 1f), new Vector2(0f, -330f), new Vector2(1100f, 46f),
+                new Color(0.85f, 0.25f, 0.25f, 1f));
+            bleedFill.type = Image.Type.Filled;
+            bleedFill.fillMethod = Image.FillMethod.Horizontal;
+            bleedFill.fillAmount = 0f;
+
+            Text headline = BuildHudText(root.transform, "Headline", font, 110, TextAnchor.MiddleCenter,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, 60f), new Vector2(1600f, 180f));
+
+            Text subline = BuildHudText(root.transform, "Subline", font, 52, TextAnchor.UpperCenter,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -80f), new Vector2(1500f, 220f));
+
+            GameObject scoreGroup = new GameObject("ScoreboardGroup", typeof(RectTransform));
+            scoreGroup.transform.SetParent(root.transform, false);
+            StretchFull(scoreGroup.GetComponent<RectTransform>());
+
+            Text scoreTable = BuildHudText(scoreGroup.transform, "ScoreTable", font, 64, TextAnchor.UpperCenter,
+                new Vector2(0.5f, 0.5f), new Vector2(0.5f, 0.5f), new Vector2(0f, -140f), new Vector2(1100f, 460f));
+            scoreTable.lineSpacing = 1.35f;
+
+            Leaderboard leaderboard = systems.AddComponent<Leaderboard>();
+            leaderboard.Bind(systems.GetComponent<EventSessionController>());
+
+            ProjectionHUD hud = root.AddComponent<ProjectionHUD>();
+            hud.Bind(
+                systems.GetComponent<EventSessionController>(),
+                region.GetComponent<BleedingSystem>(),
+                leaderboard);
+            hud.BindWidgets(clock, bleedFill, vignette, headline, subline,
+                clockGroup, scoreGroup, scoreTable);
+
+            Debug.Log($"[SurgeryMVP] projection HUD -> Display {ProjectionDisplayIndex + 1} " +
+                      "(overlay canvas; invisible to the headset)");
+            return root;
+        }
+
+        /// <summary>
+        /// Hooks the room's light to the clock. Finds the template's directional light rather than
+        /// adding one, so the scene keeps a single key light and the tint moves what is already
+        /// lighting the patient.
+        /// </summary>
+        private static void WireUrgencyTint(GameObject systems)
+        {
+            Light key = null;
+            foreach (Light light in Object.FindObjectsByType<Light>(FindObjectsSortMode.None))
+            {
+                if (light.type == LightType.Directional)
+                {
+                    key = light;
+                    break;
+                }
+            }
+
+            if (key == null)
+            {
+                Debug.LogWarning("[SurgeryMVP] No directional light found; the room will not redden with the clock.");
+            }
+
+            SceneUrgencyTint tint = systems.AddComponent<SceneUrgencyTint>();
+            tint.Bind(systems.GetComponent<EventSessionController>(), key);
+
+            Debug.Log($"[SurgeryMVP] urgency tint bound to '{(key != null ? key.name : "nothing")}'");
+        }
+
+        private static void StretchFull(RectTransform rect)
+        {
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+
+        private static Image BuildHudImage(Transform parent, string name, Vector2 anchorMin,
+            Vector2 anchorMax, Vector2 position, Vector2 size, Color colour)
+        {
+            GameObject go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+
+            if (anchorMin == Vector2.zero && anchorMax == Vector2.one)
+            {
+                rect.offsetMin = Vector2.zero;
+                rect.offsetMax = Vector2.zero;
+            }
+            else
+            {
+                rect.anchoredPosition = position;
+                rect.sizeDelta = size;
+            }
+
+            Image image = go.AddComponent<Image>();
+            image.color = colour;
+            image.raycastTarget = false;
+            return image;
+        }
+
+        private static Text BuildHudText(Transform parent, string name, Font font, int size,
+            TextAnchor anchor, Vector2 anchorMin, Vector2 anchorMax, Vector2 position, Vector2 sizeDelta)
+        {
+            GameObject go = new GameObject(name, typeof(RectTransform));
+            go.transform.SetParent(parent, false);
+
+            RectTransform rect = go.GetComponent<RectTransform>();
+            rect.anchorMin = anchorMin;
+            rect.anchorMax = anchorMax;
+            rect.anchoredPosition = position;
+            rect.sizeDelta = sizeDelta;
+
+            Text text = go.AddComponent<Text>();
+            text.font = font;
+            text.fontSize = size;
+            text.alignment = anchor;
+            text.color = Color.white;
+            text.raycastTarget = false;
+            text.horizontalOverflow = HorizontalWrapMode.Wrap;
+            text.verticalOverflow = VerticalWrapMode.Overflow;
+
+            if (font == null)
+            {
+                Debug.LogError("[SurgeryMVP] Built-in font missing; the projection will render blank.");
+            }
+
+            return text;
         }
 
         /// <summary>

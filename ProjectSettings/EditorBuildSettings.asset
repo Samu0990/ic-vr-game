@@ -11,6 +11,9 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/SurgeryMVP.unity
     guid: 62d9204d9e5e412099a2d2b7a1b1a420
+  - enabled: 1
+    path: Assets/Scenes/PortaDeEntrada.unity
+    guid: 9970e2f1914f60fe7b0aba394a2952a4
   m_configObjects:
     Unity.XR.Oculus.Settings: {fileID: 11400000, guid: bfa1182bd221b4ca89619141f66f1260, type: 2}
     Unity.XR.WindowsMR.Settings: {fileID: 11400000, guid: dc5a169419fa04987b057f65238cf3ba, type: 2}

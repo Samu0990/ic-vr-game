@@ -33,6 +33,9 @@ namespace VRSurgery.Tools
 
         public BladeTip BladeTip => bladeTip;
 
+        /// <summary>Guards the one retry FixedUpdate is allowed for a late-assembled tip.</summary>
+        private bool _tipSearched;
+
         private void Awake()
         {
             _tool = GetComponent<SurgicalTool>();
@@ -46,10 +49,19 @@ namespace VRSurgery.Tools
         {
             if (bladeTip == null)
             {
-                // Components assembled at runtime may add the tip after this one.
+                // Components assembled at runtime may add the tip after this one. Tried once, not
+                // once per physics step forever: a tool that genuinely has no tip used to re-walk
+                // its whole hierarchy fifty times a second for the lifetime of the scene.
+                if (_tipSearched)
+                {
+                    return;
+                }
+
+                _tipSearched = true;
                 bladeTip = GetComponentInChildren<BladeTip>();
                 if (bladeTip == null)
                 {
+                    Debug.LogWarning($"[CuttingInteractor] '{name}' has no BladeTip; it will never cut.", this);
                     return;
                 }
             }
