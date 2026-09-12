@@ -43,16 +43,13 @@ namespace VRSurgery.EditorTools
         private const float ThoraxCentreOfHeight = 0.735f;
 
         /// <summary>
-        /// The ribcage is corrected non-uniformly, which is a stopgap and marked as one.
-        ///
-        /// Generated in isolation, it came out 20.0 x 10.8 x 32.0 cm. A real thoracic cage is
-        /// roughly 28 wide, 20 deep and 30 tall, so this one is 71% of the width and 54% of the
-        /// depth it should have for its height. A 8.7 cm heart inside a 10.8 cm cage would touch
-        /// the ribs front and back. Scaling it uniformly until the depth works would make it 59 cm
-        /// tall, so the proportions are corrected per axis instead — visibly better, still a
-        /// distortion, and the honest fix is regenerating the model.
+        /// No correction. The first ribcage came out flat — 20.0 x 10.8 x 32.0cm against a real
+        /// cage's 28 x 20 x 30 — and had to be stretched per axis just to let an 8.7cm heart sit
+        /// inside without touching ribs front and back. The regenerated model is barrel-shaped:
+        /// its depth-to-width ratio measures 0.67 against a real 0.71, where the old one was 0.54.
+        /// That scales uniformly to 23.8 x 16.0 x 30.0cm and needs no distortion at all.
         /// </summary>
-        private static readonly Vector3 RibcageProportionFix = new Vector3(1.40f, 0.94f, 1.85f);
+        private static readonly Vector3 RibcageProportionFix = Vector3.one;
 
         [MenuItem("VRSurgery/Build 'Transplante Cardíaco'")]
         public static void BuildFromMenu()
@@ -78,7 +75,7 @@ namespace VRSurgery.EditorTools
             Vector3 thorax = ThoraxCentre(bodyBounds);
             GameObject ribcage = BuildRibcage(patient, thorax);
             GameObject heart = BuildHeart(patient, thorax);
-            GameObject sternum = BuildSternum(patient, thorax, heart);
+            GameObject sternum = BuildSternum(patient, thorax, heart, WorldBounds(ribcage));
 
             WireProcedure(systems, sternum, heart);
             PlaceAnchor(thorax);
@@ -175,7 +172,9 @@ namespace VRSurgery.EditorTools
 
             Bounds bounds = WorldBounds(model);
             Debug.Log($"[Transplante] gradil: {bounds.size.x * 100f:F1} x {bounds.size.y * 100f:F1} x " +
-                      $"{bounds.size.z * 100f:F1} cm (corrigido {RibcageProportionFix})");
+                      $"{bounds.size.z * 100f:F1} cm" +
+                      (RibcageProportionFix == Vector3.one ? " (escala uniforme, sem distorção)"
+                                                           : $" (CORRIGIDO {RibcageProportionFix})"));
             return root;
         }
 
@@ -190,16 +189,26 @@ namespace VRSurgery.EditorTools
         /// </summary>
         private static Quaternion SupineRotationFor(GameObject model)
         {
-            const float MidlineBand = 0.03f;   // 3 cm either side of centre
+            // The band has to be a fraction of the model's width, not a fixed distance. At 3cm
+            // absolute it covered 1.9% of the source model and 12.6% of the same model once
+            // scaled to anatomical size — tight enough to isolate the spine in one case, wide
+            // enough to sweep in ribs in the other, which turned a 9957-to-0 signal into 1.4:1.
+            Bounds extent = LocalBounds(model, model.transform);
+            float midlineBand = Mathf.Max(0.004f, extent.size.x * 0.06f);
 
             int frontMidline = 0, backMidline = 0;
 
+            // Vertices are brought into the model root's space first. Reading them raw from the
+            // mesh measures whatever space the importer happened to nest them in, while the
+            // rotation is applied to the root — two different frames, which is how this returned
+            // a limp 1.4:1 where the same count in the authoring tool was 9957 against zero.
             foreach (MeshFilter filter in model.GetComponentsInChildren<MeshFilter>())
             {
                 if (filter.sharedMesh == null) { continue; }
-                foreach (Vector3 v in filter.sharedMesh.vertices)
+                foreach (Vector3 raw in filter.sharedMesh.vertices)
                 {
-                    if (Mathf.Abs(v.x) > MidlineBand) { continue; }
+                    Vector3 v = model.transform.InverseTransformPoint(filter.transform.TransformPoint(raw));
+                    if (Mathf.Abs(v.x - extent.center.x) > midlineBand) { continue; }
                     if (v.z >= 0f) { frontMidline++; } else { backMidline++; }
                 }
             }
@@ -207,7 +216,8 @@ namespace VRSurgery.EditorTools
             bool spineAtPositiveZ = frontMidline > backMidline;
 
             Debug.Log($"[Transplante] coluna detectada em {(spineAtPositiveZ ? "+Z" : "-Z")} do modelo " +
-                      $"(vértices na linha média: +Z={frontMidline}, -Z={backMidline})");
+                      $"(faixa ±{midlineBand * 100f:F1}cm: +Z={frontMidline}, -Z={backMidline}, " +
+                      $"razão {Mathf.Max(frontMidline, backMidline) / (float)Mathf.Max(1, Mathf.Min(frontMidline, backMidline)):F1}:1)");
 
             // Head toward +Z either way; the roll is what puts the spine down against the table.
             return spineAtPositiveZ
@@ -237,7 +247,8 @@ namespace VRSurgery.EditorTools
             return root;
         }
 
-        private static GameObject BuildSternum(GameObject patient, Vector3 thorax, GameObject heart)
+        private static GameObject BuildSternum(GameObject patient, Vector3 thorax, GameObject heart,
+            Bounds ribcage)
         {
             GameObject root = new GameObject("Sternum");
             root.transform.SetParent(patient.transform, true);
@@ -248,8 +259,13 @@ namespace VRSurgery.EditorTools
 
             root.transform.rotation = Quaternion.Euler(90f, 0f, 0f);
 
-            // On the front of the chest, which on a supine patient is up.
-            root.transform.position = thorax + new Vector3(0f, 0.085f, 0.015f);
+            // Seated on the front of the cage rather than at a fixed offset from the thorax
+            // centre, which left it hovering above the ribs with daylight underneath. On a supine
+            // patient the front of the chest is the top, so it rides the ribcage's upper surface,
+            // sunk slightly so the bone meets cartilage instead of resting on it.
+            Bounds plate = WorldBounds(root);
+            float seatY = ribcage.max.y - plate.size.y * 0.35f;
+            root.transform.position = new Vector3(thorax.x, seatY, thorax.z + 0.015f);
 
             SternotomyController sternotomy = root.AddComponent<SternotomyController>();
             sternotomy.Bind(root.transform, new[] { heart });
