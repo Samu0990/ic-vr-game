@@ -112,17 +112,54 @@ namespace VRSurgery.Tests
             yield break;
         }
 
-        // Tools_AreDistributedToBothSides was removed rather than fixed.
-        //
-        // It asserted an instrument within reach of each hand, which reads like good ergonomics
-        // and is incompatible with the stance this same file validates. A sweep of 107 layouts
-        // found that the only geometry satisfying it puts BOTH instruments 88 degrees off the
-        // player's gaze axis — against the 90 degree limit NothingEssential_SitsBehindThePlayer
-        // enforces three tests below, and for the same reason. Satisfying it would have passed
-        // this assertion and made the workstation worse to use.
-        //
-        // A rule that can only be met by breaking the rule beside it is not a requirement, and a
-        // suite that reports it as a standing failure teaches everyone to ignore red.
+        [UnityTest]
+        public IEnumerator EveryTool_IsReachableWithEitherHand()
+        {
+            // This replaces Tools_AreDistributedToBothSides, which asserted the right requirement
+            // through the wrong measurement.
+            //
+            // That test demanded an instrument on each side of the gaze axis, and a sweep of 107
+            // layouts found the only geometry satisfying it puts BOTH instruments 88 degrees
+            // off-axis — against the 90 degree limit NothingEssential_SitsBehindThePlayer enforces
+            // for the same ergonomic reason. Two tests, one layout, no way to pass both.
+            //
+            // But splitting the tray was never the requirement; it was one way of meeting it. What
+            // actually matters is that a left-handed visitor, or one with a shorter reach, can
+            // take either instrument with either hand. That is measured from both shoulders
+            // instead of from the gaze, and it does not care which side of the midline anything
+            // sits on — so it can be satisfied at the same time as the 90 degree rule.
+            SurgicalInteractable[] tools = Object.FindObjectsByType<SurgicalInteractable>(FindObjectsSortMode.None);
+            Assert.Greater(tools.Length, 0, "No tools in the scene.");
+
+            Vector3 leftShoulder = ReachEnvelope.ShoulderPosition(_eye, _head, true);
+            Vector3 rightShoulder = ReachEnvelope.ShoulderPosition(_eye, _head, false);
+
+            StringBuilder report = new StringBuilder();
+            foreach (SurgicalInteractable tool in tools)
+            {
+                Vector3 grab = tool.GripPoint != null ? tool.GripPoint.position : tool.transform.position;
+
+                float fromLeft = Vector3.Distance(leftShoulder, grab);
+                float fromRight = Vector3.Distance(rightShoulder, grab);
+
+                report.AppendLine($"  {tool.name}: esquerda {fromLeft:F3} m [{ReachEnvelope.Classify(fromLeft)}], " +
+                                  $"direita {fromRight:F3} m [{ReachEnvelope.Classify(fromRight)}]");
+
+                foreach ((float distance, string hand) in new[] { (fromLeft, "esquerda"), (fromRight, "direita") })
+                {
+                    Assert.AreNotEqual(ReachClass.OutOfReach, ReachEnvelope.Classify(distance),
+                        $"'{tool.name}' is {distance:F3} m from the {hand} shoulder — a visitor " +
+                        "leading with that hand would have to step, which the design forbids.");
+                    Assert.AreNotEqual(ReachClass.Strained, ReachEnvelope.Classify(distance),
+                        $"'{tool.name}' is {distance:F3} m from the {hand} shoulder, inside the " +
+                        "strain band. A left-handed visitor, or one with a shorter reach, would " +
+                        "work at full extension all session.");
+                }
+            }
+
+            Debug.Log("[Ergonomics] alcance de cada instrumento pelos dois ombros:\n" + report);
+            yield break;
+        }
 
         [UnityTest]
         public IEnumerator OperativeField_DoesNotRequireExcessiveNeckFlexion()

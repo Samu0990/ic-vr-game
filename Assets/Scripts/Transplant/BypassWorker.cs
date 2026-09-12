@@ -25,6 +25,10 @@ namespace VRSurgery.Transplant
                  "bypass is allowed in a four-minute operation.")]
         [Min(0.1f)] public float Seconds = 6.5f;
 
+        [Tooltip("Steps this one hold performs, in order. More than one on the easier levels, " +
+                 "where several steps collapse into a single gesture.")]
+        [NonSerialized] public BypassStep[] Chain;
+
         [NonSerialized] public float Held;
 
         public float Progress01 => Seconds <= 0f ? 0f : Mathf.Clamp01(Held / Seconds);
@@ -125,17 +129,26 @@ namespace VRSurgery.Transplant
             best.Held += deltaTime;
             if (best.Held < best.Seconds) { return; }
 
-            BypassAttempt attempt = procedure.Bypass.Attempt(best.Step, procedure.IsImplantComplete);
-            if (attempt.Accepted)
+            // A gesture may carry several steps on the easier levels. They still go through
+            // Attempt one at a time and in order, so a collapsed gesture cannot get a patient past
+            // a rule that the six-gesture version would have caught.
+            BypassStep[] chain = best.Chain != null && best.Chain.Length > 0
+                ? best.Chain
+                : new[] { best.Step };
+
+            best.Held = 0f;
+
+            foreach (BypassStep step in chain)
             {
-                best.Held = 0f;
+                BypassAttempt attempt = procedure.Bypass.Attempt(step, procedure.IsImplantComplete);
+                if (!attempt.Accepted)
+                {
+                    Refuse(attempt.Reason);
+                    return;
+                }
+
                 LastRefusal = string.Empty;
-                StepPerformed?.Invoke(best.Step);
-            }
-            else
-            {
-                best.Held = 0f;
-                Refuse(attempt.Reason);
+                StepPerformed?.Invoke(step);
             }
         }
 

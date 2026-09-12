@@ -222,6 +222,37 @@ namespace VRSurgery.Transplant
             }
         }
 
+        /// <summary>
+        /// Replays what the team did before the visitor arrived.
+        ///
+        /// Deliberately not a way to set the state. Every step runs through Attempt, in order,
+        /// against the same rules a visitor's hands would meet — so a difficulty level cannot
+        /// start a patient somewhere the procedure would never have let them reach. A plan that
+        /// asks for an impossible starting point fails here, loudly, rather than producing a
+        /// patient who is clamped but never cannulated.
+        ///
+        /// Returns the first refusal, or an accepted result when the whole preparation applied.
+        /// </summary>
+        public BypassAttempt ApplyTeamPreparation(IEnumerable<BypassStep> steps)
+        {
+            if (steps == null)
+            {
+                return BypassAttempt.Ok;
+            }
+
+            foreach (BypassStep step in steps)
+            {
+                BypassAttempt attempt = Attempt(step);
+                if (!attempt.Accepted)
+                {
+                    return BypassAttempt.No(
+                        $"Preparo da equipe inválido em {step}: {attempt.Reason}");
+                }
+            }
+
+            return BypassAttempt.Ok;
+        }
+
         public void Reset()
         {
             _done = 0;

@@ -83,6 +83,18 @@ namespace VRSurgery.Transplant
         /// </summary>
         public BypassProcedure Bypass { get; } = new BypassProcedure();
 
+        /// <summary>
+        /// Which level is being run. Decides how much of the pump the visitor works themselves and
+        /// how long the round lasts; the clinical rules are the same at all three.
+        /// </summary>
+        public BypassPlan Plan { get; private set; } = BypassPlan.For(SurgicalDifficulty.Dificil);
+
+        /// <summary>Round length for this level. The session reads it instead of a constant.</summary>
+        public float RoundSeconds => Plan.RoundSeconds;
+
+        /// <summary>What the room says about what the team did before the visitor arrived.</summary>
+        public string Briefing => Plan.Briefing;
+
         /// <summary>Vessels connected so far. Only meaningful during ConnectVessels.</summary>
         public int VesselsConnected { get; private set; }
 
@@ -121,7 +133,26 @@ namespace VRSurgery.Transplant
         {
             VesselsConnected = 0;
             Bypass.Reset();
+
+            // Whatever the team did runs through the pump's own rules, in order. A level that
+            // asked for an impossible starting point would be caught here rather than producing
+            // a patient the procedure could never have produced.
+            BypassAttempt prepared = Bypass.ApplyTeamPreparation(Plan.DoneByTeam);
+            if (!prepared.Accepted)
+            {
+                Debug.LogError($"[Transplante] {prepared.Reason}");
+            }
+
+            // On a level where the team already went on bypass, the GoOnBypass stage passes its
+            // own check the moment it is reached, because Bypass.IsArrested is already true. It is
+            // satisfied by asking the pump, never skipped.
             SetStage(_order[0]);
+        }
+
+        /// <summary>Sets the level. Takes effect at the next Begin.</summary>
+        public void SetDifficulty(SurgicalDifficulty difficulty)
+        {
+            Plan = BypassPlan.For(difficulty);
         }
 
         public void ResetProcedure()

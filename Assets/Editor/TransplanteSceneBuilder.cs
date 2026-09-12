@@ -37,6 +37,22 @@ namespace VRSurgery.EditorTools
         private const float TableTopY = 0.95f;
 
         /// <summary>
+        /// Level the scene is built for. The bypass sites and the round length both follow from
+        /// it, so switching this and rebuilding is the whole change — there is no second place
+        /// holding a duration that has to be kept in step.
+        /// </summary>
+        private static SurgicalDifficulty _difficulty = SurgicalDifficulty.Medio;
+
+        [MenuItem("VRSurgery/Transplante — nível Fácil")]
+        public static void BuildEasy() { _difficulty = SurgicalDifficulty.Facil; Build(); }
+
+        [MenuItem("VRSurgery/Transplante — nível Médio")]
+        public static void BuildMedium() { _difficulty = SurgicalDifficulty.Medio; Build(); }
+
+        [MenuItem("VRSurgery/Transplante — nível Difícil")]
+        public static void BuildHard() { _difficulty = SurgicalDifficulty.Dificil; Build(); }
+
+        /// <summary>
         /// Where the thorax sits, as a fraction of stature measured from the soles. The heart
         /// centre lands a little below the mid-thorax and to the patient's left, which is where
         /// a heart actually is.
@@ -80,8 +96,9 @@ namespace VRSurgery.EditorTools
 
             GameObject donor = BuildDonorHeart(thorax);
             VesselAnastomosis[] vessels = BuildVessels(systems, thorax);
-            List<BypassSite> bypass = BuildBypassSites(systems, thorax);
-            WireProcedure(systems, sternum, heart, donor, vessels, bypass);
+            BypassPlan plan = BypassPlan.For(_difficulty);
+            List<BypassSite> bypass = BuildBypassSites(systems, thorax, plan);
+            WireProcedure(systems, sternum, heart, donor, vessels, bypass, plan);
             PlaceAnchor(thorax);
             EnsureMainCamera();
 
@@ -415,60 +432,63 @@ namespace VRSurgery.EditorTools
         /// which is the share of a four-minute operation bypass is allowed before it stops being
         /// a procedure and becomes a minigame.
         /// </summary>
-        private static List<BypassSite> BuildBypassSites(GameObject systems, Vector3 thorax)
+        private static List<BypassSite> BuildBypassSites(GameObject systems, Vector3 thorax,
+            BypassPlan plan)
         {
             GameObject root = new GameObject("BypassSites");
             root.transform.SetParent(systems.transform, true);
 
-            (BypassStep step, Vector3 offset, float seconds)[] layout =
+            // Anatomy, not layout: where each step is performed on a real patient. A gesture that
+            // carries several steps is placed at the last of them, which is the one the surgeon's
+            // hands finish on.
+            Dictionary<BypassStep, Vector3> where = new Dictionary<BypassStep, Vector3>
             {
-                (BypassStep.Cannulate,    new Vector3( 0.035f,  0.020f,  0.030f), 7.0f),
-                (BypassStep.ClampAorta,   new Vector3(-0.010f,  0.035f,  0.060f), 6.0f),
-                (BypassStep.Cardioplegia, new Vector3(-0.005f,  0.030f,  0.048f), 7.0f),
-                (BypassStep.Unclamp,      new Vector3(-0.010f,  0.035f,  0.060f), 5.5f),
-                (BypassStep.DeAir,        new Vector3(-0.028f,  0.032f,  0.035f), 7.0f),
-                (BypassStep.Wean,         new Vector3( 0.060f,  0.010f, -0.060f), 4.0f),
+                { BypassStep.Cannulate,    new Vector3( 0.035f,  0.020f,  0.030f) },
+                { BypassStep.ClampAorta,   new Vector3(-0.010f,  0.035f,  0.060f) },
+                { BypassStep.Cardioplegia, new Vector3(-0.005f,  0.030f,  0.048f) },
+                { BypassStep.Unclamp,      new Vector3(-0.010f,  0.035f,  0.060f) },
+                { BypassStep.DeAir,        new Vector3(-0.028f,  0.032f,  0.035f) },
+                { BypassStep.Wean,         new Vector3( 0.060f,  0.010f, -0.060f) },
             };
 
             List<BypassSite> sites = new List<BypassSite>();
-            float total = 0f;
 
-            foreach ((BypassStep step, Vector3 offset, float seconds) in layout)
+            foreach (BypassGesture gesture in plan.Gestures)
             {
-                GameObject point = new GameObject("Bypass_" + step);
+                GameObject point = new GameObject("Bypass_" + gesture.Anchor);
                 point.transform.SetParent(root.transform, true);
-                point.transform.position = thorax + offset;
+                point.transform.position = thorax +
+                    (where.TryGetValue(gesture.Anchor, out Vector3 offset) ? offset : Vector3.zero);
 
                 sites.Add(new BypassSite
                 {
-                    Step = step,
+                    Step = gesture.Anchor,
                     Point = point.transform,
                     Radius = 0.028f,
-                    Seconds = seconds,
+                    Seconds = gesture.Seconds,
+                    Chain = gesture.Steps,
                 });
-
-                total += seconds;
             }
 
-            Debug.Log($"[Transplante] {sites.Count} pontos de CEC, {total:F0}s de gestos no total");
+            Debug.Log($"[Transplante] nível {plan.Difficulty}: {sites.Count} ponto(s) de CEC, " +
+                      $"{plan.GestureSeconds:F0}s de gestos, {plan.DoneByTeam.Count} etapa(s) " +
+                      $"já feitas pela equipe, rodada de {plan.RoundSeconds:F0}s");
             return sites;
         }
 
         private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart,
-            GameObject donor, VesselAnastomosis[] vessels, List<BypassSite> bypass)
+            GameObject donor, VesselAnastomosis[] vessels, List<BypassSite> bypass, BypassPlan plan)
         {
             SurgeryTelemetry telemetry = systems.GetComponent<SurgeryTelemetry>();
 
             TransplantProcedure procedure = systems.AddComponent<TransplantProcedure>();
+            procedure.SetDifficulty(plan.Difficulty);
 
             EventSessionDefinition definition = EventSessionDefinition.Create(
-                // Four minutes, not the ninety seconds the booth concept was written around.
-                // Bypass alone is six steps and about forty seconds of them, and the operation now
-                // has six stages rather than five. A ninety second clock would cut every visitor
-                // off somewhere around the cardioplegia. Worth knowing that this is a different
-                // kind of attraction from the one the event document described: a queue moves at
-                // a quarter of the rate.
-                round: 240f, briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
+                // From the level, not from a constant. Fácil is ninety seconds because there is
+                // a third less to do, not because ninety was typed somewhere — so the booth can
+                // run a fast queue or a faithful operation without the two numbers drifting apart.
+                round: plan.RoundSeconds, briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
                 startOnGrab: true, pointsPerSecond: 100f);
 
             EventSessionController session = systems.AddComponent<EventSessionController>();
