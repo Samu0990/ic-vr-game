@@ -131,6 +131,36 @@ namespace VRSurgery.Cutting
                 return false;
             }
 
+            // ---- 2b. record the wound's rim, before anything moves ------------------------
+            // Only the vertices sitting ON the cut are the rim. rightCopy holds a duplicate for
+            // every vertex touched by a right-hand triangle, which is half the sheet; stitching
+            // walls between all of those pairs shreds the patch into spikes. And this has to be
+            // captured now, because parting the lips below moves these vertices off the line and
+            // there is no way to recognise them afterwards.
+            List<(float along, int left, int right)> rim = new List<(float, int, int)>();
+            float cutLength = (to - from).magnitude;
+
+            foreach (KeyValuePair<int, int> pair in rightCopy)
+            {
+                Vector3 v = vertices[pair.Key];
+                Vector2 flat = new Vector2(v.x, v.z) - from;
+                float alongCut = Vector2.Dot(flat, direction);
+
+                if (alongCut < 0f || alongCut > cutLength)
+                {
+                    continue;
+                }
+
+                if (Mathf.Abs(Vector2.Dot(flat, across)) > 1e-5f)
+                {
+                    continue;
+                }
+
+                rim.Add((alongCut, pair.Key, pair.Value));
+            }
+
+            rim.Sort((a, b) => a.along.CompareTo(b.along));
+
             // ---- 3. part the lips --------------------------------------------------------
             float open = retraction * Mathf.Clamp01(depth01);
             Vector3 acrossLocal = new Vector3(across.x, 0f, across.y);
@@ -156,12 +186,76 @@ namespace VRSurgery.Cutting
                              - Vector3.up * (open * 0.5f * falloff);
             }
 
+            // ---- 4. close the wound's sides ----------------------------------------------
+            List<int> withWalls = new List<int>(finalTriangles);
+            BuildCavity(vertices, withWalls, rim, open);
+
             mesh.Clear();
             mesh.SetVertices(vertices);
-            mesh.SetTriangles(finalTriangles, 0);
+            mesh.SetTriangles(withWalls, 0);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
             return true;
+        }
+
+        /// <summary>
+        /// Builds the inside of the wound.
+        ///
+        /// Parting the lips alone leaves a hole straight through the sheet — the surface reads as
+        /// torn paper rather than cut tissue, because you can see the background through it. Skin
+        /// has thickness, and what makes an incision look like one is its cross section: two walls
+        /// running down from the lips to a floor.
+        ///
+        /// The floor sits on the cut's original line, below the surface, so the section is a V
+        /// that deepens with the cut instead of a flat-bottomed slot.
+        /// </summary>
+        private static void BuildCavity(List<Vector3> vertices, List<int> triangles,
+            List<(float along, int left, int right)> rim, float open)
+        {
+            if (open <= 0f || rim.Count < 2)
+            {
+                return;
+            }
+
+            // One floor vertex per rim pair, midway between the lips and below them.
+            int[] floor = new int[rim.Count];
+            for (int i = 0; i < rim.Count; i++)
+            {
+                Vector3 mid = (vertices[rim[i].left] + vertices[rim[i].right]) * 0.5f;
+
+                // Tapered at the ends: a wound is deepest where the blade was buried and runs out
+                // to nothing at its extremities, which is also what stops the walls from ending
+                // in a vertical cliff.
+                float t = rim.Count > 1 ? i / (float)(rim.Count - 1) : 0.5f;
+                float taper = Mathf.Sin(t * Mathf.PI);
+
+                floor[i] = vertices.Count;
+                vertices.Add(mid - Vector3.up * (open * 1.6f * taper));
+            }
+
+            for (int i = 0; i < rim.Count - 1; i++)
+            {
+                int l0 = rim[i].left, l1 = rim[i + 1].left;
+                int r0 = rim[i].right, r1 = rim[i + 1].right;
+                int f0 = floor[i], f1 = floor[i + 1];
+
+                // Both walls are emitted with both windings. A cut surface is a thin sheet seen
+                // from whichever side the player's head happens to be on, and single-sided walls
+                // are invisible from half the angles around the table — which is exactly how this
+                // first read as an empty black slot instead of a wound with depth.
+                AddQuad(triangles, l0, f0, f1, l1);
+                AddQuad(triangles, r0, r1, f1, f0);
+            }
+        }
+
+        /// <summary>Quad a-b-c-d as two triangles, facing both ways.</summary>
+        private static void AddQuad(List<int> triangles, int a, int b, int c, int d)
+        {
+            triangles.Add(a); triangles.Add(b); triangles.Add(c);
+            triangles.Add(a); triangles.Add(c); triangles.Add(d);
+
+            triangles.Add(a); triangles.Add(c); triangles.Add(b);
+            triangles.Add(a); triangles.Add(d); triangles.Add(c);
         }
 
         /// <summary>
