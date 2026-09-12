@@ -33,7 +33,7 @@ namespace VRSurgery.EditorTools
         private const string BodyFbx = "Assets/Models/Patient/PATIENT_ExternalBody.fbx";
         private const string VertebraeFbx = "Assets/Models/Patient/PATIENT_Vertebrae.fbx";
         private const string TrayFbx = "Assets/Models/Environment/PROP_InstrumentTray.fbx";
-        private const string TableFbx = "Assets/Models/Environment/PROP_OperatingTable.fbx";
+        private const string TableFbx = "Assets/Models/Environment/PROP_OperatingTable.glb";
         private const string ScalpelFbx = "Assets/Models/Tools/SCALPEL_FromGLB.fbx";
         private const string ScalpelAlbedo = "Assets/Models/Tools/BISTURI_Image_0.png";
         private const string ScalpelNormal = "Assets/Models/Tools/BISTURI_Image_2.png";
@@ -50,8 +50,12 @@ namespace VRSurgery.EditorTools
         /// <summary>Table top height. Fixed for the MVP — not swept, not derived.</summary>
         private const float TableTopY = 0.95f;
 
-        private const float TableWidthX = 0.50f;
-        private const float TableLengthZ = 1.90f;
+        // Measured off PROP_OperatingTable.glb, not chosen. The model that replaced the first
+        // table is a real hospital table — wheeled base, hydraulic column, segmented padded top —
+        // and it is wider and longer than the block it replaced. VerifyTableTop compares against
+        // these, so they describe the model rather than an intention.
+        private const float TableWidthX = 0.575f;
+        private const float TableLengthZ = 2.002f;
 
         /// <summary>Migrated scalpel metrics. They describe the model, so they survive the move.</summary>
         private const float ScalpelGripLocalZ = -0.02f;
@@ -249,10 +253,11 @@ namespace VRSurgery.EditorTools
             // seats at the origin with no offset — the same trick the patient meshes use.
             GameObject top = Instantiate(TableFbx, root.transform);
             top.name = "TableTop";
-            foreach (MeshRenderer r in top.GetComponentsInChildren<MeshRenderer>())
-            {
-                r.sharedMaterial = MakeMaterial(new Color(0.62f, 0.66f, 0.70f), 0.1f, 0.55f);
-            }
+
+            // The model arrives textured, so its surfaces are carried over rather than painted
+            // flat grey the way the untextured block it replaced had to be — but they are moved
+            // onto URP/Lit first. See ConvertGltfMaterials.
+            ConvertGltfMaterials(top);
 
             // A box collider stands in for the slab: the tool must not fall through the table,
             // and a mesh collider on furniture is wasted cost.
@@ -262,6 +267,72 @@ namespace VRSurgery.EditorTools
 
             VerifyTableTop(top);
             return root;
+        }
+
+        /// <summary>
+        /// Moves glTF-imported materials onto URP/Lit, carrying their textures across.
+        ///
+        /// gltFast brings models in on its own Shader Graph. That works, but it costs a Quest more
+        /// than Lit does and it drags extra shader variants into the build, and a Shader Graph
+        /// variant that is not compiled renders black — which is exactly how this table first
+        /// appeared in a headless capture.
+        ///
+        /// The metallic-roughness map is deliberately NOT carried over. glTF packs roughness in
+        /// green and metallic in blue; URP/Lit reads metallic from red and smoothness from alpha.
+        /// Assigning it straight across would look like it worked and be wrong in every channel,
+        /// so the two values are set as scalars instead.
+        /// </summary>
+        private static void ConvertGltfMaterials(GameObject model)
+        {
+            Shader lit = Shader.Find("Universal Render Pipeline/Lit");
+            if (lit == null) { return; }
+
+            int converted = 0;
+            foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>())
+            {
+                Material[] materials = renderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    Material source = materials[i];
+                    if (source == null || !source.shader.name.Contains("glTF")) { continue; }
+
+                    Material target = new Material(lit) { name = source.name + "_URP" };
+
+                    if (source.HasProperty("baseColorTexture"))
+                    {
+                        Texture albedo = source.GetTexture("baseColorTexture");
+                        if (albedo != null) { target.SetTexture("_BaseMap", albedo); }
+                    }
+
+                    if (source.HasProperty("normalTexture"))
+                    {
+                        Texture normal = source.GetTexture("normalTexture");
+                        if (normal != null)
+                        {
+                            target.SetTexture("_BumpMap", normal);
+                            target.EnableKeyword("_NORMALMAP");
+                        }
+                    }
+
+                    if (source.HasProperty("baseColorFactor"))
+                    {
+                        target.SetColor("_BaseColor", source.GetColor("baseColorFactor"));
+                    }
+
+                    target.SetFloat("_Metallic", 0.15f);
+                    target.SetFloat("_Smoothness", 0.45f);
+
+                    materials[i] = target;
+                    converted++;
+                }
+
+                renderer.sharedMaterials = materials;
+            }
+
+            if (converted > 0)
+            {
+                Debug.Log($"[SurgeryMVP] {converted} material(is) glTF convertido(s) para URP/Lit.");
+            }
         }
 
         /// <summary>

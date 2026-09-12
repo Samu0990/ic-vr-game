@@ -31,13 +31,13 @@ namespace VRSurgery.EditorTools
         private const string TargetScene = "Assets/Scenes/PortaDeEntrada.unity";
 
         private const string BodyFbx = "Assets/Models/Patient/PATIENT_ExternalBody.fbx";
-        private const string TableFbx = "Assets/Models/Environment/PROP_OperatingTable.fbx";
+        private const string TableFbx = "Assets/Models/Environment/PROP_OperatingTable.glb";
         private const string TrayFbx = "Assets/Models/Environment/PROP_InstrumentTray.fbx";
         private const string TrocarGlb = "Assets/Models/Tools/TROCAR_11mm.glb";
         private const string GauzeGlb = "Assets/Models/Tools/GAUZE_Pad.glb";
 
         private const float TableTopY = 0.95f;
-        private const float TableLengthZ = 1.90f;
+        private const float TableLengthZ = 2.002f;
 
         /// <summary>Stance and tray carried over from the validated layout of the first scene.</summary>
         private static Vector3 PlayerStance => new Vector3(0.45f, 0f, 0.406f);
@@ -122,14 +122,11 @@ namespace VRSurgery.EditorTools
             GameObject root = new GameObject("OperatingTable");
             GameObject top = Instantiate(TableFbx, root.transform);
             top.name = "TableTop";
-            foreach (MeshRenderer r in top.GetComponentsInChildren<MeshRenderer>())
-            {
-                r.sharedMaterial = MakeMaterial(new Color(0.62f, 0.66f, 0.70f), 0.1f, 0.55f);
-            }
+            // Keeps the model's authored materials; see SurgeryMvpSceneBuilder.BuildTable.
 
             BoxCollider slab = top.AddComponent<BoxCollider>();
             slab.center = new Vector3(0f, TableTopY - 0.03f, 0f);
-            slab.size = new Vector3(0.50f, 0.06f, TableLengthZ);
+            slab.size = new Vector3(0.575f, 0.06f, TableLengthZ);
             return root;
         }
 
