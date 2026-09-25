@@ -44,26 +44,30 @@ namespace VRSurgery.Surgery
 
         private void HandleObjectiveChanged(SurgeryObjectiveSystem.ObjectiveRuntime objective) => Refresh();
 
-        private void HandleSurgeryCompleted() => SetText("PROCEDURE COMPLETE");
+        private void HandleSurgeryCompleted() => SetText("PROCEDIMENTO CONCLUÍDO");
 
         private void Refresh()
         {
             if (objectiveSystem == null)
             {
-                SetText("STANDBY");
+                SetText("AGUARDANDO");
                 return;
             }
 
             SurgeryObjectiveSystem.ObjectiveRuntime active = objectiveSystem.ActiveObjective;
             if (active == null)
             {
-                SetText(objectiveSystem.IsSurgeryComplete ? "PROCEDURE COMPLETE" : "STANDBY");
+                // Eram "PROCEDURE COMPLETE" e "STANDBY": as duas únicas frases em inglês que
+                // chegavam ao monitor da sala. O estande é no Brasil e o público é leigo.
+                // "PROCEDIMENTO CONCLUÍDO" repete a linha 47 de propósito — os dois caminhos
+                // dizem a mesma coisa ao jogador e devem ler igual.
+                SetText(objectiveSystem.IsSurgeryComplete ? "PROCEDIMENTO CONCLUÍDO" : "AGUARDANDO");
                 return;
             }
 
             int step = objectiveSystem.CompletedCount + 1;
             int total = objectiveSystem.Objectives.Count;
-            SetText($"STEP {step}/{total}\n\n{active.Description}");
+            SetText($"ETAPA {step}/{total}\n\n{active.Description}");
         }
 
         private void SetText(string value)

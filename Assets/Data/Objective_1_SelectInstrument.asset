@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: select-instrument
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Surgery.ObjectiveDefinition
   objectiveId: select-instrument
-  description: Pick up the scalpel.
+  description: Pegue o bisturi.
   trigger: 0
   requiredTool: 0
   toolTypeMatters: 1

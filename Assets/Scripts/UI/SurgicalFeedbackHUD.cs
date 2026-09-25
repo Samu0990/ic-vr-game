@@ -161,7 +161,7 @@ namespace VRSurgery.Surgery
 
             if (statusText != null)
             {
-                statusText.text = on ? "INCISION CONFIRMED" : "AWAITING INCISION";
+                statusText.text = on ? "INCISÃO CONFIRMADA" : "AGUARDANDO INCISÃO";
                 statusText.color = on ? new Color(0.45f, 1f, 0.55f) : new Color(0.72f, 0.78f, 0.85f);
             }
         }

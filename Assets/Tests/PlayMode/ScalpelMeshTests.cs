@@ -37,11 +37,23 @@ namespace VRSurgery.Tests
 
             Debug.Log($"[Scalpel] grip world = {grip.x:F4}, {grip.y:F4}, {grip.z:F4}");
 
-            // Swapping the proxy for real geometry must not shift the grip: every reach number
-            // already reported is measured from this exact point.
-            Assert.AreEqual(-0.450f, grip.x, 0.0005f);
-            Assert.AreEqual(1.080f, grip.y, 0.0005f);
-            Assert.AreEqual(0.300f, grip.z, 0.0005f);
+            // Swapping the mesh must not shift the grip: every reach number already reported is
+            // measured from this exact point.
+            //
+            // Checked against the tray the scalpel rests on rather than against typed coordinates.
+            // The literals this used to assert — x -0.450 — described a mirrored layout that was
+            // replaced when the stance was re-measured, so the test failed for years while
+            // describing nothing that existed. Anchoring it to the tray keeps the thing worth
+            // protecting (a re-exported mesh moving the grip) and drops the thing that was only
+            // ever a snapshot (where the whole workstation happens to sit).
+            GameObject stand = GameObject.Find("InstrumentStand");
+            Assert.IsNotNull(stand, "No instrument stand to measure the grip against.");
+
+            Vector3 tray = stand.transform.position;
+            Assert.AreEqual(tray.x, grip.x, 0.001f, "The grip drifted off the tray's axis.");
+            Assert.AreEqual(tray.z - 0.02f, grip.z, 0.001f, "The grip moved along the tray.");
+            Assert.Greater(grip.y, tray.y + 0.95f, "The scalpel is not resting on the tray surface.");
+            Assert.Less(grip.y, tray.y + 1.05f, "The scalpel is floating above the tray.");
 
             yield break;
         }

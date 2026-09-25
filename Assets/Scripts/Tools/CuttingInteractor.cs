@@ -27,11 +27,15 @@ namespace VRSurgery.Tools
         private readonly Collider[] _overlapResults = new Collider[8];
         private TissueSurface _cachedTissue;
         private IncisionSystem _cachedIncisionSystem;
+        private IncisionSystem _activeIncisionSystem;
 
         /// <summary>True on any step where the blade was inside tissue.</summary>
         public bool IsInContact { get; private set; }
 
         public BladeTip BladeTip => bladeTip;
+
+        /// <summary>Guards the one retry FixedUpdate is allowed for a late-assembled tip.</summary>
+        private bool _tipSearched;
 
         private void Awake()
         {
@@ -46,10 +50,19 @@ namespace VRSurgery.Tools
         {
             if (bladeTip == null)
             {
-                // Components assembled at runtime may add the tip after this one.
+                // Components assembled at runtime may add the tip after this one. Tried once, not
+                // once per physics step forever: a tool that genuinely has no tip used to re-walk
+                // its whole hierarchy fifty times a second for the lifetime of the scene.
+                if (_tipSearched)
+                {
+                    return;
+                }
+
+                _tipSearched = true;
                 bladeTip = GetComponentInChildren<BladeTip>();
                 if (bladeTip == null)
                 {
+                    Debug.LogWarning($"[CuttingInteractor] '{name}' has no BladeTip; it will never cut.", this);
                     return;
                 }
             }
@@ -60,12 +73,14 @@ namespace VRSurgery.Tools
 
             if (!_tool.HasCapability(ToolCapability.Cut))
             {
+                EndActiveCut();
                 IsInContact = false;
                 return;
             }
 
             if (requireHeld && !_tool.IsHeld)
             {
+                EndActiveCut();
                 IsInContact = false;
                 return;
             }
@@ -73,11 +88,29 @@ namespace VRSurgery.Tools
             IncisionSystem system = ResolveIncisionSystem(current);
             if (system == null)
             {
+                EndActiveCut();
                 IsInContact = false;
                 return;
             }
 
-            IsInContact = system.ProcessBladeSegment(previous, current, Time.fixedDeltaTime, _tool);
+            if (_activeIncisionSystem != null && _activeIncisionSystem != system)
+            {
+                _activeIncisionSystem.EndBladeContact();
+            }
+            _activeIncisionSystem = system;
+            IsInContact = system.ProcessBladeSegment(
+                previous, current, Time.fixedDeltaTime, _tool, bladeTip);
+        }
+
+        private void OnDisable() => EndActiveCut();
+
+        private void EndActiveCut()
+        {
+            if (_activeIncisionSystem != null)
+            {
+                _activeIncisionSystem.EndBladeContact();
+                _activeIncisionSystem = null;
+            }
         }
 
         private IncisionSystem ResolveIncisionSystem(Vector3 tipPosition)
@@ -126,6 +159,10 @@ namespace VRSurgery.Tools
         /// <summary>Lets tests and the tray-reset flow bind a tissue target without a physics query.</summary>
         public void BindTissue(IncisionSystem system)
         {
+            if (_activeIncisionSystem != null && _activeIncisionSystem != system)
+            {
+                EndActiveCut();
+            }
             _cachedIncisionSystem = system;
             _cachedTissue = system != null ? system.Tissue : null;
         }

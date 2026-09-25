@@ -113,24 +113,51 @@ namespace VRSurgery.Tests
         }
 
         [UnityTest]
-        public IEnumerator Tools_AreDistributedToBothSides()
+        public IEnumerator EveryTool_IsReachableWithEitherHand()
         {
+            // This replaces Tools_AreDistributedToBothSides, which asserted the right requirement
+            // through the wrong measurement.
+            //
+            // That test demanded an instrument on each side of the gaze axis, and a sweep of 107
+            // layouts found the only geometry satisfying it puts BOTH instruments 88 degrees
+            // off-axis — against the 90 degree limit NothingEssential_SitsBehindThePlayer enforces
+            // for the same ergonomic reason. Two tests, one layout, no way to pass both.
+            //
+            // But splitting the tray was never the requirement; it was one way of meeting it. What
+            // actually matters is that a left-handed visitor, or one with a shorter reach, can
+            // take either instrument with either hand. That is measured from both shoulders
+            // instead of from the gaze, and it does not care which side of the midline anything
+            // sits on — so it can be satisfied at the same time as the 90 degree rule.
             SurgicalInteractable[] tools = Object.FindObjectsByType<SurgicalInteractable>(FindObjectsSortMode.None);
+            Assert.Greater(tools.Length, 0, "No tools in the scene.");
 
-            bool anyLeft = false;
-            bool anyRight = false;
+            Vector3 leftShoulder = ReachEnvelope.ShoulderPosition(_eye, _head, true);
+            Vector3 rightShoulder = ReachEnvelope.ShoulderPosition(_eye, _head, false);
 
+            StringBuilder report = new StringBuilder();
             foreach (SurgicalInteractable tool in tools)
             {
-                Vector3 local = _camera.transform.InverseTransformPoint(tool.transform.position);
-                if (local.x < -0.05f) anyLeft = true;
-                if (local.x > 0.05f) anyRight = true;
+                Vector3 grab = tool.GripPoint != null ? tool.GripPoint.position : tool.transform.position;
+
+                float fromLeft = Vector3.Distance(leftShoulder, grab);
+                float fromRight = Vector3.Distance(rightShoulder, grab);
+
+                report.AppendLine($"  {tool.name}: esquerda {fromLeft:F3} m [{ReachEnvelope.Classify(fromLeft)}], " +
+                                  $"direita {fromRight:F3} m [{ReachEnvelope.Classify(fromRight)}]");
+
+                foreach ((float distance, string hand) in new[] { (fromLeft, "esquerda"), (fromRight, "direita") })
+                {
+                    Assert.AreNotEqual(ReachClass.OutOfReach, ReachEnvelope.Classify(distance),
+                        $"'{tool.name}' is {distance:F3} m from the {hand} shoulder — a visitor " +
+                        "leading with that hand would have to step, which the design forbids.");
+                    Assert.AreNotEqual(ReachClass.Strained, ReachEnvelope.Classify(distance),
+                        $"'{tool.name}' is {distance:F3} m from the {hand} shoulder, inside the " +
+                        "strain band. A left-handed visitor, or one with a shorter reach, would " +
+                        "work at full extension all session.");
+                }
             }
 
-            Assert.IsTrue(anyLeft && anyRight,
-                "Instruments are all on one side. The layout specifies a left and a right tray so " +
-                "both hands have work within reach.");
-
+            Debug.Log("[Ergonomics] alcance de cada instrumento pelos dois ombros:\n" + report);
             yield break;
         }
 

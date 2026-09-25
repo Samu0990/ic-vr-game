@@ -26,6 +26,23 @@ namespace VRSurgery.Tissue
         [SerializeField, Range(0f, 1f)] private float activeThreshold = 0.7f;
         [SerializeField, Range(0f, 1f)] private float heavyThreshold = 0.9f;
 
+        [Header("Severity")]
+        [Tooltip("Incision length, in metres, at which the length term reaches its full weight. " +
+                 "A longer cut opens more vessels, so a careless 9 cm slash must bleed harder " +
+                 "than a controlled one.")]
+        [SerializeField, Min(0.001f)] private float lengthAtFullSeverity = 0.09f;
+
+        [Tooltip("How much of the final intensity comes from the incision's length rather than " +
+                 "its depth.")]
+        [SerializeField, Range(0f, 1f)] private float lengthWeight = 0.35f;
+
+        [Tooltip("Seconds of uncontrolled bleeding after which the time term is fully applied. " +
+                 "Hesitating has to cost something, or the clock is the only pressure in the game.")]
+        [SerializeField, Min(0.1f)] private float secondsToWorsen = 45f;
+
+        [Tooltip("How much the intensity can grow on its own while the bleeding goes unanswered.")]
+        [SerializeField, Range(0f, 1f)] private float worseningWeight = 0.3f;
+
         [Header("Control")]
         [Tooltip("Seconds of sustained pressure needed to bring bleeding under control.")]
         [SerializeField] private float pressureDurationToControl = 1.5f;
@@ -44,6 +61,9 @@ namespace VRSurgery.Tissue
 
         /// <summary>Total blood lost, arbitrary game units. Feeds the safety score.</summary>
         public float TotalBloodLoss { get; private set; }
+
+        /// <summary>Seconds the wound has been bleeding without being brought under control.</summary>
+        public float UncontrolledSeconds { get; private set; }
 
         public event Action<BleedingState> StateChanged;
 
@@ -75,6 +95,7 @@ namespace VRSurgery.Tissue
                 SetState(BleedingState.None);
                 Intensity01 = 0f;
                 TotalBloodLoss = 0f;
+                UncontrolledSeconds = 0f;
                 _bleedingAnnounced = false;
                 _pressureHeld = 0f;
             }
@@ -85,6 +106,13 @@ namespace VRSurgery.Tissue
             if (_tissue == null || State == BleedingState.Controlled)
             {
                 return;
+            }
+
+            // Counted before the evaluation, because the severity formula reads it: the wound gets
+            // worse the longer it is left, and that has to be true on the same frame it is asked.
+            if (State != BleedingState.None)
+            {
+                UncontrolledSeconds += Time.deltaTime;
             }
 
             EvaluateFromTissue();
@@ -98,8 +126,8 @@ namespace VRSurgery.Tissue
         private void EvaluateFromTissue()
         {
             float depth = _tissue.PeakDepth01;
-            BleedingState next;
 
+            BleedingState next;
             if (depth >= heavyThreshold)
             {
                 next = BleedingState.Heavy;
@@ -117,15 +145,43 @@ namespace VRSurgery.Tissue
                 next = BleedingState.None;
             }
 
-            Intensity01 = next switch
-            {
-                BleedingState.Minimal => 0.25f,
-                BleedingState.Active => 0.6f,
-                BleedingState.Heavy => 1f,
-                _ => 0f,
-            };
-
+            Intensity01 = next == BleedingState.None ? 0f : SeverityFrom(depth);
             SetState(next);
+        }
+
+        /// <summary>
+        /// Continuous 0..1 severity.
+        ///
+        /// The state enum is still what the rest of the game listens to, but the number behind it
+        /// is no longer one of three constants. It used to jump 0.25 -> 0.6 -> 1.0, which made the
+        /// stand's bleeding bar pop between three positions instead of growing, and made depth the
+        /// only thing that mattered: a careless 9 cm slash bled exactly like a clean nick of the
+        /// same depth, and hesitating cost nothing.
+        ///
+        /// Three terms, in the order a surgeon would rank them: how deep the cut went, how long it
+        /// is, and how long it has been left alone.
+        /// </summary>
+        private float SeverityFrom(float depth01)
+        {
+            // Depth maps from the point bleeding starts to the point it is as bad as it gets, so
+            // a cut that only just breaks the threshold starts near zero rather than at 0.25.
+            float depthSpan = Mathf.Max(0.0001f, 1f - minimalThreshold);
+            float fromDepth = Mathf.Clamp01((depth01 - minimalThreshold) / depthSpan);
+
+            float fromLength = _tissue == null
+                ? 0f
+                : Mathf.Clamp01(_tissue.IncisionLength / lengthAtFullSeverity);
+
+            float fromTime = Mathf.Clamp01(UncontrolledSeconds / secondsToWorsen);
+
+            // Depth carries whatever the other two do not, so the weights can be retuned on the
+            // day without the total ever leaving 0..1.
+            float depthWeight = Mathf.Max(0f, 1f - lengthWeight - worseningWeight);
+
+            return Mathf.Clamp01(
+                fromDepth * depthWeight +
+                fromLength * lengthWeight +
+                fromTime * worseningWeight);
         }
 
         /// <summary>

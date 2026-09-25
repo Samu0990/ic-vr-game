@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: control-bleeding
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Surgery.ObjectiveDefinition
   objectiveId: control-bleeding
-  description: Control the bleeding with the forceps.
+  description: Controle o sangramento com a pinça.
   trigger: 2
   requiredTool: 1
   toolTypeMatters: 0

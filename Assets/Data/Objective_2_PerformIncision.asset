@@ -13,7 +13,7 @@ MonoBehaviour:
   m_Name: perform-incision
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Surgery.ObjectiveDefinition
   objectiveId: perform-incision
-  description: Make the incision along the marked line.
+  description: Faça a incisão sobre a linha marcada.
   trigger: 1
   requiredTool: 0
   toolTypeMatters: 1

@@ -16,9 +16,20 @@ namespace VRSurgery.Tissue
         [SerializeField, Min(2)] private int sampleCount = 8;
 
         [Header("Tolerances")]
-        [SerializeField] private float perfectTolerance = 0.008f;
-        [SerializeField] private float acceptableTolerance = 0.02f;
-        [SerializeField] private float failureTolerance = 0.05f;
+        // Surgical, not forgiving. The guided path is 9 cm long; the previous failure band was
+        // 5 cm, which is more than half that length — a cut running almost perpendicular to the
+        // guide still passed, so accuracy was never actually demanded of the player.
+        //
+        // These are the real thing: a 1.5 mm deviation is a clean line, 4 mm is a surgeon having
+        // a bad day, and 10 mm is off the mark. Expect most first attempts to miss.
+        [Tooltip("Deviation that still counts as a clean line, in metres.")]
+        [SerializeField] private float perfectTolerance = 0.0015f;
+
+        [Tooltip("Deviation that still scores, in metres.")]
+        [SerializeField] private float acceptableTolerance = 0.004f;
+
+        [Tooltip("Deviation that fails the incision, in metres.")]
+        [SerializeField] private float failureTolerance = 0.010f;
 
         private readonly List<Vector3> _path = new List<Vector3>();
 
@@ -79,6 +90,18 @@ namespace VRSurgery.Tissue
             endPoint = end;
             sampleCount = Mathf.Max(2, samples);
             RebuildPath();
+        }
+
+        /// <summary>
+        /// Sets the accuracy bands explicitly. The scene is generated from code, so the numbers
+        /// that decide whether a cut is good belong in the build alongside the path itself rather
+        /// than in whatever the prefab's serialized defaults happen to be.
+        /// </summary>
+        public void SetTolerances(float perfect, float acceptable, float failure)
+        {
+            perfectTolerance = Mathf.Max(0.0001f, perfect);
+            acceptableTolerance = Mathf.Max(perfectTolerance, acceptable);
+            failureTolerance = Mathf.Max(acceptableTolerance, failure);
         }
 
         public float DeviationAt(Vector3 localPoint)
