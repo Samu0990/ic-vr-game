@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 22;
+        public const int BuildVersion = 23;
 
         private static Vector3 _thorax;
 
@@ -1285,6 +1285,9 @@ namespace VRSurgery.EditorTools
                 bridge.BindDefibrillation(defib);
                 _defibrillation = defib;
             }
+
+            // The vessels can be sewn with the needle holder too, faster than with the bare hand.
+            sewing.BindNeedle(needleHolder.transform.Find("NeedleTip"), needleHolder, 1.5f);
 
             // A bouncing arrow over whichever instrument the step needs, until it is picked up.
             systems.AddComponent<NextToolHint>().Bind(procedure, BuildNextToolArrow(), scalpel, cauteryPen, saw,

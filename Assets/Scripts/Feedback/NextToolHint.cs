@@ -77,6 +77,10 @@ namespace VRSurgery.Feedback
                 case TransplantStage.OpenPericardium:
                     return cauteryPen;
 
+                case TransplantStage.ConnectVessels:
+                    // The hand sews too, but the needle holder is the real way and quicker.
+                    return needleHolder;
+
                 case TransplantStage.Restart:
                     return defibrillation != null && defibrillation.IsFibrillating ? paddles : null;
 

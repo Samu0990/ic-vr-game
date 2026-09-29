@@ -31,7 +31,19 @@ namespace VRSurgery.Transplant
                  "a heart that is not in the chest yet.")]
         [SerializeField] private TransplantProcedure procedure;
 
+        [Header("Needle holder (optional)")]
+        [Tooltip("The needle's point. When set, the needle holder sews vessels too.")]
+        [SerializeField] private Transform needleTip;
+        [SerializeField] private SurgicalInteractable needleHolder;
+
+        [Tooltip("How much faster a vessel is sewn with the needle than with the bare hand. The " +
+                 "real instrument is rewarded, and it steadies the hand as it does in life.")]
+        [SerializeField, Min(1f)] private float needleBonus = 1.5f;
+
         private SurgicalInteractable _interactable;
+
+        /// <summary>True while the join in progress is being sewn with the needle holder.</summary>
+        public bool SewingWithNeedle { get; private set; }
 
         /// <summary>The site currently being worked, if any. Drives the surgeon's prompt.</summary>
         public VesselAnastomosis ActiveSite { get; private set; }
@@ -71,13 +83,37 @@ namespace VRSurgery.Transplant
         public void Tick(float deltaTime)
         {
             ActiveSite = null;
+            SewingWithNeedle = false;
 
-            if (deltaTime <= 0f || tip == null) { return; }
-            if (requireHeldInstrument && _interactable != null && !_interactable.IsHeld) { return; }
+            if (deltaTime <= 0f) { return; }
             if (procedure != null && procedure.Stage != TransplantStage.ConnectVessels) { return; }
 
-            // Nearest unjoined site the tip is inside. Nearest rather than first, because the
-            // vessels sit close together on a heart and the sites overlap.
+            // The needle first: if it is held on a site, that is the stitch being made.
+            if (needleTip != null && needleHolder != null && needleHolder.IsHeld)
+            {
+                VesselAnastomosis sewn = Nearest(needleTip.position);
+                if (sewn != null)
+                {
+                    sewn.Work(needleTip.position, deltaTime * needleBonus);
+                    ActiveSite = sewn;
+                    SewingWithNeedle = true;
+                    return;
+                }
+            }
+
+            if (tip == null) { return; }
+            if (requireHeldInstrument && _interactable != null && !_interactable.IsHeld) { return; }
+
+            VesselAnastomosis best = Nearest(tip.position);
+            if (best == null) { return; }
+
+            best.Work(tip.position, deltaTime);
+            ActiveSite = best;
+        }
+
+        /// <summary>Nearest unjoined site the point is inside. Nearest rather than first: the sites overlap on a heart.</summary>
+        private VesselAnastomosis Nearest(Vector3 point)
+        {
             VesselAnastomosis best = null;
             float bestDistance = float.MaxValue;
 
@@ -86,7 +122,7 @@ namespace VRSurgery.Transplant
                 VesselAnastomosis site = sites[i];
                 if (site == null || site.IsJoined) { continue; }
 
-                float distance = Vector3.Distance(tip.position, site.transform.position);
+                float distance = Vector3.Distance(point, site.transform.position);
                 if (distance <= site.Radius && distance < bestDistance)
                 {
                     bestDistance = distance;
@@ -94,10 +130,15 @@ namespace VRSurgery.Transplant
                 }
             }
 
-            if (best == null) { return; }
+            return best;
+        }
 
-            best.Work(tip.position, deltaTime);
-            ActiveSite = best;
+        /// <summary>Lets the needle holder sew vessels too, faster than the bare hand.</summary>
+        public void BindNeedle(Transform needle, SurgicalInteractable holder, float bonus = 1.5f)
+        {
+            needleTip = needle;
+            needleHolder = holder;
+            needleBonus = Mathf.Max(1f, bonus);
         }
 
         public void Bind(Transform workingTip, IEnumerable<VesselAnastomosis> vesselSites,

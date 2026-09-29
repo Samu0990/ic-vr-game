@@ -50,6 +50,35 @@ namespace VRSurgery.Tests
         private Vector3 Off => _site.transform.position + new Vector3(0.3f, 0f, 0f);
 
         [Test]
+        public void TheNeedleHolderSewsTheVesselFasterThanTheBareHand()
+        {
+            GameObject needleHost = new GameObject("Needle");
+            GameObject holderHost = new GameObject("Holder");
+            try
+            {
+                needleHost.transform.position = On;
+                VRSurgery.Interaction.SurgicalInteractable holder =
+                    holderHost.AddComponent<VRSurgery.Interaction.SurgicalInteractable>();
+                holder.OnGrabbed(null);
+
+                AnastomosisWorker worker = _host.AddComponent<AnastomosisWorker>();
+                worker.Bind(null, new[] { _site }, _procedure);
+                worker.BindNeedle(needleHost.transform, holder, 1.5f);
+
+                // 1.4 s by hand; with the needle, one second is enough.
+                for (int i = 0; i < 60; i++) { worker.Tick(1f / 60f); }
+
+                Assert.IsTrue(_site.IsJoined, "Sewn with the real instrument, the join is quicker.");
+                Assert.AreEqual(1, _procedure.VesselsConnected);
+            }
+            finally
+            {
+                Object.DestroyImmediate(needleHost);
+                Object.DestroyImmediate(holderHost);
+            }
+        }
+
+        [Test]
         public void BrushingPastAVesselDoesNotJoinIt()
         {
             // One frame of contact, which is what a hand crossing the site looks like.
