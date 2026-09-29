@@ -374,6 +374,241 @@ namespace VRSurgery.Tests
             Assert.IsTrue(worker.IsBinDeep(Mathf.FloorToInt(0.3f * worker.Bins)), "and that stretch is marked as deep.");
         }
 
+        // ------------------------------------------------------------------ technique
+
+        /// <summary>Draws the blade along the line from one fraction to another, just into the skin.</summary>
+        private static void Stroke(SkinIncisionWorker worker, ChestSkinPatch patch, Transform blade,
+            float from, float to, int frames, float lateral = 0f, float depth = -0.002f)
+        {
+            for (int i = 0; i <= frames; i++)
+            {
+                blade.position = patch.IncisionPoint(Mathf.Lerp(from, to, i / (float)frames), lateral, depth);
+                worker.Tick(Step);
+                patch.Tick(Step);
+            }
+        }
+
+        [Test]
+        public void ABladeRestingOnTheLineDentsButDoesNotCut()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            blade.position = patch.IncisionPoint(0.5f, 0f, -0.003f);
+            for (int i = 0; i < 60; i++)
+            {
+                worker.Tick(Step);
+                patch.Tick(Step);
+            }
+
+            Assert.AreEqual(0f, worker.Progress01, "A scalpel cuts when it is drawn, not when it is pressed.");
+            Assert.Greater(patch.PressDepth, 0.001f, "Pressed, the skin only gives.");
+        }
+
+        [Test]
+        public void AStabStraightDownDoesNotDrawALine()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            for (int i = 0; i <= 20; i++)
+            {
+                blade.position = patch.IncisionPoint(0.5f, 0f, 0.003f - 0.006f * i / 20f);
+                worker.Tick(Step);
+            }
+
+            Assert.AreEqual(0f, worker.Progress01);
+        }
+
+        [Test]
+        public void ABladeLaidFlatScrapesAndTheVisitorIsTold()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            int hints = 0;
+            worker.BladeMisaligned += () => hints++;
+
+            // The blade's face (its local X) turned to the sky: the flat of the blade on the skin.
+            blade.rotation = Quaternion.Euler(0f, 0f, 90f);
+            Stroke(worker, patch, blade, 0.2f, 0.5f, 30);
+
+            Assert.AreEqual(0f, worker.Progress01, "The flat of the blade does not cut skin.");
+            Assert.Greater(hints, 0, "and the monitor says how to hold it.");
+            Assert.IsFalse(worker.EdgeRuleRelaxed, "Half a second of trying is not yet someone who is stuck.");
+        }
+
+        [Test]
+        public void ABladePushedSidewaysDoesNotSlice()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            // Edge down, but its face turned into the direction of travel.
+            blade.rotation = Quaternion.Euler(0f, 90f, 0f);
+            Stroke(worker, patch, blade, 0.2f, 0.5f, 30);
+
+            Assert.AreEqual(0f, worker.Progress01);
+        }
+
+        [Test]
+        public void AdaptiveHelp_AVisitorStuckOnTheGripGetsAScalpelThatCuts()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            blade.rotation = Quaternion.Euler(0f, 0f, 90f);
+            for (int i = 0; i <= 300; i++)
+            {
+                float phase = Mathf.PingPong(i / 60f, 1f);
+                blade.position = patch.IncisionPoint(0.1f + 0.4f * phase, 0f, -0.002f);
+                worker.Tick(Step);
+            }
+
+            Assert.IsTrue(worker.EdgeRuleRelaxed, "Several seconds of trying with the blade flat is someone who needs help,");
+            Assert.Greater(worker.Progress01, 0f, "and from then on the scalpel cuts however it is held.");
+        }
+
+        [Test]
+        public void TheWoundLiesWhereTheBladeWent()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            Stroke(worker, patch, blade, 0.2f, 0.6f, 40, 0.003f);
+
+            Assert.AreEqual(0.003f, worker.LateralAt(Mathf.FloorToInt(0.4f * worker.Bins)), 5e-4f);
+            Assert.Greater(patch.WanderAt(0.4f), 0.002f,
+                "The skin parts under the blade, 3 mm to the right of the line, not on the drawn line.");
+            Assert.AreEqual(0f, patch.WanderAt(0.9f), 1e-5f, "Uncut skin has no wound to move.");
+        }
+
+        [Test]
+        public void AWanderingHandCannotPushTheWoundOntoTheStitchMarks()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            Stroke(worker, patch, blade, 0.2f, 0.6f, 40, 0.012f);
+
+            Assert.Greater(worker.Progress01, 0f, "12 mm off is still on the line,");
+            Assert.LessOrEqual(Mathf.Abs(patch.WanderAt(0.4f)), 0.0041f,
+                "but the wound stays inside the suture's reach.");
+        }
+
+        [Test]
+        public void CuttingThroughTheSkinOffTheLineLeavesAScratch()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            Stroke(worker, patch, blade, 0.2f, 0.6f, 40, 0.03f);
+
+            Assert.AreEqual(1, worker.Scratches, "One pass off the line is one nick left on the skin.");
+            Assert.AreEqual(0f, worker.Progress01);
+        }
+
+        [Test]
+        public void OneCleanStrokeIsAPerfectIncision()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            IncisionGrade? graded = null;
+            worker.Graded += g => graded = g;
+
+            Stroke(worker, patch, blade, 1f, 0f, 90, 0.001f);
+
+            Assert.IsTrue(graded.HasValue, "Finishing the incision grades it.");
+            Assert.AreEqual(1, graded.Value.Strokes);
+            Assert.AreEqual(3, graded.Value.Stars);
+        }
+
+        [Test]
+        public void SawingAtTheSkinCostsStars()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            for (int j = 0; j < 5 && !worker.IsComplete; j++)
+            {
+                Stroke(worker, patch, blade, 0.2f * j, 0.2f * (j + 1), 20);
+                blade.position = patch.IncisionPoint(0.2f * (j + 1), 0f, 0.05f);
+                for (int i = 0; i < 5; i++) { worker.Tick(Step); }
+            }
+
+            Assert.IsTrue(worker.IsComplete);
+            Assert.GreaterOrEqual(worker.Grade.Strokes, 4, "Each lift and return is another pass.");
+            Assert.Less(worker.Grade.Stars, 3, "A skin incision is one confident stroke.");
+        }
+
+        [Test]
+        public void TheGradeReadsTheWayAPreceptorWould()
+        {
+            Assert.AreEqual(3, IncisionGrade.From(1, 1.5f, false, 0, false).Stars);
+            Assert.AreEqual(2, IncisionGrade.From(3, 4f, false, 0, false).Stars);
+            Assert.AreEqual(1, IncisionGrade.From(5, 10f, true, 2, true).Stars);
+        }
+
+        [Test]
+        public void TheBladeComesAwayBloodyAndTheNextVisitorGetsItClean()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            Renderer blood = Spawn("Blood").AddComponent<MeshRenderer>();
+            worker.BindMarks(null, blood);
+            Assert.IsFalse(blood.enabled, "A clean blade on the tray.");
+
+            Stroke(worker, patch, blade, 0.2f, 0.5f, 30);
+            Stroke(worker, patch, blade, 0.2f, 0.5f, 30, 0.03f);
+            worker.Tick(Step);
+            Assert.IsTrue(blood.enabled, "Blood on the blade after the first cut.");
+
+            worker.ResetIncision();
+            Assert.IsFalse(blood.enabled);
+            Assert.AreEqual(0, worker.Scratches);
+            Assert.AreEqual(0, worker.Strokes);
+            Assert.IsFalse(worker.EdgeRuleRelaxed);
+        }
+
+        [Test]
+        public void TheResultCardCountsTheStarsOutThenGoes()
+        {
+            GameObject root = Spawn("Card");
+            Transform body = new GameObject("Body").transform;
+            body.SetParent(root.transform, false);
+
+            VRSurgery.Feedback.StageResultPopup popup = root.AddComponent<VRSurgery.Feedback.StageResultPopup>();
+            popup.Bind(body, null, null, new Renderer[0], null, null, null, null);
+
+            int chimes = 0;
+            popup.StarRevealed += _ => chimes++;
+
+            popup.Show("INCISÃO PERFEITA", "1 passada", 3, Vector3.one);
+            Assert.IsTrue(popup.IsShowing);
+            Assert.AreEqual(0, popup.RevealedStars, "The stars are counted out, not stamped.");
+
+            for (int i = 0; i < 60; i++) { popup.Tick(Step); }
+            Assert.AreEqual(3, popup.RevealedStars);
+            Assert.AreEqual(3, chimes);
+
+            for (int i = 0; i < 300; i++) { popup.Tick(Step); }
+            Assert.IsFalse(popup.IsShowing);
+            Assert.IsFalse(body.gameObject.activeSelf);
+        }
+
         [Test]
         public void StitchesDrawTheGapingCutShut()
         {

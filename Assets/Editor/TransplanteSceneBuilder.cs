@@ -115,7 +115,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 5;
+        public const int BuildVersion = 6;
 
         private static Vector3 _thorax;
 
@@ -1180,7 +1180,7 @@ namespace VRSurgery.EditorTools
             // The scalpel opens the operation and the needle closes it.
             BuildSkinStages(systems, procedure, sternum, _thorax, out SkinIncisionWorker incision,
                 out SutureWorker suture, out ChestSkinPatch skinPatch, out SurgicalInteractable scalpel,
-                out SurgicalInteractable needleHolder);
+                out SurgicalInteractable needleHolder, out StageResultPopup resultPopup);
             bridge.BindSkinStages(incision, skinPatch, suture);
 
             // Guides only in their own stage: the gold ring for the sternotomy, the cuffs for the
@@ -1213,6 +1213,7 @@ namespace VRSurgery.EditorTools
             TransplantFeedback feedback = systems.AddComponent<TransplantFeedback>();
             feedback.Bind(procedure, worker, sewing, beat, indicator, tipObject.transform, RigHands());
             feedback.BindSkinStages(incision, suture, scalpel, needleHolder);
+            feedback.BindResultPopup(resultPopup);
 
             // The bone is opened with a sternal saw from the tray, not a bare hand: the blade has
             // to be held on the gold mark, and it rasps and judders in the hand while it cuts.

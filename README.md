@@ -87,7 +87,7 @@ antes, que é o que todos os testes antigos montam à mão. Com elas a rodada ga
 
 | Etapa | Gesto | Guia visual |
 |---|---|---|
-| Incisão | Pegar o **bisturi** na mesa de Mayo e passar a lâmina sobre a linha roxa, **encostando** na pele (até 4 mm acima conta; mais de 2,2 cm abaixo é "profunda demais") | Linha roxa de marcador cirúrgico; a pele afunda sob a lâmina, o corte abre ~4 mm atrás dela pela tensão da pele, as gotas de sangue crescem e às vezes escorrem pela lateral do tórax |
+| Incisão | Pegar o **bisturi** na mesa de Mayo, **apontá-lo ao longo da linha roxa com a lâmina em pé** e **puxar** encostando na pele (até 4 mm acima conta; mais de 2,2 cm abaixo é "profunda demais"). Lâmina parada só afunda a pele; deitada ou empurrada de lado só raspa, e o monitor diz como segurar. **Ajuda adaptativa:** depois de ~3 s tentando com a lâmina errada, a regra cai para aquele visitante | Linha roxa de marcador cirúrgico; a pele afunda sob a lâmina e **abre onde a lâmina passou** (até 4 mm da linha); corte fora da linha deixa **arranhão** na pele; a lâmina sai **suja de sangue**; gotas crescem e escorrem. Ao terminar, **cartão com 1–3 estrelas** sobre o tórax (passadas, desvio em mm, profundidade, arranhões) |
 | Cautério (opcional) | Pegar o **bisturi elétrico** no coldre sobre o campo e encostar a ponta nos 3 pontos que sangram na borda da ferida | Fumaça, chiado e vibração; o ponto para de sangrar e fica a marca de cauterização |
 | Esterno | Pegar a **serra esternal** na bandeja e apoiar a lâmina na marca dourada por 3 s | Anel dourado (só nesta etapa); zumbido e vibração forte enquanto serra; o esterno se parte em duas metades presas no afastador de Finochietto |
 | CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba |
@@ -197,7 +197,7 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
   -projectPath . -runTests -testPlatform PlayMode -testResults /tmp/res.xml
 ```
 
-**121 testes passando na última execução registrada neste README**, antes dos testes do PR do orientador (`AnastomosisTests`, `NameEntryTests`, `VesselAnastomosisVisualTests`) e dos 17 de `SkinStagesTests` (incisão, sutura, pele, etapas novas, correções do PR). Esses ainda precisam ser rodados no Editor. O que os testes cobrem e por quê:
+**121 testes passando na última execução registrada neste README**, antes dos testes do PR do orientador (`AnastomosisTests`, `NameEntryTests`, `VesselAnastomosisVisualTests`) e dos 40 de `SkinStagesTests` (incisão, técnica do bisturi, nota, sutura, pele, etapas novas, correções do PR). Esses ainda precisam ser rodados no Editor. O que os testes cobrem e por quê:
 
 - **A volta do estande**: a rodada começa no primeiro corte, o transplante concluído vence a
   rodada, e o visitante seguinte recebe tórax fechado e coração doente de volta. Essas regras
@@ -225,6 +225,12 @@ conferir com o óculos:
   no Quest standalone. Medir o frame time antes de ligar no Quest.
 - A **tolerância do bisturi** (1,4 cm da linha média, 4 mm acima e 3 cm abaixo da pele)
   e o raio da agulha (1,3 cm) são estimativas.
+- **Lâmina em pé** (sessão seguinte): o construtor descobre para que lado a lâmina do modelo
+  está virada pela parte `filo` (eixo mais fino) e gira o modelo para ela ficar de pé na mão.
+  O Console diz o ângulo, ou avisa que não conseguiu — aí a regra do fio fica desligada. Se no
+  óculos a lâmina aparecer de cabeça para baixo, é só estética; se o corte recusar com o
+  bisturi bem segurado, desligar `requireEdge` no `SkinIncisionWorker`. Os ~3 s até a ajuda
+  adaptativa (`edgeHelpSeconds`) e os ~50° de tolerância são chutes a calibrar com visitantes.
 - **Custo no Quest ainda não medido** do que mais pesa: tecido simulado (~1,6 mil vértices por
   quadro na CPU), pele da janela recalculada enquanto o bisturi encosta, fumaça, e o foco com
   sombra suave. Se faltar quadro: `UseDrapeCloth = false` primeiro.

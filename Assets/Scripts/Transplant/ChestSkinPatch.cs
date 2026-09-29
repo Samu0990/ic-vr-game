@@ -67,6 +67,11 @@ namespace VRSurgery.Transplant
         [Tooltip("Deepest dent the skin takes before it gives way, in metres.")]
         [SerializeField, Min(0f)] private float maxPress = 0.006f;
 
+        [Tooltip("Farthest the wound may lie from the drawn midline, in metres. The skin parts " +
+                 "where the blade actually went, within this much: a hand that wandered leaves " +
+                 "a wound that wanders, never one that crosses the stitch marks.")]
+        [SerializeField, Min(0f)] private float maxWander = 0.004f;
+
         private Mesh _left, _right, _leftWall, _rightWall;
         private int _direction;
         private float _drawn = -1f;
@@ -74,6 +79,7 @@ namespace VRSurgery.Transplant
 
         private float[] _gapeTarget = new float[0];
         private float[] _gapeCurrent = new float[0];
+        private float[] _wander = new float[0];
 
         private Vector3 _pressLocal;
         private float _pressTarget;
@@ -90,6 +96,9 @@ namespace VRSurgery.Transplant
 
         /// <summary>Length of the incision itself, in metres.</summary>
         public float IncisionLength => 2f * halfLength * Mathf.Abs(incisionEnd - incisionStart);
+
+        /// <summary>Goes up every time the meshes are rebuilt, so anything drawn on the skin knows to follow.</summary>
+        public int Version { get; private set; }
 
         public event Action Opened;
         public event Action Closed;
@@ -150,7 +159,7 @@ namespace VRSurgery.Transplant
             _direction = 0;
             Openness01 = 0f;
             EnsureGape();
-            for (int i = 0; i < _gapeTarget.Length; i++) { _gapeTarget[i] = 0f; _gapeCurrent[i] = 0f; }
+            for (int i = 0; i < _gapeTarget.Length; i++) { _gapeTarget[i] = 0f; _gapeCurrent[i] = 0f; _wander[i] = 0f; }
             _pressTarget = 0f;
             _pressCurrent = 0f;
             _dirty = true;
@@ -164,7 +173,15 @@ namespace VRSurgery.Transplant
         /// drawn back shut). <paramref name="alongFrom"/> and <paramref name="alongTo"/> run 0..1
         /// over the incision.
         /// </summary>
-        public void SetCut(float alongFrom, float alongTo, bool cut)
+        public void SetCut(float alongFrom, float alongTo, bool cut) => SetCut(alongFrom, alongTo, cut, 0f, 0f);
+
+        /// <summary>
+        /// As <see cref="SetCut(float, float, bool)"/>, with where the blade actually ran: the
+        /// lateral offset from the midline at each end of the stretch, in metres. The wound lies
+        /// there rather than on the drawn line. Ignored when stitching: a sutured wound stays
+        /// where it was cut.
+        /// </summary>
+        public void SetCut(float alongFrom, float alongTo, bool cut, float lateralFrom, float lateralTo)
         {
             EnsureGape();
             float lo = Mathf.Min(alongFrom, alongTo), hi = Mathf.Max(alongFrom, alongTo);
@@ -176,7 +193,49 @@ namespace VRSurgery.Transplant
 
                 float target = cut ? gapeWidth * EndTaper(along) : 0f;
                 if (!Mathf.Approximately(_gapeTarget[r], target)) { _gapeTarget[r] = target; _dirty = true; }
+
+                if (!cut) { continue; }
+
+                float k = hi - lo > 1e-5f ? Mathf.InverseLerp(alongFrom, alongTo, along) : 0.5f;
+                float wander = Mathf.Clamp(Mathf.Lerp(lateralFrom, lateralTo, k), -maxWander, maxWander) * EndTaper(along);
+                if (!Mathf.Approximately(_wander[r], wander)) { _wander[r] = wander; _dirty = true; }
             }
+        }
+
+        /// <summary>How far the wound lies from the drawn midline at a point along the incision, in metres.</summary>
+        public float WanderAt(float along)
+        {
+            EnsureGape();
+            float t = Mathf.Lerp(incisionStart, incisionEnd, Mathf.Clamp01(along));
+            float f = t * (rows - 1);
+            int r0 = Mathf.Clamp(Mathf.FloorToInt(f), 0, rows - 1);
+            int r1 = Mathf.Min(r0 + 1, rows - 1);
+            return Mathf.Lerp(WanderRow(r0), WanderRow(r1), f - r0);
+        }
+
+        /// <summary>A point on the wound itself: the midline shifted to where the blade ran.</summary>
+        public Vector3 WoundPoint(float along, float lateral = 0f, float lift = 0.0012f) =>
+            IncisionPoint(along, WanderAt(along) + lateral, lift);
+
+        /// <summary>
+        /// Where a mark made on the closed skin is now, after the skin gaped, dented or was
+        /// retracted. <paramref name="restLateral"/> is metres from the midline and
+        /// <paramref name="longitudinal"/> the 0..1 patch fraction at the moment it was made.
+        /// </summary>
+        public Vector3 SurfacePoint(float restLateral, float longitudinal, float lift)
+        {
+            EnsureGape();
+            float side = restLateral < 0f ? -1f : 1f;
+            float u = halfWidth > 0f ? Mathf.Clamp01(Mathf.Abs(restLateral) / halfWidth) : 0f;
+            float f = Mathf.Clamp01(longitudinal) * (rows - 1);
+            int r0 = Mathf.Clamp(Mathf.FloorToInt(f), 0, rows - 1);
+            int r1 = Mathf.Min(r0 + 1, rows - 1);
+
+            Vector3 a = Deformed(side, u, r0, _drawn < 0f ? Openness01 : _drawn);
+            Vector3 b = Deformed(side, u, r1, _drawn < 0f ? Openness01 : _drawn);
+            Vector3 local = Vector3.Lerp(a, b, f - r0);
+            local.z = Mathf.Lerp(-halfLength, halfLength, Mathf.Clamp01(longitudinal));
+            return transform.TransformPoint(local + new Vector3(0f, lift, 0f));
         }
 
         /// <summary>How far apart the cut edges stand at a point along the incision, in metres.</summary>
@@ -226,6 +285,7 @@ namespace VRSurgery.Transplant
         {
             if (_gapeTarget == null || _gapeTarget.Length != rows) { _gapeTarget = new float[rows]; }
             if (_gapeCurrent == null || _gapeCurrent.Length != rows) { _gapeCurrent = new float[rows]; }
+            if (_wander == null || _wander.Length != rows) { _wander = new float[rows]; }
         }
 
         /// <summary>A cut gapes least at its two ends, where the skin either side is uncut.</summary>
@@ -334,6 +394,7 @@ namespace VRSurgery.Transplant
             if (!_dirty && Mathf.Approximately(amount, _drawn) && _left != null && _left.vertexCount > 0) { return; }
             _drawn = amount;
             _dirty = false;
+            Version++;
             EnsureGape();
 
             BuildHalf(_left, -1f, amount);
@@ -368,6 +429,14 @@ namespace VRSurgery.Transplant
         private float GapeRow(int row) =>
             _gapeCurrent != null && row >= 0 && row < _gapeCurrent.Length ? _gapeCurrent[row] : 0f;
 
+        /// <summary>Wound offset of a row, softened with its neighbours so a shaky hand gives a smooth edge.</summary>
+        private float WanderRow(int row)
+        {
+            if (_wander == null || _wander.Length == 0) { return 0f; }
+            float Raw(int r) => _wander[Mathf.Clamp(r, 0, _wander.Length - 1)];
+            return 0.25f * Raw(row - 1) + 0.5f * Raw(row) + 0.25f * Raw(row + 1);
+        }
+
         private Vector3 Deformed(float side, float u, int row, float amount)
         {
             float t = row / (float)(rows - 1);
@@ -378,7 +447,11 @@ namespace VRSurgery.Transplant
             // Tension pulls a cut edge back only near the cut; a few centimetres out the skin is
             // where it always was.
             float gape = GapeRow(row) * Mathf.Pow(1f - u, 3f);
-            float x = side * (u * halfWidth + retraction * g * falloff + gape);
+
+            // Both edges move with the wound's line, so the two halves still meet exactly where
+            // the blade went; the shift fades out across the skin so nothing under the drape moves.
+            float wander = WanderRow(row) * Mathf.Pow(1f - u, 3f);
+            float x = side * (u * halfWidth + retraction * g * falloff + gape) + wander;
 
             // The cut edge rolls a little into the wound as it is pulled back, which is what
             // makes a retracted incision read as thick skin rather than a sheet of paper.
@@ -503,6 +576,7 @@ namespace VRSurgery.Transplant
             _dirty = true;
             _gapeTarget = new float[0];
             _gapeCurrent = new float[0];
+            _wander = new float[0];
             EnsureMeshes();
             Rebuild(0f);
         }

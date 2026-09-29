@@ -1859,8 +1859,12 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>The real scalpel model, aligned so its blade points along +Z, with a tip at the belly of the blade.</summary>
-        private static GameObject BuildScalpel(Vector3 position, Quaternion rotation, out Transform tip, out SurgicalInteractable interactable)
+        private static GameObject BuildScalpel(Vector3 position, Quaternion rotation, out Transform tip, out SurgicalInteractable interactable,
+            out bool bladeKnown, out Renderer bladeBlood)
         {
+            bladeKnown = false;
+            bladeBlood = null;
+            Material blood = Paint("bladeBlood", new Color(0.33f, 0.01f, 0.02f), 0f, 0.92f);
             const float gripZ = -0.02f;
             GameObject tool = GrabbableTool("Bisturi", "scalpel", "Bisturi", ToolType.Scalpel, ToolCapability.Cut,
                 position, rotation, new Vector3(0f, 0f, gripZ), new Vector3(0f, 0f, gripZ - 0.005f),
@@ -1881,6 +1885,8 @@ namespace VRSurgery.EditorTools
                 mesh.name = "ScalpelMesh";
                 mesh.transform.localPosition = new Vector3(0f, 0f, gripZ);
                 tipZ = AlignForward(mesh, "filo", tipZ);
+                bladeKnown = RollBladeUpright(mesh, "filo");
+                bladeBlood = BloodCoat(mesh, "filo", tool.transform, tipZ, blood);
 
                 Material m = new Material(Shader.Find("Universal Render Pipeline/Lit"));
                 Texture2D albedo = AssetDatabase.LoadAssetAtPath<Texture2D>(ScalpelAlbedo);
@@ -1896,17 +1902,167 @@ namespace VRSurgery.EditorTools
             {
                 // No model: a handle and a blade, enough to operate with.
                 Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
-                Box("Cabo", tool.transform, new Vector3(0f, 0f, -0.03f), new Vector3(0.008f, 0.003f, 0.12f), steel);
+                Box("Cabo", tool.transform, new Vector3(0f, 0f, -0.03f), new Vector3(0.003f, 0.008f, 0.12f), steel);
                 Box("Lamina", tool.transform, new Vector3(0f, -0.002f, 0.045f), new Vector3(0.0015f, 0.008f, 0.03f), steel);
+
+                // Blade in the tool's Y-Z plane by construction, so its face is the tool's X.
+                bladeKnown = true;
+                GameObject coat = Box("SangueLamina", tool.transform, new Vector3(0f, -0.002f, 0.052f),
+                    new Vector3(0.0019f, 0.0083f, 0.016f), blood, null, false);
+                bladeBlood = coat.GetComponent<Renderer>();
             }
+
+            if (bladeBlood != null) { bladeBlood.enabled = false; }
 
             GameObject tipObject = new GameObject("BladeTip");
             tipObject.transform.SetParent(tool.transform, false);
             tipObject.transform.localPosition = new Vector3(0f, 0f, tipZ);
             tip = tipObject.transform;
 
-            Debug.Log($"[Transplante] bisturi com ponta a {(tipZ - gripZ) * 100f:F1} cm da empunhadura");
+            Debug.Log($"[Transplante] bisturi com ponta a {(tipZ - gripZ) * 100f:F1} cm da empunhadura; " +
+                      (bladeKnown ? "lâmina de pé no plano Y-Z (o fio conta)" : "orientação da lâmina desconhecida (o fio não conta)"));
             return tool;
+        }
+
+        /// <summary>
+        /// Rolls the scalpel model about its length so the blade stands in the tool's Y-Z plane,
+        /// belly down: held naturally, the edge then meets the skin, and the incision worker can
+        /// tell a blade on its edge from one laid flat by reading the tool's X axis.
+        ///
+        /// The blade's face is the direction the named part is thinnest across (the smallest
+        /// principal axis of its vertices seen down the blade). Returns false, leaving the model
+        /// as it was, when the part is missing or not clearly flat — a guess here would make the
+        /// scalpel refuse to cut when held correctly.
+        /// </summary>
+        private static bool RollBladeUpright(GameObject meshRoot, string partName)
+        {
+            MeshFilter filter = FindPartFilter(meshRoot, partName);
+            if (filter == null) { return false; }
+
+            Transform tool = meshRoot.transform.parent;
+            Vector3[] vertices = filter.sharedMesh.vertices;
+            if (vertices.Length < 3) { return false; }
+
+            Vector2 mean = Vector2.zero;
+            Vector2[] points = new Vector2[vertices.Length];
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Vector3 local = tool.InverseTransformPoint(filter.transform.TransformPoint(vertices[i]));
+                points[i] = new Vector2(local.x, local.y);
+                mean += points[i];
+            }
+
+            mean /= points.Length;
+            double a = 0, b = 0, c = 0;
+            foreach (Vector2 p in points)
+            {
+                Vector2 d = p - mean;
+                a += d.x * d.x; b += d.x * d.y; c += d.y * d.y;
+            }
+
+            double half = (a - c) * 0.5, radius = System.Math.Sqrt(half * half + b * b);
+            double smallest = (a + c) * 0.5 - radius, largest = (a + c) * 0.5 + radius;
+            if (largest <= 1e-14 || smallest / largest > 0.25)
+            {
+                Debug.LogWarning($"[Transplante] parte '{partName}' do bisturi não é claramente chata; lâmina deixada como está.");
+                return false;
+            }
+
+            Vector2 face = System.Math.Abs(b) > 1e-14
+                ? new Vector2((float)b, (float)(smallest - a)).normalized
+                : (a < c ? Vector2.right : Vector2.up);
+
+            // Belly down: the blade's bulk lies below the line from the handle to the tip.
+            Vector2 inPlane = new Vector2(-face.y, face.x);
+            if (Vector2.Dot(mean, inPlane) > 0f) { face = -face; }
+
+            float angle = -Mathf.Atan2(face.y, face.x) * Mathf.Rad2Deg;
+            meshRoot.transform.localRotation = Quaternion.AngleAxis(angle, Vector3.forward) * meshRoot.transform.localRotation;
+            Debug.Log($"[Transplante] lâmina do bisturi girada {angle:F0}° para ficar de pé");
+            return true;
+        }
+
+        /// <summary>
+        /// A film of blood over the working end of the blade, shown from the first cut: the blade
+        /// part's own triangles near the tip, pushed out a fraction of a millimetre along their
+        /// normals so the film hugs the steel exactly instead of floating as a red box.
+        /// </summary>
+        private static Renderer BloodCoat(GameObject meshRoot, string partName, Transform tool, float tipZ, Material blood)
+        {
+            MeshFilter filter = FindPartFilter(meshRoot, partName);
+            if (filter == null) { return null; }
+
+            Mesh source = filter.sharedMesh;
+            Vector3[] vertices = source.vertices;
+            Vector3[] normals = source.normals;
+            int[] triangles = source.triangles;
+
+            List<Vector3> coatVertices = new List<Vector3>();
+            List<int> coatTriangles = new List<int>();
+            Dictionary<int, int> remap = new Dictionary<int, int>();
+            const float reach = 0.025f, film = 0.00025f;
+
+            Vector3 ToTool(int index)
+            {
+                Vector3 p = tool.InverseTransformPoint(filter.transform.TransformPoint(vertices[index]));
+                if (normals != null && normals.Length == vertices.Length)
+                {
+                    Vector3 n = tool.InverseTransformDirection(filter.transform.TransformDirection(normals[index])).normalized;
+                    p += n * film;
+                }
+
+                return p;
+            }
+
+            for (int t = 0; t + 2 < triangles.Length; t += 3)
+            {
+                bool near = false;
+                for (int k = 0; k < 3; k++)
+                {
+                    float z = tool.InverseTransformPoint(filter.transform.TransformPoint(vertices[triangles[t + k]])).z;
+                    if (z > tipZ - reach) { near = true; }
+                }
+
+                if (!near) { continue; }
+
+                for (int k = 0; k < 3; k++)
+                {
+                    int index = triangles[t + k];
+                    if (!remap.TryGetValue(index, out int mapped))
+                    {
+                        mapped = coatVertices.Count;
+                        coatVertices.Add(ToTool(index));
+                        remap[index] = mapped;
+                    }
+
+                    coatTriangles.Add(mapped);
+                }
+            }
+
+            if (coatTriangles.Count == 0) { return null; }
+
+            Mesh coat = new Mesh { name = "SangueLamina" };
+            coat.SetVertices(coatVertices);
+            coat.SetTriangles(coatTriangles, 0);
+            coat.RecalculateNormals();
+            coat.RecalculateBounds();
+
+            GameObject go = MeshPart("SangueLamina", tool, coat, blood);
+            go.transform.localPosition = Vector3.zero;
+            go.transform.localRotation = Quaternion.identity;
+            return go.GetComponent<Renderer>();
+        }
+
+        private static MeshFilter FindPartFilter(GameObject meshRoot, string partName)
+        {
+            foreach (Transform t in meshRoot.GetComponentsInChildren<Transform>())
+            {
+                if (t.name != partName) { continue; }
+                MeshFilter filter = t.GetComponent<MeshFilter>();
+                return filter != null && filter.sharedMesh != null && filter.sharedMesh.isReadable ? filter : null;
+            }
+
+            return null;
         }
 
         /// <summary>Rotates a tool mesh so the named part's farthest vertex lies on +Z; returns that Z in tool space.</summary>
@@ -2019,7 +2175,7 @@ namespace VRSurgery.EditorTools
         /// </summary>
         private static void BuildSkinStages(GameObject systems, TransplantProcedure procedure, GameObject sternum,
             Vector3 thorax, out SkinIncisionWorker incision, out SutureWorker suture, out ChestSkinPatch patch,
-            out SurgicalInteractable scalpel, out SurgicalInteractable needleHolder)
+            out SurgicalInteractable scalpel, out SurgicalInteractable needleHolder, out StageResultPopup popup)
         {
             EnsureLayer(OperatorLayer);
             GameObject field = new GameObject("CampoOperatorio");
@@ -2034,7 +2190,8 @@ namespace VRSurgery.EditorTools
 
             // Handles toward the surgeon, working ends away, on the near half of the tray.
             Quaternion away = Quaternion.LookRotation(Vector3.left, Vector3.up);
-            GameObject scalpelTool = BuildScalpel(trayTop + new Vector3(0.12f, 0.012f, 0.05f), away, out Transform blade, out scalpel);
+            GameObject scalpelTool = BuildScalpel(trayTop + new Vector3(0.12f, 0.012f, 0.05f), away, out Transform blade, out scalpel,
+                out bool bladeKnown, out Renderer bladeBlood);
             GameObject holder = BuildNeedleHolder(trayTop + new Vector3(0.12f, 0.014f, -0.04f), away, out Transform needle, out needleHolder);
 
             // ---- incision visuals
@@ -2062,6 +2219,20 @@ namespace VRSurgery.EditorTools
             incision = systems.AddComponent<SkinIncisionWorker>();
             incision.Bind(blade, scalpel, patch, procedure, cut.GetComponent<MeshFilter>(),
                 guide.GetComponent<MeshRenderer>(), beads);
+
+            // Nicks off the line stay on the skin, and the blade comes away bloody.
+            GameObject scratches = MeshPart("IncisaoArranhoes", field.transform, null,
+                Paint("scratch", new Color(0.42f, 0.03f, 0.04f), 0f, 0.7f));
+            scratches.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            scratches.GetComponent<MeshRenderer>().enabled = false;
+            incision.BindMarks(scratches.GetComponent<MeshFilter>(), bladeBlood);
+            incision.SetEdgeRequirement(bladeKnown);
+
+            // The result card over the chest when the incision is finished.
+            GameObject anchor = new GameObject("PopupAncora");
+            anchor.transform.SetParent(field.transform, true);
+            anchor.transform.position = patch.IncisionPoint(0.55f, 0f, 0.15f);
+            popup = BuildResultPopup(anchor.transform, incision);
 
             // Trickles running from the cut down the side of the chest: a small pool of stretched
             // drops, reused, so nothing is created while the visitor cuts.
@@ -2121,6 +2292,76 @@ namespace VRSurgery.EditorTools
             Debug.Log($"[Transplante] incisão de {patch.IncisionLength * 100f:F0} cm e {stitches} pontos de sutura; " +
                       $"bisturi em {scalpelTool.transform.position}, porta-agulha em {holder.transform.position}, " +
                       $"mesa de Mayo '{stand.name}'");
+        }
+
+        /// <summary>
+        /// The result card: a dark rounded plate, three stars, a title and a detail line. Hidden
+        /// until a stage is graded.
+        /// </summary>
+        private static StageResultPopup BuildResultPopup(Transform anchor, SkinIncisionWorker incision)
+        {
+            GameObject root = new GameObject("CartaoResultado");
+            root.transform.position = anchor.position;
+
+            GameObject body = new GameObject("Corpo");
+            body.transform.SetParent(root.transform, false);
+
+            // The card's +Z faces away from the viewer (it is turned like the progress ring), so
+            // everything readable sits on its -Z side.
+            Box("Placa", body.transform, new Vector3(0f, 0f, 0.002f), new Vector3(0.2f, 0.085f, 0.002f),
+                MakeUnlit(new Color(0.04f, 0.07f, 0.1f, 0.88f)), null, false);
+            Box("Borda", body.transform, new Vector3(0f, 0.0415f, 0.001f), new Vector3(0.2f, 0.002f, 0.001f),
+                MakeUnlit(new Color(0.3f, 0.8f, 1f)), null, false);
+
+            // One queue step after the plate, so the stars never sort behind it.
+            Material lit = MakeUnlit(new Color(1f, 0.82f, 0.25f));
+            Material dim = MakeUnlit(new Color(0.25f, 0.28f, 0.32f));
+            lit.renderQueue = dim.renderQueue = 3001;
+            Mesh star = StarMesh(0.013f, 0.0055f);
+            Renderer[] stars = new Renderer[3];
+            for (int i = 0; i < 3; i++)
+            {
+                GameObject s = MeshPart("Estrela_" + i, body.transform, star, dim);
+                // The star's winding already faces -Z, the card's readable side.
+                s.transform.localPosition = new Vector3((i - 1) * 0.032f, 0.022f, -0.001f);
+                stars[i] = s.GetComponent<Renderer>();
+            }
+
+            TextMesh title = BuildScreenText(body.transform, "Titulo", new Vector3(0f, -0.006f, -0.001f), 0.016f);
+            title.transform.localRotation = Quaternion.identity;
+            TextMesh detail = BuildScreenText(body.transform, "Detalhe", new Vector3(0f, -0.028f, -0.001f), 0.0085f);
+            detail.transform.localRotation = Quaternion.identity;
+
+            StageResultPopup popup = root.AddComponent<StageResultPopup>();
+            popup.Bind(body.transform, title, detail, stars, lit, dim, incision, anchor);
+            body.SetActive(false);
+            return popup;
+        }
+
+        /// <summary>A flat five-pointed star facing -Z, for the result card.</summary>
+        private static Mesh StarMesh(float outer, float inner)
+        {
+            List<Vector3> vertices = new List<Vector3> { Vector3.zero };
+            for (int i = 0; i < 10; i++)
+            {
+                float a = Mathf.PI * 0.5f + i * Mathf.PI / 5f;
+                float r = i % 2 == 0 ? outer : inner;
+                vertices.Add(new Vector3(Mathf.Cos(a) * r, Mathf.Sin(a) * r, 0f));
+            }
+
+            List<int> triangles = new List<int>();
+            for (int i = 0; i < 10; i++)
+            {
+                int a = 1 + i, b = 1 + (i + 1) % 10;
+                triangles.Add(0); triangles.Add(a); triangles.Add(b);
+            }
+
+            Mesh mesh = new Mesh { name = "Estrela" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         /// <summary>The surgical-marker line: short purple dashes down the midline.</summary>

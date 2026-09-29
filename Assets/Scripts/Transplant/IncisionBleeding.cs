@@ -101,7 +101,7 @@ namespace VRSurgery.Transplant
 
                 float along = (bin + 0.5f) / incision.Bins;
                 float side = _random.NextDouble() < 0.5 ? -1f : 1f;
-                Vector3 start = patch.IncisionPoint(along, side * 0.003f, 0.0008f);
+                Vector3 start = patch.WoundPoint(along, side * 0.003f, 0.0008f);
 
                 _live.Add(new Trickle { Body = body, Start = start, Head = start, Run = 0f, Flowing = true });
                 body.gameObject.SetActive(true);

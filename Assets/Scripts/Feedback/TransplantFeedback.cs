@@ -217,6 +217,14 @@ namespace VRSurgery.Feedback
 
         private void HandleError(ErrorSeverity severity, string message)
         {
+            // A warning is a hint about technique, not a mistake on the patient: the text says it,
+            // the hand gets a nudge, and the error buzz stays reserved for errors.
+            if (severity == ErrorSeverity.Warning)
+            {
+                Pulse(_tick);
+                return;
+            }
+
             Play(ProceduralTones.ErrorBuzz, 0.6f);
             Pulse(_strong);
         }
@@ -402,6 +410,7 @@ namespace VRSurgery.Feedback
         private void Start()
         {
             if (cauteryWorker != null && _cautery == null) { BindCautery(cauteryWorker, cauteryPen); }
+            if (resultPopup != null && _popup == null) { BindResultPopup(resultPopup); }
         }
 
         private void HandleBurning()
@@ -416,6 +425,31 @@ namespace VRSurgery.Feedback
         {
             Play(ProceduralTones.SoftConfirm, 0.5f);
             PulseHolder(_cauteryPen, _confirm);
+        }
+
+        [Header("Result card (optional)")]
+        [SerializeField] private StageResultPopup resultPopup;
+        private StageResultPopup _popup;
+
+        /// <summary>Adds the result card: a rising chime for each star as it lights.</summary>
+        public void BindResultPopup(StageResultPopup popup)
+        {
+            if (_popup != null) { _popup.StarRevealed -= HandleStarRevealed; }
+            _popup = null;
+            resultPopup = popup;
+
+            // Same rule as the cautery: only a live component holds the subscription.
+            if (Application.isPlaying && popup != null)
+            {
+                _popup = popup;
+                _popup.StarRevealed += HandleStarRevealed;
+            }
+        }
+
+        private void HandleStarRevealed(int index)
+        {
+            Play(ProceduralTones.Star(index), 0.6f);
+            Pulse(_tick);
         }
 
         /// <summary>Adds the sternal saw: its sound and its vibration while it cuts.</summary>

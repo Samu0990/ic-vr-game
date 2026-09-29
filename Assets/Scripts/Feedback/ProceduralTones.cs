@@ -39,6 +39,14 @@ namespace VRSurgery.Feedback
             new[] { (523f, 0f, 0.25f), (659f, 0.18f, 0.25f), (784f, 0.36f, 0.30f), (1046f, 0.54f, 0.5f) }));
 
         /// <summary>The blade on skin: a brief filtered hiss.</summary>
+        /// <summary>One chime per star on the result card, a major third higher each time.</summary>
+        public static AudioClip Star(int index)
+        {
+            int i = Mathf.Clamp(index, 0, 2);
+            float hz = 1046.5f * Mathf.Pow(2f, i * 4f / 12f);
+            return Get("star-" + i, () => Tone("star-" + i, 0.22f, 0.3f, hz, hz * 2f));
+        }
+
         public static AudioClip Slice => Get("slice", () => Noise("slice", 0.12f, 0.18f));
 
         /// <summary>Needle through skin: a tiny click.</summary>
