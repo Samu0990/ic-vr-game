@@ -122,6 +122,8 @@ na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órg�
   levantados até 40 cm, para uma criança alcançar a mesa como um adulto. Tecla **R** no PC
   recentraliza a qualquer momento (para o operador).
 - **Marca dos pés** verde no chão onde o visitante fica.
+- **Brilho ao aproximar a mão** (`GrabGlow`): o instrumento clareia e pulsa em ciano enquanto
+  a mão está perto o bastante para pegar, sem trocar o material (a textura do bisturi continua).
 - **Seta amarela pulando** sobre o instrumento que a etapa pede (`NextToolHint`): bisturi na
   incisão, bisturi elétrico enquanto houver sangramento e no pericárdio, serra no esterno, pás
   na fibrilação, porta-agulha no fechamento. Some quando o instrumento está na mão; não aparece

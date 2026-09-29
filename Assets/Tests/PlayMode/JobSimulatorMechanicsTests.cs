@@ -145,6 +145,28 @@ namespace VRSurgery.Tests
             Assert.IsTrue(body.isKinematic);
         }
 
+        // ------------------------------------------------------------------ grab glow
+
+        [Test]
+        public void AnInstrumentGlowsWhileAHandIsNearAndKeepsItsOwnMaterial()
+        {
+            GameObject tool = Spawn("Tool");
+            GameObject part = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            part.transform.SetParent(tool.transform, false);
+            Renderer renderer = part.GetComponent<Renderer>();
+            Material own = renderer.sharedMaterial;
+
+            GrabGlow glow = tool.AddComponent<GrabGlow>();
+
+            glow.SetGlow(true);
+            Assert.IsTrue(glow.IsGlowing);
+            Assert.IsTrue(renderer.HasPropertyBlock(), "Tinted through a property block,");
+            Assert.AreSame(own, renderer.sharedMaterial, "not by swapping the material away.");
+
+            glow.SetGlow(false);
+            Assert.IsFalse(renderer.HasPropertyBlock(), "Gone without a trace once the hand leaves.");
+        }
+
         // ------------------------------------------------------------------ visitor fit
 
         private VisitorFit Rig(float eyeHeight, out Transform rig, out Transform head, out Transform stance)

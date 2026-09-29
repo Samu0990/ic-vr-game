@@ -2700,6 +2700,9 @@ namespace VRSurgery.EditorTools
             grab.throwOnDetach = true;
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
 
+            // Lights up while a hand is close enough to take it.
+            tool.AddComponent<GrabGlow>();
+
             ReturnHomeOnRelease release = tool.AddComponent<ReturnHomeOnRelease>();
             release.Bind(interactable);
             release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f);
