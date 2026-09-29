@@ -2796,8 +2796,8 @@ namespace VRSurgery.EditorTools
             grab.throwOnDetach = true;
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
 
-            // Lights up while a hand is close enough to take it.
-            tool.AddComponent<GrabGlow>();
+            // No glow of its own: GrabOutlines draws the light-blue rim on whichever instrument
+            // the hand would take, and lighting every one within reach would contradict it.
 
             ReturnHomeOnRelease release = tool.AddComponent<ReturnHomeOnRelease>();
             release.Bind(interactable);

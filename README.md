@@ -130,7 +130,7 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   é avisado no monitor. Não diminui durante a vez;
   zera para o próximo visitante.
 - **Lâmina**: depois de ~3 s tentando cortar com a lâmina errada, a regra do fio cai.
-- **Seta** sobre o instrumento da etapa e **brilho** ao aproximar a mão.
+- **Seta** sobre o instrumento da etapa e **contorno azul-claro** no que a mão vai pegar.
 
 ### Mecânica estilo Job Simulator (ninguém anda no estande)
 
@@ -153,8 +153,29 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   está com o óculos, por **4 s** encerra a vez e prepara o próximo visitante (um clique na mão
   marca cada ponto). No PC/Link: **R** recentraliza, **N** encerra a vez.
 - **Marca dos pés** verde no chão onde o visitante fica.
-- **Brilho ao aproximar a mão** (`GrabGlow`): o instrumento clareia e pulsa em ciano enquanto
-  a mão está perto o bastante para pegar, sem trocar o material (a textura do bisturi continua).
+- **Mãos de luva no lugar dos controles** (`ControllerHand` + `HandPoser`): a mão oficial da
+  Unity que já vem no projeto (sample *HandVisualizer* do pacote XR Hands, a mesma do rastreio de
+  mãos), com a luva de nitrila azul. Ela segue a **pose de empunhadura** do controle (a palma
+  em volta do cabo, definição "grip" do OpenXR), não a pose de mira que o rig do template usa —
+  essa fica na ponta do controle, uns centímetros à frente da mão. O modelo é girado a partir
+  dos próprios ossos (palma para o cabo, dedos envolvendo), então qualquer mão com ossos no
+  padrão OpenXR serve. **Os dedos mexem**: apertar o grip fecha médio, anelar e mínimo e traz o
+  polegar; o gatilho dobra o indicador; soltando, a mão relaxa (nunca fica chapada). Sem
+  Animator nem clipes: cada articulação gira no próprio eixo, achado na pose de repouso.
+- **Pega de perto, pela palma** (Job Simulator): a esfera que acha instrumentos (10 cm) e o ponto
+  onde eles ficam presos saem da ponta do controle e vão para **dentro do punho**; entre dois
+  instrumentos próximos vale o de **superfície mais perto** (`ClosestPointOnCollider`); o **raio
+  de longe está desligado** (não dá mais para puxar instrumento do outro lado da mesa). O
+  **ponto de toque** (`Poke Point`, que aperta teclas e faz os gestos com a mão) vai para a
+  **ponta do indicador** da luva. Ajuste fino no óculos, no `ControllerHand` de cada mão:
+  `palmDepth`, `positionOffset`, `rotationOffset`, `fistOffset`.
+- **Contorno azul-claro** (`GrabOutlines` + `InteractableOutline`, shader
+  `VRSurgery/GrabOutline`): só **o que cada mão vazia pegaria agora** fica contornado — não todos
+  os instrumentos ao alcance. Some ao pegar. É um casco invertido de 2,5 mm (um desenho a mais
+  por objeto contornado, nada quando não há contorno); o construtor grava normais suavizadas no
+  UV3 das malhas geradas para o contorno não abrir nas quinas. Brilho, vidro, texto e partículas
+  não recebem contorno. O antigo brilho ciano (`GrabGlow`) saiu da cena porque acendia todos os
+  instrumentos perto da mão ao mesmo tempo; o script continua no projeto.
 - **Seta amarela pulando** sobre o instrumento que a etapa pede (`NextToolHint`): bisturi na
   incisão, bisturi elétrico enquanto houver sangramento e no pericárdio, serra no esterno, pás
   na fibrilação, porta-agulha no fechamento. Some quando o instrumento está na mão; não aparece
