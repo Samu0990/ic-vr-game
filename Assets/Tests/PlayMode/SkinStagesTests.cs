@@ -286,6 +286,117 @@ namespace VRSurgery.Tests
             Assert.IsTrue(patch.IsClosed);
         }
 
+        // ------------------------------------------------------------------ tissue physics
+
+        [Test]
+        public void TheCutSpringsOpenBehindTheBlade()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            // Half the line, so the incision is not finished and the chest stays closed.
+            for (int i = 0; i <= 30; i++)
+            {
+                blade.position = patch.IncisionPoint(0.2f + 0.3f * i / 30f, 0f, -0.003f);
+                worker.Tick(Step);
+                patch.Tick(Step);
+            }
+
+            for (int i = 0; i < 30; i++) { patch.Tick(Step); }
+
+            Assert.Greater(patch.GapeAt(0.35f), 0.002f,
+                "Skin is under tension: a fresh cut gapes a few millimetres on its own.");
+            Assert.AreEqual(0f, patch.GapeAt(0.85f), 1e-5f, "Skin the blade never reached stays shut.");
+            Assert.IsFalse(patch.IsOpen);
+        }
+
+        [Test]
+        public void TheSkinDentsUnderTheBladeAndRecovers()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            blade.position = patch.IncisionPoint(0.5f, 0f, -0.004f);
+            for (int i = 0; i < 20; i++)
+            {
+                worker.Tick(Step);
+                patch.Tick(Step);
+            }
+
+            Assert.Greater(patch.PressDepth, 0.002f, "The blade pushes the skin in before it parts it.");
+
+            blade.position = patch.IncisionPoint(0.5f, 0f, 0.05f);
+            for (int i = 0; i < 60; i++)
+            {
+                worker.Tick(Step);
+                patch.Tick(Step);
+            }
+
+            Assert.AreEqual(0f, patch.PressDepth, 1e-5f, "and springs back once the blade lifts.");
+        }
+
+        [Test]
+        public void ABladeHoveringACentimetreAboveCutsNothing()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            for (int i = 0; i <= 90; i++)
+            {
+                blade.position = patch.IncisionPoint(i / 90f, 0f, 0.01f);
+                worker.Tick(Step);
+            }
+
+            Assert.AreEqual(0f, worker.Progress01, "Skin is cut by touching it, not by pointing at it.");
+        }
+
+        [Test]
+        public void CuttingDownToTheBoneIsAnErrorAndBleedsMore()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            int deep = 0;
+            worker.DeepCut += () => deep++;
+
+            for (int i = 0; i <= 20; i++)
+            {
+                blade.position = patch.IncisionPoint(0.2f + 0.2f * i / 20f, 0f, -0.026f);
+                worker.Tick(Step);
+            }
+
+            Assert.Greater(deep, 0, "2.6 cm under the skin is through the fat and onto the sternum.");
+            Assert.Greater(worker.Progress01, 0f, "It still cuts,");
+            Assert.IsTrue(worker.IsBinDeep(Mathf.FloorToInt(0.3f * worker.Bins)), "and that stretch is marked as deep.");
+        }
+
+        [Test]
+        public void StitchesDrawTheGapingCutShut()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            patch.SetCut(0f, 1f, true);
+            for (int i = 0; i < 60; i++) { patch.Tick(Step); }
+            Assert.Greater(patch.GapeAt(0.5f), 0.002f, "test setup: the whole line is cut and gaping.");
+
+            SutureWorker worker = Suture(patch, out Transform needle, out _);
+            for (int k = 0; k < 5; k++)
+            {
+                Hold(worker, needle, worker.MarkPosition(k, 0), 0.5f);
+                Hold(worker, needle, worker.MarkPosition(k, 1), 0.5f);
+            }
+
+            for (int i = 0; i < 60; i++) { patch.Tick(Step); }
+
+            foreach (float along in new[] { 0.05f, 0.3f, 0.5f, 0.7f, 0.95f })
+            {
+                Assert.AreEqual(0f, patch.GapeAt(along), 1e-5f, $"The stitches leave no gap at {along:F2} of the line.");
+            }
+        }
+
         // ------------------------------------------------------------------ suture
 
         private SutureWorker Suture(ChestSkinPatch patch, out Transform needle, out List<GameObject> knots)

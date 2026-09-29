@@ -216,8 +216,13 @@ namespace VRSurgery.Feedback
             // The blade advances most frames of a stroke; one hiss per stroke-length is enough.
             if (_sinceSlice < 0.14f) { return; }
             _sinceSlice = 0f;
-            Play(ProceduralTones.Slice, 0.55f);
-            PulseHolder(scalpel, _tick);
+
+            // Resistance in the hand follows depth: skin barely drags, fat drags more, and a blade
+            // down on bone judders.
+            float depth = incision != null ? incision.CutDepth01 : 0f;
+            HapticProfile feel = depth < 0.35f ? _tick : depth < 0.85f ? _confirm : _strong;
+            Play(ProceduralTones.Slice, Mathf.Lerp(0.4f, 0.75f, depth));
+            PulseHolder(scalpel, feel);
         }
 
         private void HandleNeedlePassed()

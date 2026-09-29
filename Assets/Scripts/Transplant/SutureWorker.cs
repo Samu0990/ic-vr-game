@@ -86,13 +86,17 @@ namespace VRSurgery.Transplant
         {
             if (patch == null) { return transform.position; }
 
-            // Head to feet: the first stitch sits near the top of the incision.
-            float along = stitches <= 1 ? 0.5f : Mathf.Lerp(0.9f, 0.1f, index / (float)(stitches - 1));
-
             // Entry on the surgeon's side, exit on the far side.
             float lateral = phase == 0 ? bite : -bite;
-            return patch.IncisionPoint(along, lateral, 0.0015f);
+            return patch.IncisionPoint(StitchAlong(index), lateral, 0.0015f);
         }
+
+        /// <summary>Head to feet: the first stitch sits near the top of the incision.</summary>
+        private float StitchAlong(int index) =>
+            stitches <= 1 ? 0.5f : Mathf.Lerp(0.9f, 0.1f, index / (float)(stitches - 1));
+
+        /// <summary>Half the stretch of incision one stitch holds shut, with the ends covered too.</summary>
+        private float StitchReach => stitches <= 1 ? 0.5f : 0.4f / (stitches - 1) + 0.1f / stitches;
 
         private Vector3 CurrentTarget() => MarkPosition(Mathf.Min(_stitch, stitches - 1), _phase);
 
@@ -118,6 +122,12 @@ namespace VRSurgery.Transplant
 
             IsWorking = true;
             _held += deltaTime;
+
+            // The needle point dents the skin as it is pushed, then the skin gives.
+            float surface = patch.SurfaceHeightUnder(needleTip.position);
+            float depth = surface - needleTip.position.y;
+            if (depth > -0.003f) { patch.Press(needleTip.position, Mathf.Max(0.0015f, depth)); }
+
             if (_held < holdSeconds) { return; }
 
             _held = 0f;
@@ -131,6 +141,9 @@ namespace VRSurgery.Transplant
 
             _phase = 0;
             if (_stitch < knots.Count && knots[_stitch] != null) { knots[_stitch].SetActive(true); }
+
+            // Tying the stitch draws the gaping edges together over its share of the incision.
+            patch.SetCut(StitchAlong(_stitch) - StitchReach, StitchAlong(_stitch) + StitchReach, false);
             _stitch++;
             Tied?.Invoke(_stitch);
 

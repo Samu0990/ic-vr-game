@@ -38,11 +38,21 @@ namespace VRSurgery.Transplant
         [Tooltip("How far from the midline, in metres, the blade may run and still be on the line.")]
         [SerializeField, Min(0.002f)] private float lateralTolerance = 0.014f;
 
-        [Tooltip("How far above the skin the tip may be and still be cutting, in metres.")]
-        [SerializeField, Min(0.001f)] private float above = 0.018f;
+        [Tooltip("How far above the skin the tip may be and still count as touching it, in metres. " +
+                 "Only tracking noise: a blade hovering over skin cuts nothing.")]
+        [SerializeField, Min(0.001f)] private float above = 0.004f;
 
         [Tooltip("How far below the skin the tip may be and still be cutting, in metres.")]
         [SerializeField, Min(0.001f)] private float below = 0.03f;
+
+        [Tooltip("Deeper than this is through the subcutaneous fat and onto the sternum: it still " +
+                 "cuts, but it is an error and it bleeds more.")]
+        [SerializeField, Min(0.002f)] private float tooDeep = 0.022f;
+
+        [SerializeField, Min(0.5f)] private float deepCooldown = 3f;
+
+        [Tooltip("Seconds for the beads of blood along a fresh cut to well up to full size.")]
+        [SerializeField, Min(0.05f)] private float beadGrowSeconds = 1.4f;
 
         [Tooltip("Fraction of the line that has to be cut to count as a finished incision.")]
         [SerializeField, Range(0.5f, 1f)] private float completeFraction = 0.9f;
@@ -71,9 +81,27 @@ namespace VRSurgery.Transplant
         private Mesh _lineMesh;
         private bool _lineDirty = true;
 
+        private float[] _cutTime = new float[0];
+        private bool[] _deep = new bool[0];
+        private Vector3[] _beadScale;
+        private float _clock;
+        private float _sinceDeep = float.PositiveInfinity;
+
         public bool IsWorking { get; private set; }
         public bool IsComplete { get; private set; }
         public float Progress01 => bins <= 0 ? 0f : _cutCount / (float)bins;
+
+        /// <summary>How deep the blade is this frame, 0 at the skin and 1 at too deep. Drives the hand's vibration.</summary>
+        public float CutDepth01 { get; private set; }
+
+        public int Bins => bins;
+        public int CutCount => _cutCount;
+        public bool IsBinCut(int bin) => bin >= 0 && bin < _cut.Length && _cut[bin];
+        public bool IsBinDeep(int bin) => bin >= 0 && bin < _deep.Length && _deep[bin];
+
+        /// <summary>Seconds since a stretch of the line was cut; infinite if it has not been.</summary>
+        public float BinAge(int bin) =>
+            IsBinCut(bin) && bin < _cutTime.Length ? _clock - _cutTime[bin] : float.PositiveInfinity;
 
         float IWorkProgressSource.WorkProgress01 => Mathf.Clamp01(Progress01 / completeFraction);
         Vector3 IWorkProgressSource.WorkPoint => bladeTip != null ? bladeTip.position : transform.position;
@@ -91,11 +119,26 @@ namespace VRSurgery.Transplant
 
         public event Action Completed;
 
+        /// <summary>Raised when the blade goes through to the bone.</summary>
+        public event Action DeepCut;
+
         private void Awake() => EnsureState();
 
         private void EnsureState()
         {
             if (_cut == null || _cut.Length != bins) { _cut = new bool[bins]; }
+            if (_cutTime == null || _cutTime.Length != bins) { _cutTime = new float[bins]; }
+            if (_deep == null || _deep.Length != bins) { _deep = new bool[bins]; }
+
+            if (_beadScale == null || _beadScale.Length != bloodBeads.Count)
+            {
+                _beadScale = new Vector3[bloodBeads.Count];
+                for (int i = 0; i < bloodBeads.Count; i++)
+                {
+                    if (bloodBeads[i] != null) { _beadScale[i] = bloodBeads[i].transform.localScale; }
+                }
+            }
+
             if (_lineMesh == null && cutLine != null)
             {
                 _lineMesh = new Mesh { name = "IncisionLine" };
@@ -110,7 +153,10 @@ namespace VRSurgery.Transplant
         {
             EnsureState();
             IsWorking = false;
+            CutDepth01 = 0f;
             _sinceDeviation += Mathf.Max(0f, deltaTime);
+            _sinceDeep += Mathf.Max(0f, deltaTime);
+            _clock += Mathf.Max(0f, deltaTime);
 
             UpdateVisibility();
 
@@ -122,7 +168,8 @@ namespace VRSurgery.Transplant
             float along = patch.AlongIncision(patch.LongitudinalOf(tip));
             float lateral = patch.LateralOf(tip);
             float surface = patch.SurfaceHeightUnder(tip);
-            bool atSkin = tip.y <= surface + above && tip.y >= surface - below;
+            float depth = surface - tip.y;
+            bool atSkin = depth >= -above && depth <= below;
             bool onLength = along >= -0.02f && along <= 1.02f;
 
             if (!atSkin || !onLength)
@@ -132,6 +179,9 @@ namespace VRSurgery.Transplant
                 RefreshLine();
                 return;
             }
+
+            // Skin is elastic: it dents under the blade before it parts, on or off the line.
+            if (depth > 0f && Mathf.Abs(lateral) < lateralTolerance * 4f) { patch.Press(tip, depth); }
 
             if (Mathf.Abs(lateral) > lateralTolerance)
             {
@@ -158,11 +208,21 @@ namespace VRSurgery.Transplant
 
             _offLine = 0f;
             IsWorking = true;
+            CutDepth01 = Mathf.Clamp01(depth / tooDeep);
 
             if (!_announced)
             {
                 _announced = true;
                 Started?.Invoke();
+            }
+
+            bool deep = depth > tooDeep;
+            if (deep && _sinceDeep >= deepCooldown)
+            {
+                _sinceDeep = 0f;
+                SurgeryEvents.RaiseError(ErrorSeverity.MinorError,
+                    "Incisão profunda demais: a lâmina chegou ao esterno. Corte só a pele.");
+                DeepCut?.Invoke();
             }
 
             int bin = Mathf.Clamp(Mathf.FloorToInt(Mathf.Clamp01(along) * bins), 0, bins - 1);
@@ -176,9 +236,14 @@ namespace VRSurgery.Transplant
             bool advanced = false;
             for (int i = from; i <= to; i++)
             {
-                if (_cut[i]) { continue; }
-                _cut[i] = true;
-                _cutCount++;
+                if (_cut[i])
+                {
+                    // Going back over a stretch deeper than before still marks it as deep.
+                    if (deep) { _deep[i] = true; }
+                    continue;
+                }
+
+                MarkCut(i, deep);
                 advanced = true;
             }
 
@@ -198,11 +263,21 @@ namespace VRSurgery.Transplant
             RefreshLine();
         }
 
+        /// <summary>One stretch of the line cut: remembered, sprung open, left to bleed.</summary>
+        private void MarkCut(int bin, bool deep)
+        {
+            _cut[bin] = true;
+            _cutTime[bin] = _clock;
+            _deep[bin] = deep;
+            _cutCount++;
+            if (patch != null) { patch.SetCut(bin / (float)bins, (bin + 1) / (float)bins, true); }
+        }
+
         private void Finish()
         {
             for (int i = 0; i < bins; i++)
             {
-                if (!_cut[i]) { _cut[i] = true; _cutCount++; }
+                if (!_cut[i]) { MarkCut(i, false); }
             }
 
             IsComplete = true;
@@ -240,6 +315,15 @@ namespace VRSurgery.Transplant
                 int bin = bloodBeads.Count <= 0 ? 0 : Mathf.Min(bins - 1, i * bins / bloodBeads.Count);
                 bool show = !open && _cut.Length > bin && _cut[bin];
                 if (bead.activeSelf != show) { bead.SetActive(show); }
+
+                if (show && _beadScale != null && i < _beadScale.Length)
+                {
+                    // Blood wells up along a fresh cut over a second or so rather than appearing,
+                    // and a cut that went too deep bleeds more.
+                    float grow = Mathf.SmoothStep(0.15f, 1f, Mathf.Clamp01(BinAge(bin) / beadGrowSeconds));
+                    float size = grow * (IsBinDeep(bin) ? 1.6f : 1f);
+                    bead.transform.localScale = _beadScale[i] * size;
+                }
             }
         }
 
@@ -263,11 +347,14 @@ namespace VRSurgery.Transplant
                 float wa = cutWidth * Taper(a);
                 float wb = cutWidth * Taper(b);
 
+                // Just under the skin: the floor of the slit, seen between the gaping edges,
+                // rather than a stripe painted on top of them.
+                const float floor = -0.0015f;
                 int start = vertices.Count;
-                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(a, -wa)));
-                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(a, wa)));
-                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(b, -wb)));
-                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(b, wb)));
+                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(a, -wa, floor)));
+                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(a, wa, floor)));
+                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(b, -wb, floor)));
+                vertices.Add(space.InverseTransformPoint(patch.IncisionPoint(b, wb, floor)));
 
                 triangles.Add(start); triangles.Add(start + 2); triangles.Add(start + 1);
                 triangles.Add(start + 1); triangles.Add(start + 2); triangles.Add(start + 3);
@@ -285,8 +372,10 @@ namespace VRSurgery.Transplant
         public void ResetIncision()
         {
             EnsureState();
-            for (int i = 0; i < _cut.Length; i++) { _cut[i] = false; }
+            for (int i = 0; i < _cut.Length; i++) { _cut[i] = false; _deep[i] = false; _cutTime[i] = 0f; }
             _cutCount = 0;
+            _sinceDeep = float.PositiveInfinity;
+            CutDepth01 = 0f;
             _lastBin = -1;
             _announced = false;
             _offLine = 0f;
@@ -308,6 +397,9 @@ namespace VRSurgery.Transplant
             guideLine = guide;
             bloodBeads = beads != null ? new List<GameObject>(beads) : new List<GameObject>();
             _cut = new bool[bins];
+            _cutTime = new float[bins];
+            _deep = new bool[bins];
+            _beadScale = null;
             _lineMesh = null;
         }
     }

@@ -25,6 +25,13 @@ namespace VRSurgery.Transplant
 
         [SerializeField] private float crankTurns = 3f;
 
+        [Tooltip("The whole sternum, hidden once the saw line has parted: from then on the two " +
+                 "halves riding the blades are the bone.")]
+        [SerializeField] private Renderer[] wholeSternum = new Renderer[0];
+
+        [Tooltip("Opening at which the whole bone gives way to its two halves.")]
+        [SerializeField, Range(0f, 1f)] private float splitAt = 0.2f;
+
         private Renderer[] _renderers;
         private float _drawn = -1f;
 
@@ -46,6 +53,14 @@ namespace VRSurgery.Transplant
             foreach (Renderer r in _renderers)
             {
                 if (r != null && r.enabled != visible) { r.enabled = visible; }
+            }
+
+            // A sternotomy splits the bone lengthwise and the retractor spreads the halves; the
+            // single sternum lifting out of the chest was never what an open chest looks like.
+            bool whole = openness < splitAt;
+            foreach (Renderer r in wholeSternum)
+            {
+                if (r != null && r.enabled != whole) { r.enabled = whole; }
             }
 
             float eased = Mathf.SmoothStep(0f, 1f, openness);
@@ -76,6 +91,13 @@ namespace VRSurgery.Transplant
             rightBlade = right;
             crank = crankHandle;
             _renderers = null;
+            _drawn = -1f;
+        }
+
+        /// <summary>The intact sternum, swapped for the two halves on the blades as the bone parts.</summary>
+        public void BindSternum(Renderer[] sternum)
+        {
+            wholeSternum = sternum ?? new Renderer[0];
             _drawn = -1f;
         }
     }

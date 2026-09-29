@@ -1327,11 +1327,21 @@ namespace VRSurgery.EditorTools
             Material fat = Paint("fat", new Color(0.88f, 0.76f, 0.45f), 0f, 0.6f);
             Box("Gordura", cavity.transform, new Vector3(0f, -depth * 0.55f, 0.03f), new Vector3(rx * 0.9f, 0.004f, rz * 0.8f), fat, null, false);
 
+            // Blood lying in the bottom of the cavity: a thin film at rest, rising while a vessel
+            // leaks. Wet and dark, the most reflective thing in the wound.
+            Material pooled = Paint("bloodPool", new Color(0.28f, 0.01f, 0.02f), 0f, 0.97f);
+            GameObject pool = Part(PrimitiveType.Cylinder, "PoçaSangue", cavity.transform, Vector3.zero, Vector3.one, pooled, null, false, false);
+            _bloodPool = pool.AddComponent<CavityBloodPool>();
+            _bloodPool.Bind(null, rx, rz, depth);
+
             cavity.SetActive(false);
             return cavity;
         }
 
-        private static SternalRetractor BuildRetractor(Transform parent, SternotomyController sternotomy)
+        /// <summary>The pool in the cavity, bound to the vessel joins once they exist.</summary>
+        private static CavityBloodPool _bloodPool;
+
+        private static SternalRetractor BuildRetractor(Transform parent, SternotomyController sternotomy, GameObject sternum)
         {
             float surface = SkinTopAt(_window.Center.x, _window.Center.z);
             GameObject root = new GameObject("AfastadorFinochietto");
@@ -1348,6 +1358,16 @@ namespace VRSurgery.EditorTools
                 Box("Dente_" + i, root.transform, new Vector3(-0.1f + i * 0.018f, 0.043f, rackZ), new Vector3(0.006f, 0.005f, 0.018f), steel, null, false);
             }
 
+            // The two halves of the split sternum ride on the blades: ivory cortical bone with the
+            // red marrow of the saw cut facing the midline. They replace the whole bone once it
+            // parts, so the classic view — two white edges held apart, the heart between them —
+            // is what the visitor sees.
+            Bounds bone = WorldBounds(sternum);
+            float boneLength = Mathf.Clamp(bone.size.z * 0.95f, 0.1f, 0.24f);
+            float boneY = Mathf.Clamp(bone.center.y - surface, -0.05f, -0.022f);
+            Material cortical = Paint("bone", new Color(0.9f, 0.86f, 0.76f), 0f, 0.3f);
+            Material marrow = Paint("marrow", new Color(0.55f, 0.12f, 0.1f), 0f, 0.6f);
+
             Transform Blade(string name, float side)
             {
                 GameObject blade = new GameObject(name);
@@ -1355,6 +1375,11 @@ namespace VRSurgery.EditorTools
                 blade.transform.localPosition = new Vector3(side * 0.015f, 0f, 0f);
                 Box("Lamina", blade.transform, new Vector3(0f, -0.022f, 0f), new Vector3(0.005f, 0.05f, 0.075f), steel, null, false);
                 Box("Braco", blade.transform, new Vector3(0f, 0.03f, rackZ * 0.5f), new Vector3(0.012f, 0.012f, rackZ + 0.02f), steel, null, false);
+
+                Box("MeioEsterno", blade.transform, new Vector3(side * 0.013f, boneY, 0f),
+                    new Vector3(0.018f, 0.011f, boneLength), cortical, null, false);
+                Box("Medula", blade.transform, new Vector3(side * 0.0038f, boneY, 0f),
+                    new Vector3(0.0012f, 0.008f, boneLength * 0.98f), marrow, null, false);
                 return blade.transform;
             }
 
@@ -1369,6 +1394,9 @@ namespace VRSurgery.EditorTools
 
             SternalRetractor retractor = root.AddComponent<SternalRetractor>();
             retractor.Bind(sternotomy, left, right, crank.transform);
+
+            Transform model = sternum.transform.Find("SternumModel");
+            retractor.BindSternum((model != null ? model.gameObject : sternum).GetComponentsInChildren<Renderer>(true));
             return retractor;
         }
 
@@ -1647,7 +1675,7 @@ namespace VRSurgery.EditorTools
             BuildDrapes(field.transform);
 
             SternotomyController sternotomy = sternum.GetComponent<SternotomyController>();
-            BuildRetractor(field.transform, sternotomy);
+            BuildRetractor(field.transform, sternotomy, sternum);
 
             Transform stand = BuildMayoStand(thorax, out Vector3 trayTop);
             MoveDonorToTray(trayTop);
@@ -1682,6 +1710,19 @@ namespace VRSurgery.EditorTools
             incision = systems.AddComponent<SkinIncisionWorker>();
             incision.Bind(blade, scalpel, patch, procedure, cut.GetComponent<MeshFilter>(),
                 guide.GetComponent<MeshRenderer>(), beads);
+
+            // Trickles running from the cut down the side of the chest: a small pool of stretched
+            // drops, reused, so nothing is created while the visitor cuts.
+            List<Transform> trickles = new List<Transform>();
+            for (int i = 0; i < 8; i++)
+            {
+                GameObject drop = Part(PrimitiveType.Capsule, "Escorrido_" + i, field.transform, Vector3.zero,
+                    Vector3.one * 0.002f, blood, null, false, false);
+                drop.SetActive(false);
+                trickles.Add(drop.transform);
+            }
+
+            systems.AddComponent<IncisionBleeding>().Bind(incision, patch, trickles);
 
             // ---- suture visuals
             suture = systems.AddComponent<SutureWorker>();

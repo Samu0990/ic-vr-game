@@ -53,9 +53,32 @@ namespace VRSurgery.Transplant
         [SerializeField, Min(0.1f)] private float openSeconds = 1.2f;
         [SerializeField, Min(0.1f)] private float closeSeconds = 1.0f;
 
+        [Header("Tissue response")]
+        [Tooltip("How far each edge of a fresh skin cut springs back, in metres. Skin is under " +
+                 "tension: a real incision gapes a couple of millimetres the moment it is made.")]
+        [SerializeField, Min(0f)] private float gapeWidth = 0.0022f;
+
+        [Tooltip("Seconds for a fresh cut to spring open, or for a stitch to draw it shut.")]
+        [SerializeField, Min(0.01f)] private float gapeSeconds = 0.35f;
+
+        [Tooltip("Radius of the dent a blade or needle pushes into the skin, in metres.")]
+        [SerializeField, Min(0.002f)] private float pressRadius = 0.012f;
+
+        [Tooltip("Deepest dent the skin takes before it gives way, in metres.")]
+        [SerializeField, Min(0f)] private float maxPress = 0.006f;
+
         private Mesh _left, _right, _leftWall, _rightWall;
         private int _direction;
         private float _drawn = -1f;
+        private bool _dirty = true;
+
+        private float[] _gapeTarget = new float[0];
+        private float[] _gapeCurrent = new float[0];
+
+        private Vector3 _pressLocal;
+        private float _pressTarget;
+        private float _pressCurrent;
+        private bool _pressedThisFrame;
 
         public float Openness01 { get; private set; }
         public bool IsOpen => Openness01 >= 1f;
@@ -81,10 +104,18 @@ namespace VRSurgery.Transplant
 
         private void Update() => Tick(Time.deltaTime);
 
-        /// <summary>Advances the opening or closing. Stepped by hand in tests.</summary>
+        /// <summary>Advances opening, closing, the cut's gape and any dent. Stepped by hand in tests.</summary>
         public void Tick(float deltaTime)
         {
-            if (_direction == 0 || deltaTime <= 0f) { return; }
+            if (deltaTime <= 0f) { return; }
+
+            TickTissue(deltaTime);
+
+            if (_direction == 0)
+            {
+                if (_dirty) { Rebuild(Openness01); }
+                return;
+            }
 
             float duration = _direction > 0 ? openSeconds : closeSeconds;
             Openness01 = Mathf.Clamp01(Openness01 + _direction * deltaTime / duration);
@@ -118,7 +149,94 @@ namespace VRSurgery.Transplant
         {
             _direction = 0;
             Openness01 = 0f;
+            EnsureGape();
+            for (int i = 0; i < _gapeTarget.Length; i++) { _gapeTarget[i] = 0f; _gapeCurrent[i] = 0f; }
+            _pressTarget = 0f;
+            _pressCurrent = 0f;
+            _dirty = true;
             Rebuild(0f);
+        }
+
+        // ---------------------------------------------------------------- tissue response
+
+        /// <summary>
+        /// Marks a stretch of the incision as cut (it springs a little open) or sutured (it is
+        /// drawn back shut). <paramref name="alongFrom"/> and <paramref name="alongTo"/> run 0..1
+        /// over the incision.
+        /// </summary>
+        public void SetCut(float alongFrom, float alongTo, bool cut)
+        {
+            EnsureGape();
+            float lo = Mathf.Min(alongFrom, alongTo), hi = Mathf.Max(alongFrom, alongTo);
+
+            for (int r = 0; r < rows; r++)
+            {
+                float along = AlongIncision(r / (float)(rows - 1));
+                if (along < lo - 1e-4f || along > hi + 1e-4f || along < 0f || along > 1f) { continue; }
+
+                float target = cut ? gapeWidth * EndTaper(along) : 0f;
+                if (!Mathf.Approximately(_gapeTarget[r], target)) { _gapeTarget[r] = target; _dirty = true; }
+            }
+        }
+
+        /// <summary>How far apart the cut edges stand at a point along the incision, in metres.</summary>
+        public float GapeAt(float along)
+        {
+            EnsureGape();
+            float t = Mathf.Lerp(incisionStart, incisionEnd, Mathf.Clamp01(along));
+            int r = Mathf.Clamp(Mathf.RoundToInt(t * (rows - 1)), 0, rows - 1);
+            return _gapeCurrent.Length > r ? _gapeCurrent[r] * 2f : 0f;
+        }
+
+        /// <summary>
+        /// A tip pushing into the skin this frame. The skin dents under it up to its give, then the
+        /// tip is through. Call every frame the tip is pressing; the dent relaxes when it stops.
+        /// </summary>
+        public void Press(Vector3 world, float depth)
+        {
+            _pressLocal = transform.InverseTransformPoint(world);
+            _pressTarget = Mathf.Clamp(depth, 0f, maxPress);
+            _pressedThisFrame = true;
+        }
+
+        /// <summary>Current dent depth, in metres. Exposed for tests.</summary>
+        public float PressDepth => _pressCurrent;
+
+        private void TickTissue(float deltaTime)
+        {
+            EnsureGape();
+
+            float gapeStep = gapeWidth * deltaTime / gapeSeconds;
+            for (int i = 0; i < _gapeCurrent.Length; i++)
+            {
+                float next = Mathf.MoveTowards(_gapeCurrent[i], _gapeTarget[i], gapeStep);
+                if (!Mathf.Approximately(next, _gapeCurrent[i])) { _gapeCurrent[i] = next; _dirty = true; }
+            }
+
+            float pressGoal = _pressedThisFrame ? _pressTarget : 0f;
+            _pressedThisFrame = false;
+
+            // Skin gives quickly under a tip and comes back a little slower, as it does.
+            float rate = pressGoal > _pressCurrent ? 0.08f : 0.03f;
+            float pressed = Mathf.MoveTowards(_pressCurrent, pressGoal, rate * deltaTime);
+            if (!Mathf.Approximately(pressed, _pressCurrent)) { _pressCurrent = pressed; _dirty = true; }
+        }
+
+        private void EnsureGape()
+        {
+            if (_gapeTarget == null || _gapeTarget.Length != rows) { _gapeTarget = new float[rows]; }
+            if (_gapeCurrent == null || _gapeCurrent.Length != rows) { _gapeCurrent = new float[rows]; }
+        }
+
+        /// <summary>A cut gapes least at its two ends, where the skin either side is uncut.</summary>
+        private static float EndTaper(float along) => Mathf.Clamp01(Mathf.Sin(Mathf.Clamp01(along) * Mathf.PI) * 1.6f);
+
+        private float Dent(float x, float z)
+        {
+            if (_pressCurrent <= 0f) { return 0f; }
+            float dx = x - _pressLocal.x, dz = z - _pressLocal.z;
+            float sigma = pressRadius * 0.5f;
+            return _pressCurrent * Mathf.Exp(-(dx * dx + dz * dz) / (2f * sigma * sigma));
         }
 
         /// <summary>Longitudinal fraction (0 = feet end, 1 = head end) of a world point.</summary>
@@ -213,8 +331,10 @@ namespace VRSurgery.Transplant
         public void Rebuild(float amount)
         {
             if (_left == null && leftSkin != null) { EnsureMeshes(); }
-            if (Mathf.Approximately(amount, _drawn) && _left != null && _left.vertexCount > 0) { return; }
+            if (!_dirty && Mathf.Approximately(amount, _drawn) && _left != null && _left.vertexCount > 0) { return; }
             _drawn = amount;
+            _dirty = false;
+            EnsureGape();
 
             BuildHalf(_left, -1f, amount);
             BuildHalf(_right, 1f, amount);
@@ -222,8 +342,13 @@ namespace VRSurgery.Transplant
             BuildWall(_rightWall, 1f, amount);
 
             bool open = amount > 0.001f;
-            if (leftWound != null) { SetRendered(leftWound, open); }
-            if (rightWound != null) { SetRendered(rightWound, open); }
+            bool gaping = false;
+            for (int i = 0; i < _gapeCurrent.Length && !gaping; i++) { gaping = _gapeCurrent[i] > 1e-5f; }
+
+            // The wound wall shows for a cut that only gapes, too: that red line in the slit is
+            // what a fresh incision looks like before anyone retracts it.
+            if (leftWound != null) { SetRendered(leftWound, open || gaping); }
+            if (rightWound != null) { SetRendered(rightWound, open || gaping); }
 
             for (int i = 0; i < revealWhenOpen.Length; i++)
             {
@@ -240,17 +365,26 @@ namespace VRSurgery.Transplant
             if (renderer != null && renderer.enabled != on) { renderer.enabled = on; }
         }
 
-        private Vector3 Deformed(float side, float u, float t, float amount)
+        private float GapeRow(int row) =>
+            _gapeCurrent != null && row >= 0 && row < _gapeCurrent.Length ? _gapeCurrent[row] : 0f;
+
+        private Vector3 Deformed(float side, float u, int row, float amount)
         {
+            float t = row / (float)(rows - 1);
             float z = Mathf.Lerp(-halfLength, halfLength, t);
             float g = Profile(t) * amount;
             float falloff = Mathf.Pow(1f - u, 1.6f);
-            float x = side * (u * halfWidth + retraction * g * falloff);
+
+            // Tension pulls a cut edge back only near the cut; a few centimetres out the skin is
+            // where it always was.
+            float gape = GapeRow(row) * Mathf.Pow(1f - u, 3f);
+            float x = side * (u * halfWidth + retraction * g * falloff + gape);
 
             // The cut edge rolls a little into the wound as it is pulled back, which is what
             // makes a retracted incision read as thick skin rather than a sheet of paper.
-            float curl = woundDepth * 0.35f * g * Mathf.Pow(1f - u, 4f);
-            return new Vector3(x, Height(x, z) - curl, z);
+            float curl = woundDepth * 0.35f * g * Mathf.Pow(1f - u, 4f)
+                       + gape * 0.5f * Mathf.Pow(1f - u, 6f);
+            return new Vector3(x, Height(x, z) - curl - Dent(x, z), z);
         }
 
         private void BuildHalf(Mesh mesh, float side, float amount)
@@ -267,7 +401,7 @@ namespace VRSurgery.Transplant
                 for (int c = 0; c < cols; c++)
                 {
                     float u = c / (float)(cols - 1);
-                    vertices[r * cols + c] = Deformed(side, u, t, amount);
+                    vertices[r * cols + c] = Deformed(side, u, r, amount);
                     uvs[r * cols + c] = new Vector2(0.5f + side * u * 0.5f, t);
                 }
             }
@@ -312,12 +446,15 @@ namespace VRSurgery.Transplant
             for (int r = 0; r < rows; r++)
             {
                 float t = r / (float)(rows - 1);
-                Vector3 top = Deformed(side, 0f, t, amount);
+                Vector3 top = Deformed(side, 0f, r, amount);
                 float g = Profile(t) * amount;
+                float gape = gapeWidth > 0f ? GapeRow(r) / gapeWidth : 0f;
 
                 // The wall leans back under the skin it was cut from, and is as deep as the
-                // wound is open: at the ends of the incision it closes to nothing.
-                Vector3 bottom = top + new Vector3(side * 0.006f * g, -woundDepth * Mathf.Clamp01(g * 3f), 0f);
+                // wound is open: at the ends of the incision it closes to nothing. A cut that is
+                // only gaping shows the top of its wall, the red line in the slit.
+                float depth = woundDepth * Mathf.Clamp01(Mathf.Max(g * 3f, gape * 0.45f));
+                Vector3 bottom = top + new Vector3(side * 0.006f * g - side * 0.5f * GapeRow(r), -depth, 0f);
 
                 vertices[r * 2] = top;
                 vertices[r * 2 + 1] = bottom;
@@ -363,6 +500,9 @@ namespace VRSurgery.Transplant
 
             _left = _right = _leftWall = _rightWall = null;
             _drawn = -1f;
+            _dirty = true;
+            _gapeTarget = new float[0];
+            _gapeCurrent = new float[0];
             EnsureMeshes();
             Rebuild(0f);
         }

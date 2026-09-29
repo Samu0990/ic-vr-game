@@ -1201,6 +1201,9 @@ namespace VRSurgery.EditorTools
 
             BuildVitalsMonitor(_thorax, procedure, beat, sewing);
 
+            // A leaking join fills the open chest; the pool reads the same joins the monitor does.
+            if (_bloodPool != null) { _bloodPool.BindVessels(sewing); }
+
             Debug.Log($"[Transplante] procedimento ligado: {procedure.VesselCount} vasos, " +
                       $"rodada {definition.RoundSeconds:F0}s, assento pericárdico em {seat.transform.position}, " +
                       $"esternotomia num raio de {sternalReach * 100f:F1}cm, " +
