@@ -1786,6 +1786,121 @@ namespace VRSurgery.EditorTools
 
         /// <summary>Soft grey smoke that rises and thins, fed by the cautery in puffs.</summary>
         /// <summary>
+        /// What closing leaves behind, shown in the stages it belongs to: steel wires across the
+        /// sternum while the bone comes together, two mediastinal drains out below the wound into
+        /// the drainage canister on the table rail, and the dressing over the sutured incision
+        /// once the operation is finished.
+        /// </summary>
+        private static void BuildClosureDetails(GameObject systems, TransplantProcedure procedure, ChestSkinPatch patch,
+            GameObject sternum)
+        {
+            Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
+            GameObject field = GameObject.Find("CampoOperatorio");
+            Transform fieldT = field != null ? field.transform : systems.transform;
+            Transform cavity = field != null ? field.transform.Find("CavidadeToracica") : null;
+
+            // ---- sternal wires: figure loops across the midline, twisted on top
+            Bounds bone = WorldBounds(sternum);
+            List<Renderer> wires = new List<Renderer>();
+            for (int k = 0; k < 5; k++)
+            {
+                float z = Mathf.Lerp(bone.min.z + 0.025f, bone.max.z - 0.025f, k / 4f);
+                Vector3 c = new Vector3(bone.center.x, bone.max.y + 0.002f, z);
+                wires.Add(Tube("FioEsterno_" + k, cavity != null ? cavity : fieldT, new[]
+                {
+                    c + new Vector3(-0.016f, -0.006f, 0f), c + new Vector3(-0.012f, 0.001f, 0f),
+                    c + new Vector3(0f, 0.0025f, 0.001f), c + new Vector3(0.012f, 0.001f, 0f),
+                    c + new Vector3(0.016f, -0.006f, 0f),
+                }, 0.0007f, steel).GetComponent<Renderer>());
+                wires.Add(Tube("FioTorcido_" + k, cavity != null ? cavity : fieldT, new[]
+                {
+                    c + new Vector3(0f, 0.0025f, 0.001f), c + new Vector3(0.001f, 0.004f, -0.004f),
+                    c + new Vector3(0f, 0.0045f, -0.008f),
+                }, 0.0011f, steel).GetComponent<Renderer>());
+            }
+
+            // ---- mediastinal drains: out through the skin just below the wound, down to the canister
+            float tableX = _window.Center.x;
+            Vector3 canister = new Vector3(tableX - TableHalfWidth - 0.06f, TableTopY - 0.45f, _window.Center.z - 0.45f);
+            GameObject box = new GameObject("FrascoDrenagem");
+            box.transform.SetParent(fieldT, true);
+            box.transform.position = canister;
+            Box("Corpo", box.transform, Vector3.zero, new Vector3(0.07f, 0.24f, 0.2f), Glass(new Color(0.9f, 0.95f, 1f, 0.45f)));
+            Box("SeloAgua", box.transform, new Vector3(0f, -0.07f, 0.06f), new Vector3(0.06f, 0.08f, 0.05f),
+                Paint("waterSeal", new Color(0.35f, 0.6f, 0.95f), 0f, 0.8f), null, false);
+            Box("Coleta", box.transform, new Vector3(0f, -0.09f, -0.04f), new Vector3(0.06f, 0.05f, 0.1f),
+                Paint("bloodVenous", new Color(0.32f, 0.03f, 0.07f), 0f, 0.85f), null, false);
+            Box("Gancho", box.transform, new Vector3(0.04f, 0.13f, 0f), new Vector3(0.012f, 0.03f, 0.15f), steel);
+
+            List<Renderer> drains = new List<Renderer>();
+            Vector3 low = patch.IncisionPoint(0f, 0f, 0f);
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Vector3 exit = low + new Vector3(side * 0.022f, 0f, -0.022f);
+                exit.y = patch.SurfaceHeightUnder(exit) + 0.002f;
+                Vector3 over = new Vector3(tableX - TableHalfWidth - 0.02f, TableTopY + 0.05f, exit.z - 0.1f);
+                drains.Add(Tube("Dreno_" + (side < 0 ? "Esquerdo" : "Direito"), fieldT, new[]
+                {
+                    exit + new Vector3(0f, -0.01f, 0f), exit + new Vector3(0f, 0.012f, -0.01f),
+                    new Vector3((exit.x + over.x) * 0.5f, exit.y + 0.02f, exit.z - 0.06f), over,
+                    canister + new Vector3(0f, 0.14f, side * 0.03f),
+                }, 0.0045f, Paint("drainTube", new Color(0.85f, 0.72f, 0.7f), 0f, 0.85f)).GetComponent<Renderer>());
+            }
+
+            // ---- the dressing: a film and a pad following the curve of the chest over the stitches
+            Mesh Strip(float halfWidth, float lift, float extend)
+            {
+                List<Vector3> v = new List<Vector3>();
+                List<int> t = new List<int>();
+                const int rows = 24;
+                for (int r = 0; r <= rows; r++)
+                {
+                    float a = Mathf.Lerp(-extend, 1f + extend, r / (float)rows);
+                    float along = Mathf.Clamp01(a);
+                    Vector3 zShift = new Vector3(0f, 0f, (a - along) * patch.IncisionLength);
+                    v.Add(patch.IncisionPoint(along, -halfWidth, lift) + zShift);
+                    v.Add(patch.IncisionPoint(along, halfWidth, lift) + zShift);
+                    if (r == 0) { continue; }
+                    int s0 = (r - 1) * 2;
+                    t.Add(s0); t.Add(s0 + 2); t.Add(s0 + 1);
+                    t.Add(s0 + 1); t.Add(s0 + 2); t.Add(s0 + 3);
+                }
+
+                Mesh m = new Mesh { name = "Curativo" };
+                m.SetVertices(v);
+                m.SetTriangles(t, 0);
+                m.RecalculateNormals();
+                m.RecalculateBounds();
+                return m;
+            }
+
+            GameObject film = MeshPart("CurativoFilme", fieldT, Strip(0.034f, 0.0016f, 0.08f),
+                Paint("dressingFilm", new Color(0.93f, 0.94f, 0.95f), 0f, 0.9f));
+            GameObject pad = MeshPart("CurativoCompressa", fieldT, Strip(0.019f, 0.003f, 0.03f),
+                Paint("dressingPad", new Color(0.98f, 0.98f, 0.96f), 0f, 0.15f));
+            GameObject spot = Ball("CurativoMancha", fieldT, Vector3.zero, new Vector3(0.012f, 0.0012f, 0.02f),
+                Paint("dressingSpot", new Color(0.72f, 0.3f, 0.3f), 0f, 0.2f));
+            spot.transform.position = patch.IncisionPoint(0.62f, 0.003f, 0.0036f);
+            film.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            pad.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+            systems.AddComponent<StageVisibility>().Bind(procedure, new[] { TransplantStage.CloseSkin }, wires);
+            systems.AddComponent<StageVisibility>().Bind(procedure,
+                new[] { TransplantStage.CloseSkin, TransplantStage.Complete }, drains);
+            systems.AddComponent<StageVisibility>().Bind(procedure, new[] { TransplantStage.Complete },
+                new[] { film.GetComponent<Renderer>(), pad.GetComponent<Renderer>(), spot.GetComponent<Renderer>() });
+
+            // Hidden in the saved scene too, not only from the first frame of play.
+            foreach (Renderer r in wires) { r.enabled = false; }
+            foreach (Renderer r in drains) { r.enabled = false; }
+            film.GetComponent<Renderer>().enabled = false;
+            pad.GetComponent<Renderer>().enabled = false;
+            spot.GetComponent<Renderer>().enabled = false;
+
+            Debug.Log($"[Transplante] fechamento: {wires.Count / 2} fios de aço, 2 drenos até o frasco em {canister}, curativo");
+        }
+
+        /// <summary>
         /// The pericardium: a glistening cap over the heart in two halves hinged at its outer
         /// edges, with a dashed line down the middle to open it on and the slit the pen leaves.
         /// Parented to the cavity, so it shows only once the chest is open.

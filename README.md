@@ -97,7 +97,8 @@ a fibrilação.
 | CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba. Cada passo **aparece no tórax**: cânula na aorta e nas duas cavas (Y até a linha venosa) ao canular, **clampe aórtico** enquanto a aorta está clampeada, linha de cardioplegia/vent na raiz da aorta |
 | Desfibrilação | Ao retirar o clampe, o coração novo **fibrila** (acontece de 10% a 80% das vezes na vida real; aqui, sempre, para ensinar). Pegar as **pás internas** sobre o campo e segurar o coração entre as colheres ~1 s: carrega e dispara. 1º choque 10 J (reverte ~60%), 2º 20 J (sempre reverte, para a rodada não depender de sorte). A bomba **recusa desarejar/sair** com o coração fibrilando | Coração tremendo; monitor com traçado de FV, "FC FV", alarme; anel vermelho "CARREGANDO 10 J", zumbido de carga, pancada e espículo no ECG a cada choque; cartão "CORAÇÃO BATENDO!" ao reverter |
 | Vasos | Mão firme no anel por 1,4 s; mão trêmula faz sangrar, pressão estanca | Anéis vermelho/azul (só nesta etapa); vermelho pulsante enquanto sangra |
-| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; a pele afunda sob a agulha; cada nó fica na pele e fecha a abertura do corte no seu trecho |
+| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; a pele afunda sob a agulha; cada nó fica na pele e fecha a abertura do corte no seu trecho. Ao fechar, **fios de aço** aparecem no esterno enquanto o osso se junta e **dois drenos mediastinais** saem abaixo da ferida até o frasco de drenagem na grade da mesa |
+| Fim | — | **Curativo** (filme e compressa com uma mancha) sobre a sutura enquanto o placar é mostrado |
 
 Com o tórax aberto, uma poça de sangue fica no fundo da cavidade e **sobe enquanto um vaso
 vaza** (`CavityBloodPool`), baixando devagar quando o vazamento é estancado.

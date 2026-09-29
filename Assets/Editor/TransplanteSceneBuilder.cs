@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 8;
+        public const int BuildVersion = 9;
 
         private static Vector3 _thorax;
 
@@ -1257,6 +1257,9 @@ namespace VRSurgery.EditorTools
             indicator.AddSource(cautery);
             feedback.BindCautery(cautery, cauteryPen);
             bridge.BindCautery(cautery);
+
+            // Wires, drains and the dressing: what closing leaves behind.
+            BuildClosureDetails(systems, procedure, skinPatch, sternum);
 
             // The pericardium over the heart, opened with the same pen after the sternotomy.
             PericardiumWorker pericardium = BuildPericardium(systems, heart, procedure, penTip, cauteryPen, cautery.Smoke);
