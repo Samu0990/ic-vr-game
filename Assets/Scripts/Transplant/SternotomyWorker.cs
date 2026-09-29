@@ -57,6 +57,9 @@ namespace VRSurgery.Transplant
         /// </summary>
         public event Action Started;
 
+        /// <summary>Middle of the sternum, where the gesture is judged. Read by the progress ring.</summary>
+        public Transform Site => site;
+
         private void OnEnable()
         {
             if (sternotomy != null) { sternotomy.Opened += HandleOpened; }

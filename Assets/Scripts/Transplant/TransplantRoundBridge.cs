@@ -29,6 +29,12 @@ namespace VRSurgery.Transplant
         [SerializeField] private VesselAnastomosis[] vessels = new VesselAnastomosis[0];
         [SerializeField] private Heartbeat donorHeart;
 
+        [Header("Skin stages (optional)")]
+        [Tooltip("The scalpel incision. When set, the round starts on its first cut instead of on the sternotomy.")]
+        [SerializeField] private SkinIncisionWorker incision;
+        [SerializeField] private ChestSkinPatch skinPatch;
+        [SerializeField] private SutureWorker suture;
+
         [Header("Booth loop")]
         [Tooltip("How long the attract screen holds before the stand offers the next turn. Zero " +
                  "starts the next visitor immediately, which reads as a stand that never rests.")]
@@ -55,6 +61,7 @@ namespace VRSurgery.Transplant
             if (procedure != null) { procedure.ProcedureCompleted += HandleProcedureCompleted; }
             if (session != null) { session.StateChanged += HandleSessionState; }
             if (sternotomyWorker != null) { sternotomyWorker.Started += HandleFirstGesture; }
+            if (incision != null) { incision.Started += HandleFirstGesture; }
         }
 
         private void Unsubscribe()
@@ -62,6 +69,7 @@ namespace VRSurgery.Transplant
             if (procedure != null) { procedure.ProcedureCompleted -= HandleProcedureCompleted; }
             if (session != null) { session.StateChanged -= HandleSessionState; }
             if (sternotomyWorker != null) { sternotomyWorker.Started -= HandleFirstGesture; }
+            if (incision != null) { incision.Started -= HandleFirstGesture; }
         }
 
         private void Update() => Tick(Time.deltaTime);
@@ -134,6 +142,10 @@ namespace VRSurgery.Transplant
                 if (vessels[i] != null) { vessels[i].ResetJoin(); }
             }
 
+            if (incision != null) { incision.ResetIncision(); }
+            if (skinPatch != null) { skinPatch.ResetClosed(); }
+            if (suture != null) { suture.ResetSuture(); }
+
             ReturnOrgansHome();
 
             if (procedure != null)
@@ -144,6 +156,22 @@ namespace VRSurgery.Transplant
                 procedure.ResetProcedure();
                 procedure.Begin();
             }
+        }
+
+        /// <summary>
+        /// Adds the scalpel incision and the skin suture to the loop: the first cut starts the
+        /// clock, and the next visitor gets unbroken skin and no stitches.
+        /// </summary>
+        public void BindSkinStages(SkinIncisionWorker skinIncision, ChestSkinPatch patch, SutureWorker skinSuture)
+        {
+            bool live = Application.isPlaying && isActiveAndEnabled;
+            if (live) { Unsubscribe(); }
+
+            incision = skinIncision;
+            skinPatch = patch;
+            suture = skinSuture;
+
+            if (live) { Subscribe(); }
         }
 
         private void CaptureOrganHomePoses()

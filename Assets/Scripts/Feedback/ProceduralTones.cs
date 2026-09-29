@@ -1,0 +1,159 @@
+using System.Collections.Generic;
+using UnityEngine;
+
+namespace VRSurgery.Feedback
+{
+    /// <summary>
+    /// Short sounds synthesised at runtime, so the operating room can beep, chime and alarm
+    /// without the project having to carry (or license) a single audio file.
+    ///
+    /// Every clip is a sum of sine partials under an attack/release envelope. That is enough for
+    /// what a theatre actually sounds like — monitors and pumps are electronic tones, not
+    /// recordings — and it costs a few kilobytes of memory built once and cached.
+    /// </summary>
+    public static class ProceduralTones
+    {
+        private const int SampleRate = 44100;
+
+        private static readonly Dictionary<string, AudioClip> Cache = new Dictionary<string, AudioClip>();
+
+        /// <summary>The monitor's pulse beep: one short, clean tone.</summary>
+        public static AudioClip MonitorBeep => Get("monitor-beep", () => Tone("monitor-beep", 0.09f, 0.35f, 1046f));
+
+        /// <summary>A step done: two rising notes.</summary>
+        public static AudioClip StepChime => Get("step-chime", () => Sequence("step-chime", 0.32f,
+            new[] { (659f, 0f, 0.14f), (988f, 0.12f, 0.20f) }));
+
+        /// <summary>A vessel sewn clean: one soft note.</summary>
+        public static AudioClip SoftConfirm => Get("soft-confirm", () => Tone("soft-confirm", 0.16f, 0.3f, 880f, 1320f));
+
+        /// <summary>A step refused or an error: low, rough and short.</summary>
+        public static AudioClip ErrorBuzz => Get("error-buzz", () => Tone("error-buzz", 0.22f, 0.35f, 196f, 207f, 392f));
+
+        /// <summary>The bleeding alarm: the three-pulse high-priority pattern monitors use.</summary>
+        public static AudioClip BleedAlarm => Get("bleed-alarm", () => Sequence("bleed-alarm", 0.55f,
+            new[] { (988f, 0f, 0.10f), (988f, 0.15f, 0.10f), (988f, 0.30f, 0.10f) }));
+
+        /// <summary>The operation finished: a major arpeggio.</summary>
+        public static AudioClip Triumph => Get("triumph", () => Sequence("triumph", 1.1f,
+            new[] { (523f, 0f, 0.25f), (659f, 0.18f, 0.25f), (784f, 0.36f, 0.30f), (1046f, 0.54f, 0.5f) }));
+
+        /// <summary>The blade on skin: a brief filtered hiss.</summary>
+        public static AudioClip Slice => Get("slice", () => Noise("slice", 0.12f, 0.18f));
+
+        /// <summary>Needle through skin: a tiny click.</summary>
+        public static AudioClip Stitch => Get("stitch", () => Tone("stitch", 0.05f, 0.4f, 1760f, 2637f));
+
+        /// <summary>A constant soft ventilator/room hum, meant to loop.</summary>
+        public static AudioClip RoomHum => Get("room-hum", () => Hum("room-hum", 2f));
+
+        private static AudioClip Get(string key, System.Func<AudioClip> build)
+        {
+            if (!Cache.TryGetValue(key, out AudioClip clip) || clip == null)
+            {
+                clip = build();
+                Cache[key] = clip;
+            }
+
+            return clip;
+        }
+
+        private static AudioClip Tone(string name, float seconds, float volume, params float[] partials)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float sample = 0f;
+                for (int p = 0; p < partials.Length; p++)
+                {
+                    sample += Mathf.Sin(2f * Mathf.PI * partials[p] * t) / (p + 1);
+                }
+
+                data[i] = sample * volume * Envelope(t, seconds);
+            }
+
+            return Build(name, data);
+        }
+
+        private static AudioClip Sequence(string name, float seconds, (float hz, float start, float length)[] notes)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+
+            foreach ((float hz, float start, float noteLength) in notes)
+            {
+                int from = Mathf.RoundToInt(start * SampleRate);
+                int count = Mathf.RoundToInt(noteLength * SampleRate);
+
+                for (int i = 0; i < count && from + i < length; i++)
+                {
+                    float t = i / (float)SampleRate;
+                    float sample = Mathf.Sin(2f * Mathf.PI * hz * t) + 0.3f * Mathf.Sin(4f * Mathf.PI * hz * t);
+                    data[from + i] += sample * 0.28f * Envelope(t, noteLength);
+                }
+            }
+
+            return Build(name, data);
+        }
+
+        private static AudioClip Noise(string name, float seconds, float volume)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+            System.Random random = new System.Random(7);
+            float smoothed = 0f;
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float white = (float)(random.NextDouble() * 2.0 - 1.0);
+                // One-pole low-pass: turns white noise into the dull hiss of a blade through tissue.
+                smoothed = Mathf.Lerp(smoothed, white, 0.25f);
+                data[i] = smoothed * volume * Envelope(t, seconds);
+            }
+
+            return Build(name, data);
+        }
+
+        private static AudioClip Hum(string name, float seconds)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+            System.Random random = new System.Random(11);
+            float smoothed = 0f;
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float white = (float)(random.NextDouble() * 2.0 - 1.0);
+                smoothed = Mathf.Lerp(smoothed, white, 0.02f);
+
+                // 50 and 100 Hz: whole cycles in the loop length, so the loop point never clicks.
+                float mains = 0.5f * Mathf.Sin(2f * Mathf.PI * 50f * t) + 0.25f * Mathf.Sin(2f * Mathf.PI * 100f * t);
+                data[i] = (mains * 0.05f + smoothed * 0.35f) * 0.5f;
+            }
+
+            return Build(name, data);
+        }
+
+        /// <summary>Quick attack, exponential tail. Avoids the click a hard-edged tone makes.</summary>
+        private static float Envelope(float t, float length)
+        {
+            const float attack = 0.008f;
+            if (t < attack) { return t / attack; }
+
+            float release = Mathf.Clamp01((length - t) / Mathf.Max(0.01f, length * 0.35f));
+            return release * Mathf.Exp(-3f * t / Mathf.Max(0.01f, length));
+        }
+
+        private static AudioClip Build(string name, float[] data)
+        {
+            AudioClip clip = AudioClip.Create(name, data.Length, 1, SampleRate, false);
+            clip.SetData(data, 0);
+            return clip;
+        }
+    }
+}

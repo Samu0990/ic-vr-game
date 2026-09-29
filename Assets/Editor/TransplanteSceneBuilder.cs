@@ -6,6 +6,7 @@ using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
 using UnityEngine.XR.Interaction.Toolkit.Interactables;
 using VRSurgery.Data;
+using VRSurgery.Feedback;
 using VRSurgery.Interaction;
 using VRSurgery.Session;
 using VRSurgery.Surgery;
@@ -25,7 +26,7 @@ namespace VRSurgery.EditorTools
     /// own bounds, the height of the thorax as a fraction of stature. That way re-exporting any
     /// one model moves what depends on it instead of silently leaving it floating.
     /// </summary>
-    public static class TransplanteSceneBuilder
+    public static partial class TransplanteSceneBuilder
     {
         private const string SourceScene = "Assets/Scenes/SampleScene.unity";
         private const string TargetScene = "Assets/Scenes/TransplanteCardiaco.unity";
@@ -103,9 +104,19 @@ namespace VRSurgery.EditorTools
                 "Cena construída. Veja o Console para as medidas e o veredito de proporção.", "OK");
         }
 
+        /// <summary>
+        /// Extra round time for the two skin stages: roughly ten seconds of incision, a few of
+        /// closure animation and five stitches. Added on top of the level's own round length so
+        /// the levels keep their meaning.
+        /// </summary>
+        private const float SkinStageSeconds = 45f;
+
+        private static Vector3 _thorax;
+
         public static void Build()
         {
             EditorSceneManager.OpenScene(SourceScene, OpenSceneMode.Single);
+            Palette.Clear();
 
             GameObject area = GameObject.Find("Teleport Area");
             if (area != null) { Object.DestroyImmediate(area); }
@@ -118,10 +129,17 @@ namespace VRSurgery.EditorTools
             GameObject patient = BuildPatient(out Bounds bodyBounds);
             GameObject systems = BuildSystems();
 
+            // Sampled now, from the untouched skin: the drapes and the chest window are built
+            // from it after the window has been cut out of the body mesh.
+            _bodyBounds = bodyBounds;
+            _surface = SampleSurface(GameObject.Find("Body_Skin"));
+
             Vector3 thorax = ThoraxCentre(bodyBounds);
+            _thorax = thorax;
             GameObject ribcage = BuildRibcage(patient, thorax);
             GameObject heart = BuildHeart(patient, thorax);
             GameObject sternum = BuildSternum(patient, thorax, heart, WorldBounds(ribcage));
+            _window = WindowFor(thorax, sternum);
 
             GameObject donor = BuildDonorHeart(thorax);
             VesselAnastomosis[] vessels = BuildVessels(systems, thorax);
@@ -131,6 +149,8 @@ namespace VRSurgery.EditorTools
             WireProcedure(systems, sternum, heart, donor, vessels, bypass, plan, monitor);
             PlaceAnchor(thorax);
             EnsureMainCamera();
+            BuildTheatre(thorax);
+            WireHeadsetPostProcessing();
             ApplyStaticAndShadowFlags();
 
             ReportFit(ribcage, heart);
@@ -844,31 +864,35 @@ namespace VRSurgery.EditorTools
         /// it has not been checked against a real chest and a real headset, and needs the same
         /// advisor pass before the stand opens.
         /// </summary>
-        private static List<NameEntryKey> BuildNameEntryKeyboard(GameObject sternum, GameObject systems)
+        private static List<NameEntryKey> BuildNameEntryKeyboard(GameObject sternum, GameObject systems,
+            out List<Renderer> renderers, out List<Renderer> keycaps)
         {
             Vector3 thoraxCenter = WorldBounds(sternum).center;
             Vector3 stance = Stance(thoraxCenter);
 
-            // Between the stance and the sternum, off to the side of the vessels being sewn
-            // rather than on top of them.
-            Vector3 center = new Vector3(
-                Mathf.Lerp(stance.x, thoraxCenter.x, 0.55f),
-                thoraxCenter.y,
-                thoraxCenter.z + 0.28f);
+            // Front-right of the surgeon at the table edge, by the patient's shoulder, tilted up
+            // to the eye. It used to sit at chest height over the patient, where its lower rows
+            // went into the body; it is only drawn once there is a name to type.
+            Vector3 center = new Vector3(stance.x - 0.12f, TableTopY + 0.27f, thoraxCenter.z + 0.22f);
 
             GameObject panel = new GameObject("NameEntryKeyboard");
             panel.transform.SetParent(systems.transform, true);
             panel.transform.position = center;
 
             // Same yaw-only, face-the-stance convention as BuildMonitor, so BuildScreenText's
-            // "+Z is the surgeon's side" trick keeps working on this panel too.
+            // "+Z is the surgeon's side" trick keeps working on this panel too; then tipped back
+            // so the keys face up toward the eye.
             Vector3 toSurgeon = new Vector3(stance.x - center.x, 0f, stance.z - center.z);
-            panel.transform.rotation = toSurgeon.sqrMagnitude > 1e-6f
+            Quaternion yaw = toSurgeon.sqrMagnitude > 1e-6f
                 ? Quaternion.LookRotation(toSurgeon.normalized, Vector3.up)
                 : Quaternion.identity;
+            panel.transform.rotation = yaw * Quaternion.Euler(-40f, 0f, 0f);
 
             string[] rows = { "ABCDEF", "GHIJKL", "MNOPQR", "STUVWX", "YZ" };
             const float spacing = 0.05f;
+
+            // Centred on the panel: six columns and five rows around the middle.
+            Vector3 origin = new Vector3(-2.5f * spacing, 2f * spacing, 0f);
 
             List<NameEntryKey> keys = new List<NameEntryKey>();
 
@@ -878,19 +902,32 @@ namespace VRSurgery.EditorTools
                 for (int c = 0; c < row.Length; c++)
                 {
                     char letter = row[c];
-                    Vector3 local = new Vector3(c * spacing, -r * spacing, 0f);
+                    Vector3 local = origin + new Vector3(c * spacing, -r * spacing, 0f);
                     keys.Add(BuildNameEntryKey(panel.transform, letter.ToString(), local,
                         NameEntryKey.KeyAction.Character, letter));
                 }
             }
 
             // The three special keys share the letters' last row, one column after "YZ".
-            keys.Add(BuildNameEntryKey(panel.transform, "SPC", new Vector3(2 * spacing, -4 * spacing, 0f),
+            keys.Add(BuildNameEntryKey(panel.transform, "SPC", origin + new Vector3(2 * spacing, -4 * spacing, 0f),
                 NameEntryKey.KeyAction.Character, ' '));
-            keys.Add(BuildNameEntryKey(panel.transform, "DEL", new Vector3(3 * spacing, -4 * spacing, 0f),
+            keys.Add(BuildNameEntryKey(panel.transform, "DEL", origin + new Vector3(3 * spacing, -4 * spacing, 0f),
                 NameEntryKey.KeyAction.Backspace, '\0'));
-            keys.Add(BuildNameEntryKey(panel.transform, "OK", new Vector3(4 * spacing, -4 * spacing, 0f),
+            keys.Add(BuildNameEntryKey(panel.transform, "OK", origin + new Vector3(4 * spacing, -4 * spacing, 0f),
                 NameEntryKey.KeyAction.Confirm, '\0'));
+
+            // Backing board behind the keys.
+            GameObject board = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            board.name = "Board";
+            board.transform.SetParent(panel.transform, false);
+            board.transform.localPosition = new Vector3(0f, 0f, -0.012f);
+            board.transform.localScale = new Vector3(0.34f, 0.29f, 0.01f);
+            Object.DestroyImmediate(board.GetComponent<Collider>());
+            board.GetComponent<MeshRenderer>().sharedMaterial = MakeMaterial(new Color(0.85f, 0.87f, 0.9f), 0.2f, 0.4f);
+
+            renderers = new List<Renderer>(panel.GetComponentsInChildren<Renderer>(true));
+            keycaps = new List<Renderer>();
+            foreach (NameEntryKey key in keys) { keycaps.Add(key.GetComponent<Renderer>()); }
 
             Debug.Log($"[Transplante] teclado do placar em {center}, {keys.Count} tecla(s)");
 
@@ -1020,7 +1057,7 @@ namespace VRSurgery.EditorTools
                 // From the level, not from a constant. Fácil is ninety seconds because there is
                 // a third less to do, not because ninety was typed somewhere — so the booth can
                 // run a fast queue or a faithful operation without the two numbers drifting apart.
-                round: plan.RoundSeconds, briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
+                round: plan.RoundSeconds + SkinStageSeconds, briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
                 // The round starts on the sternotomy, not on a grab: this scene has no instrument
                 // to pick up, so the grab that starts the round in every other scene never happens.
                 startOnGrab: false, pointsPerSecond: 100f,
@@ -1094,9 +1131,11 @@ namespace VRSurgery.EditorTools
             // The visitor's own hand types the name too, on a small keypad set within reach of
             // the stance rather than on the monitor across the table — the monitor sits beyond
             // the patient on purpose (see BuildMonitor), which puts it out of arm's reach.
-            List<NameEntryKey> nameKeys = BuildNameEntryKeyboard(sternum, systems);
+            List<NameEntryKey> nameKeys = BuildNameEntryKeyboard(sternum, systems,
+                out List<Renderer> keyboardRenderers, out List<Renderer> keycaps);
             NameEntryWorker keyboard = systems.AddComponent<NameEntryWorker>();
             keyboard.Bind(tipObject.transform, nameKeys, nameEntry);
+            systems.AddComponent<NameEntryPanel>().Bind(nameEntry, keyboard, keyboardRenderers, keycaps, nameKeys);
 
             // Half the sternum's length, so the gesture covers the bone the incision runs along
             // rather than a coin in the middle of it.
@@ -1122,6 +1161,45 @@ namespace VRSurgery.EditorTools
                 monitor.transform.Find("ClockText").GetComponent<TextMesh>(),
                 monitor.transform.Find("ReasonText").GetComponent<TextMesh>(),
                 sewing, nameEntry);
+
+            // The scalpel opens the operation and the needle closes it.
+            BuildSkinStages(systems, procedure, sternum, _thorax, out SkinIncisionWorker incision,
+                out SutureWorker suture, out ChestSkinPatch skinPatch, out SurgicalInteractable scalpel,
+                out SurgicalInteractable needleHolder);
+            bridge.BindSkinStages(incision, skinPatch, suture);
+
+            // Guides only in their own stage: the gold ring for the sternotomy, the cuffs for the
+            // vessels, the amber rings for the pump.
+            Transform sternalMark = sternalSite.transform.Find("SternalMark");
+            if (sternalMark != null)
+            {
+                systems.AddComponent<StageVisibility>().Bind(procedure, new[] { TransplantStage.OpenChest },
+                    new[] { sternalMark.GetComponent<Renderer>() });
+            }
+
+            List<Renderer> cuffs = new List<Renderer>();
+            foreach (VesselAnastomosis vessel in vessels)
+            {
+                Transform cuff = vessel.transform.Find("Cuff");
+                if (cuff != null) { cuffs.Add(cuff.GetComponent<Renderer>()); }
+            }
+
+            systems.AddComponent<StageVisibility>().Bind(procedure,
+                new[] { TransplantStage.ConnectVessels, TransplantStage.Restart, TransplantStage.CloseSkin }, cuffs);
+
+            systems.AddComponent<BypassSiteMarkers>().Bind(procedure, worker, BuildBypassMarkers(bypass));
+
+            // Feedback in the world and in the hand: the progress ring over the work, sound and
+            // vibration for every step, the anaesthesia monitor telling the story in numbers.
+            WorkProgressIndicator indicator = BuildProgressIndicator(opening, worker, sewing);
+            indicator.AddSource(incision);
+            indicator.AddSource(suture);
+
+            TransplantFeedback feedback = systems.AddComponent<TransplantFeedback>();
+            feedback.Bind(procedure, worker, sewing, beat, indicator, tipObject.transform, RigHands());
+            feedback.BindSkinStages(incision, suture, scalpel, needleHolder);
+
+            BuildVitalsMonitor(_thorax, procedure, beat, sewing);
 
             Debug.Log($"[Transplante] procedimento ligado: {procedure.VesselCount} vasos, " +
                       $"rodada {definition.RoundSeconds:F0}s, assento pericárdico em {seat.transform.position}, " +
@@ -1218,7 +1296,7 @@ namespace VRSurgery.EditorTools
             // this override, straight from a headset test.
             hud.BindCopy(
                 attractHeadline: "TRANSPLANTE DE CORAÇÃO",
-                briefingHeadline: "ABRA O TÓRAX");
+                briefingHeadline: "INCISÃO COM BISTURI");
             hud.BindBleedSource(() =>
             {
                 if (vessels == null || vessels.Length == 0) { return 0f; }

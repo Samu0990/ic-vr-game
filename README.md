@@ -24,6 +24,12 @@ e a `SurgeryMVP` é a única que ainda usa bisturi e pinça.
 
 ## Construir a cena
 
+> **Depois de puxar alterações do construtor, reconstrua a cena** (`VRSurgery` →
+> `Transplante — nível Médio`). O arquivo `TransplanteCardiaco.unity` no repositório é
+> sempre a última cena gerada por alguém; código novo do construtor só aparece depois do
+> rebuild. A cena **não** foi regenerada na sessão que adicionou bisturi, sutura e sala
+> (ela rodou sem Unity) — o primeiro rebuild é seu.
+
 As cenas são **geradas por código**, não editadas à mão. Arrastar objetos na
 Hierarchy funciona até o próximo rebuild, que desfaz tudo. Para mudar a cena,
 mude o construtor.
@@ -61,16 +67,54 @@ poderia ter produzido.
 ## A cirurgia
 
 ```
-Abrir o tórax  →  Entrar em bomba  →  Retirar o coração doente
-                                   →  Posicionar o doador
-                                   →  Conectar 5 vasos
-                                   →  Sair de bomba (o coração volta a bater)
+Incisão com bisturi  →  Abrir o esterno  →  Entrar em bomba  →  Retirar o coração doente
+                     →  Posicionar o doador  →  Conectar 5 vasos
+                     →  Sair de bomba (o coração volta a bater)
+                     →  Fechar: esterno e pele voltam sozinhos, sutura com porta-agulha (5 pontos)
 ```
 
 A ordem é imposta, não sugerida, e cada recusa explica a consequência clínica —
 cardioplegia sem clampe é lavada pela circulação, sair de bomba sem desarejar manda
 êmbolo gasoso para o cérebro. A razão é o conteúdo didático; um gesto que apenas
 falha não ensina nada.
+
+A incisão e a sutura são etapas opcionais do `TransplantProcedure`
+(`SetSkinStages(true)`), ligadas pela cena. Sem elas o procedimento é exatamente o de
+antes, que é o que todos os testes antigos montam à mão. Com elas a rodada ganha 45 s
+(`SkinStageSeconds`) sobre o tempo do nível.
+
+### O que o visitante vê e faz
+
+| Etapa | Gesto | Guia visual |
+|---|---|---|
+| Incisão | Pegar o **bisturi** na mesa de Mayo e passar a lâmina sobre a linha roxa, encostando na pele | Linha roxa de marcador cirúrgico; o corte vermelho e as gotas de sangue aparecem só onde a lâmina passou |
+| Esterno | Mão sobre a marca dourada por 3 s | Anel dourado (só nesta etapa); o afastador de Finochietto abre junto |
+| CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba |
+| Vasos | Mão firme no anel por 1,4 s; mão trêmula faz sangrar, pressão estanca | Anéis vermelho/azul (só nesta etapa); vermelho pulsante enquanto sangra |
+| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; o nó fica na pele |
+
+Todo gesto de "segurar" mostra um **anel de progresso flutuante** sobre o local
+(`WorkProgressIndicator`), com rótulo e porcentagem, e vibra de leve na mão enquanto avança.
+Erros (bisturi fora da linha, anastomose vazando, passo da bomba fora de ordem) aparecem
+no monitor do cirurgião, fazem som e vibram forte.
+
+### Sala de cirurgia
+
+Tudo gerado pelo construtor, sem asset novo: paredes de azulejo, piso epóxi,
+fluxo laminar e luminárias no teto, **foco cirúrgico** de duas cúpulas (o spot de luz fica
+dentro dele), **campos cirúrgicos azuis** moldados ao corpo com janela sobre o esterno,
+campo de anestesia no pescoço, máquina de anestesia com circuito até a via aérea,
+**monitor de sinais vitais** com ECG e pletismografia animados e bipe no QRS,
+**máquina de CEC** com 5 bombas de rolete e as linhas arterial/venosa até o campo,
+mesa auxiliar, suporte de soro, negatoscópio com raio-X, relógio de parede com a hora real,
+gases medicinais, armário, portas com visor, pia de escovação e lixeiras.
+
+O monitor de sinais vitais conta a história da cirurgia: coração doente taquicárdico e
+hipotenso → linha reta e "CEC — BOMBA LIGADA" em bomba → ritmo sinusal quando o doador
+bate. Um vaso vazando derruba a pressão e dispara o alarme.
+
+Todos os sons (bipe, alarme, bisturi, agulha, sucesso, ruído da sala) são sintetizados
+em tempo de execução (`ProceduralTones`); não há arquivo de áudio.
 
 ## Arquitetura
 
@@ -133,7 +177,7 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
   -projectPath . -runTests -testPlatform PlayMode -testResults /tmp/res.xml
 ```
 
-**121 testes, 121 passando.** O que eles cobrem e por quê:
+**121 testes passando na última execução registrada neste README**, antes dos testes do PR do orientador (`AnastomosisTests`, `NameEntryTests`, `VesselAnastomosisVisualTests`) e dos 17 de `SkinStagesTests` (incisão, sutura, pele, etapas novas, correções do PR). Esses ainda precisam ser rodados no Editor. O que os testes cobrem e por quê:
 
 - **A volta do estande**: a rodada começa no primeiro corte, o transplante concluído vence a
   rodada, e o visitante seguinte recebe tórax fechado e coração doente de volta. Essas regras
@@ -146,6 +190,21 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
 - **Batimento**: a sístole ocupa menos de metade do ciclo, senão lê como respiração
 
 ## Limitações conhecidas
+
+**Sessão de 29/09 (bisturi, sutura, sala, correções do PR do orientador) — escrita sem Unity.**
+O código compila contra as DLLs de referência do Unity e stubs dos pacotes, mas nada foi
+renderizado nem jogado. Primeiro rebuild: olhar o Console, depois olhar a cena. Pontos a
+conferir com o óculos:
+- Posição e escala da **mesa de Mayo** (sobre o abdome), do bisturi e do porta-agulha;
+  o alcance foi calculado para ombro entre 1,10 m e 1,35 m.
+- A **janela de pele** (`ChestSkinPatch`) e os **campos** são amostrados da malha do corpo;
+  se a pele original aparecer por baixo da janela aberta, aumentar a margem em
+  `CutSkinUnderPatch`.
+- Orientação do texto do **monitor de sinais vitais** e o sentido da varredura do ECG.
+- O **pós-processamento** agora liga no PC (`HeadsetPostProcessing`) e continua desligado
+  no Quest standalone. Medir o frame time antes de ligar no Quest.
+- A **tolerância do bisturi** (1,4 cm da linha média, 1,8 cm acima e 3 cm abaixo da pele)
+  e o raio da agulha (1,3 cm) são estimativas.
 
 Nada aqui foi jogado com o óculos. Os tempos de gesto, os raios de 2,2 cm e a
 legibilidade dos anéis a 30 cm do olho são estimativas informadas, não medições.
@@ -171,7 +230,7 @@ legibilidade dos anéis a 30 cm do olho são estimativas informadas, não mediç
 - **O gradil costal** é proporcionalmente estreito: 23,8 × 16,0 × 30,0 cm contra
   28 × 20 × 30 reais. Escala uniforme, sem distorção, mas um tórax magro.
 - **Atmosfera visual nova e não testada no headset.** `TuneRoomLighting` reforça a luz direcional e pendura um foco cirúrgico sobre o tórax; `BuildClinicalPostProcessing` liga um Volume global (bloom leve, saturação -6, vinheta sutil) só na câmera do headset — espectador e projetor continuam com `renderPostProcessing = false`. `ApplyGloveMaterialToHands` procura por qualquer renderer com "Hand" no nome sob "XR Origin" para trocar pelo material `GLOVE_NitrileBlue`; se a malha de mão do VR Template usada no projeto tiver outro nome, o Console avisa e nada é trocado — confirme no primeiro build. Custo de GPU do Volume no Quest ainda não foi medido.
-- **Teclado de nome no placar não validado.** `NameEntryController` + `NameEntryWorker` existem e têm testes de lógica, mas a posição do painel de teclas (perto da posição do cirurgião, ao lado do campo cirúrgico) é um primeiro chute como os offsets de anastomose — ninguém tentou digitar um nome com o óculos posto.
+- **Teclado de nome no placar não validado.** `NameEntryController` + `NameEntryWorker` existem e têm testes de lógica. O painel agora fica à frente e à direita do cirurgião, na borda da mesa, inclinado para o olho, e só aparece quando há um nome para digitar (`NameEntryPanel`), com a tecla sob o dedo acendendo. Ninguém tentou digitar um nome com o óculos posto.
 
 Próximo passo recomendado para a incisão: ordenar a borda por conectividade topológica (não
 apenas por distância ao longo da trajetória), gerar uma parede interna contínua e corrigir a

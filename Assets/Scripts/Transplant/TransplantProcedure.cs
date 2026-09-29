@@ -44,6 +44,19 @@ namespace VRSurgery.Transplant
 
         /// <summary>Every stage cleared.</summary>
         Complete,
+
+        /// <summary>
+        /// Skin incision with the scalpel along the sternal midline. Only part of the operation when
+        /// the scene enables the skin stages; appended after Complete so existing values keep
+        /// their numbers.
+        /// </summary>
+        SkinIncision,
+
+        /// <summary>
+        /// Closing: sternum back, retractor out, skin sutured. Only part of the operation when the
+        /// scene enables the skin stages.
+        /// </summary>
+        CloseSkin,
     }
 
     /// <summary>
@@ -64,7 +77,12 @@ namespace VRSurgery.Transplant
                  "count: left atrium, inferior and superior vena cava, aorta and pulmonary artery.")]
         [SerializeField, Range(2, 5)] private int vesselCount = 5;
 
-        private readonly List<TransplantStage> _order = new List<TransplantStage>
+        [Tooltip("Adds the scalpel incision before the sternotomy and the skin suture after the " +
+                 "heart restarts. Off keeps the original six-stage operation, which is what every " +
+                 "test that builds a procedure by hand expects.")]
+        [SerializeField] private bool includeSkinStages;
+
+        private static readonly TransplantStage[] CoreOrder =
         {
             TransplantStage.OpenChest,
             TransplantStage.GoOnBypass,
@@ -73,6 +91,31 @@ namespace VRSurgery.Transplant
             TransplantStage.ConnectVessels,
             TransplantStage.Restart,
         };
+
+        private readonly List<TransplantStage> _order = new List<TransplantStage>(CoreOrder);
+
+        /// <summary>True when the operation opens with the scalpel and closes with the needle.</summary>
+        public bool IncludesSkinStages => includeSkinStages;
+
+        /// <summary>The stages this operation runs, in order.</summary>
+        public IReadOnlyList<TransplantStage> Order => _order;
+
+        /// <summary>Switches the incision and suture stages on or off. Takes effect immediately.</summary>
+        public void SetSkinStages(bool enabled)
+        {
+            includeSkinStages = enabled;
+            RebuildOrder();
+        }
+
+        private void RebuildOrder()
+        {
+            _order.Clear();
+            if (includeSkinStages) { _order.Add(TransplantStage.SkinIncision); }
+            _order.AddRange(CoreOrder);
+            if (includeSkinStages) { _order.Add(TransplantStage.CloseSkin); }
+        }
+
+        private void Awake() => RebuildOrder();
 
         public TransplantStage Stage { get; private set; } = TransplantStage.Idle;
 
@@ -131,6 +174,7 @@ namespace VRSurgery.Transplant
 
         public void Begin()
         {
+            RebuildOrder();
             VesselsConnected = 0;
             Bypass.Reset();
 
@@ -220,12 +264,14 @@ namespace VRSurgery.Transplant
         /// <summary>What the room should be telling the visitor to do right now, in pt-BR.</summary>
         public string CurrentInstruction => Stage switch
         {
-            TransplantStage.OpenChest => "Abra o tórax com a serra esternal",
+            TransplantStage.SkinIncision => "Pegue o bisturi e corte a pele sobre a linha roxa",
+            TransplantStage.OpenChest => "Abra o esterno: pressione a mão sobre a marca dourada",
             TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
             TransplantStage.RemoveNativeHeart => "Retire o coração doente",
             TransplantStage.PlaceDonorHeart => "Posicione o coração do doador",
             TransplantStage.ConnectVessels => $"Conecte os vasos — {VesselsConnected}/{vesselCount}",
             TransplantStage.Restart => Bypass.CurrentInstruction,
+            TransplantStage.CloseSkin => "Coração batendo! Feche a pele: porta-agulha nos pontos azuis",
             TransplantStage.Complete => "Coração batendo",
             _ => "Aguardando",
         };

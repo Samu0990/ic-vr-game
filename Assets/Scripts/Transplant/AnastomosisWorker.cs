@@ -36,6 +36,29 @@ namespace VRSurgery.Transplant
         /// <summary>The site currently being worked, if any. Drives the surgeon's prompt.</summary>
         public VesselAnastomosis ActiveSite { get; private set; }
 
+        /// <summary>The sites this worker can join, in build order. Read by the feedback layer.</summary>
+        public IReadOnlyList<VesselAnastomosis> Sites => sites;
+
+        /// <summary>
+        /// A site that is leaking right now, whether or not the hand is on it. The prompt has to
+        /// keep naming the leak after the hand leaves it — that is exactly when the visitor
+        /// thinks the join is finished and needs telling that it is not.
+        /// </summary>
+        public VesselAnastomosis BleedingSite
+        {
+            get
+            {
+                if (ActiveSite != null && ActiveSite.IsBleeding) { return ActiveSite; }
+
+                for (int i = 0; i < sites.Count; i++)
+                {
+                    if (sites[i] != null && sites[i].IsBleeding) { return sites[i]; }
+                }
+
+                return null;
+            }
+        }
+
         private void Awake()
         {
             _interactable = GetComponent<SurgicalInteractable>();

@@ -73,6 +73,10 @@ namespace VRSurgery.Surgery
             if (bypassWorker != null) { bypassWorker.StepRefused += ShowReason; }
             if (bypassWorker != null) { bypassWorker.StepPerformed += ClearReason; }
 
+            // Errors raised anywhere else in the operation — a scalpel off the midline, a leaking
+            // join — get the same line on the monitor the pump's refusals get.
+            SurgeryEvents.OnError += ShowError;
+
             Refresh(0f);
         }
 
@@ -80,7 +84,10 @@ namespace VRSurgery.Surgery
         {
             if (bypassWorker != null) { bypassWorker.StepRefused -= ShowReason; }
             if (bypassWorker != null) { bypassWorker.StepPerformed -= ClearReason; }
+            SurgeryEvents.OnError -= ShowError;
         }
+
+        private void ShowError(ErrorSeverity severity, string message) => ShowReason(message);
 
         private void Update() => Refresh(Time.deltaTime);
 
@@ -121,9 +128,12 @@ namespace VRSurgery.Surgery
                         return "TRANSPLANTE DE CORAÇÃO\nColoque o visor para começar";
 
                     case SessionState.Briefing:
-                        return procedure != null
-                            ? procedure.Briefing + "\n\nAbra o tórax para começar"
+                        string start = procedure != null && procedure.IncludesSkinStages
+                            ? "Pegue o bisturi na mesa e corte sobre a linha roxa para começar"
                             : "Abra o tórax para começar";
+                        return procedure != null
+                            ? procedure.Briefing + "\n\n" + start
+                            : start;
 
                     case SessionState.Success:
                         if (nameEntry != null && nameEntry.IsAwaitingName)
@@ -146,11 +156,13 @@ namespace VRSurgery.Surgery
             // A join held too unsteady is not a refusal — nothing was rejected, the vessel is
             // simply leaking now. It still needs its own line, or the visitor sees the vessel
             // count stop climbing with no idea why.
-            VesselAnastomosis activeSite = anastomosisWorker != null ? anastomosisWorker.ActiveSite : null;
-            if (activeSite != null && activeSite.IsBleeding)
+            // Any leaking site, not only the one under the hand: the moment the visitor lifts the
+            // hand off a leak is the moment they most need to be told it is still leaking.
+            VesselAnastomosis bleedingSite = anastomosisWorker != null ? anastomosisWorker.BleedingSite : null;
+            if (bleedingSite != null)
             {
-                return $"SANGRAMENTO NA {activeSite.DisplayName.ToUpperInvariant()}\n" +
-                       "Mantenha o instrumento no ponto para estancar";
+                return $"SANGRAMENTO NA {bleedingSite.DisplayName.ToUpperInvariant()}\n" +
+                       "Pressione o anel vermelho e segure até estancar";
             }
 
             return procedure != null ? procedure.CurrentInstruction : "Aguardando";

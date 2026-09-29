@@ -61,6 +61,9 @@ namespace VRSurgery.Transplant
         /// <summary>Last clinical refusal, for the room to show. Cleared when a step succeeds.</summary>
         public string LastRefusal { get; private set; } = string.Empty;
 
+        /// <summary>Every site this worker can drive, in build order. Read by the markers and the progress ring.</summary>
+        public IReadOnlyList<BypassSite> Sites => sites;
+
         public event Action<BypassStep> StepPerformed;
         public event Action<string> StepRefused;
 

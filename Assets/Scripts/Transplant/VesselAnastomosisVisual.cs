@@ -55,6 +55,14 @@ namespace VRSurgery.Transplant
                 _wasJoined = true;
                 _healedElapsed = 0f;
             }
+            else if (!site.IsJoined && !site.IsBleeding && _wasJoined)
+            {
+                // The round was reset under this ring (TransplantRoundBridge calls ResetJoin
+                // without reloading the scene). Without this the next visitor inherits the last
+                // one's green rings on vessels nobody has sewn yet.
+                _wasJoined = false;
+                _healedElapsed = 0f;
+            }
 
             Color next;
 
