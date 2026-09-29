@@ -1414,12 +1414,14 @@ namespace VRSurgery.EditorTools
                 Rod("Drip_" + i, p, new Vector3(x, 1.64f, 0f), 0.008f, 0.05f, bag, null, false);
             }
 
+            // The line stays on the anaesthesia side of the screen and goes in under the drape
+            // at the table edge, to the arm, instead of lying across the patient.
             Tube("IvLine", p, new[]
             {
                 origin + new Vector3(-0.12f, 1.6f, 0f),
-                origin + new Vector3(-0.2f, 1.25f, -0.1f),
-                origin + new Vector3(-0.28f, TableTopY + 0.14f, -0.25f),
-                new Vector3(TableHalfWidth - 0.05f, TableTopY + 0.1f, origin.z - 0.35f),
+                origin + new Vector3(-0.19f, 1.3f, -0.04f),
+                new Vector3(TableHalfWidth + 0.01f, TableTopY + 0.1f, origin.z - 0.06f),
+                new Vector3(TableHalfWidth - 0.01f, TableTopY + 0.03f, origin.z - 0.07f),
             }, 0.0022f, Glass(new Color(0.9f, 0.95f, 1f, 0.6f)));
         }
 
@@ -2044,73 +2046,104 @@ namespace VRSurgery.EditorTools
 
         // ------------------------------------------------------------------ instruments
 
+        /// <summary>Where each instrument waits, set by <see cref="BuildSideTables"/> for the builders after it.</summary>
+        private static Pose _slotScalpel, _slotCautery, _slotNeedleHolder, _slotForceps, _slotSaw, _slotPaddles;
+
+        /// <summary>Where the donor basin rests.</summary>
+        private static Vector3 _slotBasin;
+
         /// <summary>
-        /// A Mayo stand: a steel tray on one post, cantilevered over the patient's abdomen, in
-        /// front of the surgeon. Scalpel, needle holder and the donor heart's basin sit on it.
-        /// Replaces the donor pedestal that stood behind the surgeon's shoulder, 98° off the line
-        /// of sight, where a first-timer never looked.
+        /// Two instrument trays on posts beside the operating table, one either side of the
+        /// surgeon — and nothing over the patient. The instruments used to sit on a Mayo tray
+        /// cantilevered over the abdomen, with the cautery and the paddles lying on the drape; it
+        /// is how a real theatre does it, but in the headset it read as clutter piled on the body.
+        ///
+        /// The one place that is off the patient and still inside the arm envelope is beside the
+        /// table on the visitor's left, at hip height: every grip within 0.70 m of both shoulders
+        /// and in front of the shoulder line (TransplantErgonomicsTests). The head side has no
+        /// such room — the visitor's right hip, the name keypad and the anaesthesia screen fill
+        /// it. The instruments lie across the tray like piano keys, working ends toward the table
+        /// and handles toward the visitor, the way a scrub nurse lays them for the surgeon, with
+        /// the donor heart's basin at the end. The defibrillator paddles only come out when the
+        /// new heart fibrillates, laid across the basin it has just left (ToolPresenter).
         /// </summary>
-        private static Transform BuildMayoStand(Vector3 thorax, out Vector3 trayTop)
+        private static Transform BuildSideTables(Vector3 thorax)
         {
-            GameObject stand = new GameObject("MesaMayo");
-            // Close to the chest on purpose: the ergonomics suite wants every instrument within
-            // 0.70 m of BOTH shoulders, and the right shoulder is the far one for anything toward
-            // the feet. 0.30 m below the thorax is as far down the body as that allows.
-            Vector3 centre = new Vector3(thorax.x + 0.14f, 0f, thorax.z - 0.30f);
-            float topY = Mathf.Max(SkinTopAt(centre.x, centre.z) + 0.06f, TableTopY + 0.3f);
+            GameObject root = new GameObject("MesasDeInstrumentos");
 
             Material steel = Paint("steel", new Color(0.78f, 0.8f, 0.82f), 0.9f, 0.7f);
             Material drape = DoubleSided(Paint("drapeBlue", new Color(0.16f, 0.38f, 0.58f), 0f, 0.12f));
 
-            Part(PrimitiveType.Cube, "Bandeja", stand.transform, new Vector3(centre.x, topY - 0.01f, centre.z),
-                new Vector3(0.42f, 0.02f, 0.28f), steel, null, true);
-            // Solid: an instrument let go over the tray lands on it.
-            Box("CampoBandeja", stand.transform, new Vector3(centre.x, topY + 0.001f, centre.z), new Vector3(0.46f, 0.003f, 0.32f), drape)
-                .AddComponent<BoxCollider>();
-            Box("Aba", stand.transform, new Vector3(centre.x - 0.23f, topY - 0.05f, centre.z), new Vector3(0.003f, 0.1f, 0.32f), drape);
+            float top = TableTopY + 0.15f;
+            float inner = thorax.x + TableHalfWidth + 0.01f;   // just clear of the table edge
+            float z = thorax.z;
 
-            float postX = thorax.x + TableHalfWidth + 0.13f;
-            Rod("Poste", stand.transform, new Vector3(postX, topY * 0.5f, centre.z - 0.12f), 0.018f, topY, steel);
-            Box("BracoMayo", stand.transform, new Vector3((postX + centre.x + 0.19f) * 0.5f, topY - 0.03f, centre.z - 0.12f),
-                new Vector3(Mathf.Max(0.04f, postX - (centre.x + 0.19f) + 0.04f), 0.025f, 0.03f), steel);
-            Box("Base", stand.transform, new Vector3(postX, 0.03f, centre.z - 0.12f), new Vector3(0.5f, 0.03f, 0.05f), steel);
-            Box("Base2", stand.transform, new Vector3(postX, 0.03f, centre.z - 0.12f), new Vector3(0.05f, 0.03f, 0.5f), steel);
+            SideTray("MesaPes", root.transform, inner, thorax.x + 0.56f, z - 0.15f, z - 0.66f, top, steel, drape);
 
-            // Decorative instruments on the far half of the tray.
-            for (int i = 0; i < 4; i++)
-            {
-                Box("Pinca_" + i, stand.transform, new Vector3(centre.x - 0.17f + i * 0.02f, topY + 0.006f, centre.z - 0.05f),
-                    new Vector3(0.008f, 0.006f, 0.13f), steel);
-            }
+            // Working ends toward the table, handles toward the visitor.
+            Quaternion toTable = Quaternion.LookRotation(Vector3.left, Vector3.up);
+            // The saw stands on its grip nose outward: nose inward it would reach past the table edge.
+            Quaternion outward = Quaternion.LookRotation(Vector3.right, Vector3.up);
+            // The paddles lie lengthwise, grips on the empty basin's far rim toward the visitor and
+            // spoons down on the tray past it; their leads stop short of the saw.
+            Quaternion towardFeet = Quaternion.LookRotation(Vector3.back, Vector3.up) * Quaternion.Euler(12f, 0f, 0f);
 
-            Box("Gaze", stand.transform, new Vector3(centre.x + 0.02f, topY + 0.008f, centre.z - 0.09f), new Vector3(0.07f, 0.01f, 0.07f),
-                Paint("gauze", new Color(0.97f, 0.97f, 0.95f), 0f, 0.1f));
+            _slotScalpel = new Pose(new Vector3(inner + 0.06f, top + 0.012f, z - 0.185f), toTable);
+            _slotCautery = new Pose(new Vector3(inner + 0.08f, top + 0.018f, z - 0.23f), toTable);
+            _slotSaw = new Pose(new Vector3(inner + 0.055f, top + 0.1f, z - 0.28f), outward);
+            _slotNeedleHolder = new Pose(new Vector3(inner + 0.08f, top + 0.014f, z - 0.335f), toTable);
+            _slotForceps = new Pose(new Vector3(inner + 0.07f, top + 0.01f, z - 0.38f), toTable);
+            _slotBasin = new Vector3(inner + 0.09f, top, z - 0.475f);
+            _slotPaddles = new Pose(new Vector3(inner + 0.09f, top + 0.06f, z - 0.53f), towardFeet);
 
-            trayTop = new Vector3(centre.x, topY + 0.003f, centre.z);
-            _trayTop = trayTop;
-
+            // Hidden from the projector like the rest of the operator's furniture: it frames the
+            // patient on the mannequin, not the trays beside it.
             int operatorLayer = LayerMask.NameToLayer(OperatorLayer);
             if (operatorLayer >= 0)
             {
-                foreach (Transform t in stand.GetComponentsInChildren<Transform>(true)) { t.gameObject.layer = operatorLayer; }
+                foreach (Transform t in root.GetComponentsInChildren<Transform>(true)) { t.gameObject.layer = operatorLayer; }
             }
 
-            Debug.Log($"[Transplante] mesa de Mayo sobre o abdome, bandeja em {trayTop}");
-            return stand.transform;
+            Debug.Log($"[Transplante] mesas de instrumentos ao lado da mesa cirúrgica, bandejas a y={top:F2} a partir de " +
+                      $"x={inner:F2}; nada sobre o paciente");
+            return root.transform;
+        }
+
+        /// <summary>A steel tray with a sterile drape on it, on one post at its far end.</summary>
+        private static void SideTray(string name, Transform parent, float x0, float x1, float zNear, float zFar, float top,
+            Material steel, Material drape)
+        {
+            GameObject tray = new GameObject(name);
+            tray.transform.SetParent(parent, false);
+
+            float cx = (x0 + x1) * 0.5f, cz = (zNear + zFar) * 0.5f;
+            float width = x1 - x0, length = Mathf.Abs(zFar - zNear);
+
+            Part(PrimitiveType.Cube, "Bandeja", tray.transform, new Vector3(cx, top - 0.01f, cz),
+                new Vector3(width, 0.02f, length), steel, null, true);
+            // Solid: an instrument let go over the tray lands on it.
+            Box("CampoBandeja", tray.transform, new Vector3(cx, top + 0.001f, cz), new Vector3(width + 0.02f, 0.003f, length + 0.02f), drape)
+                .AddComponent<BoxCollider>();
+            // The drape hangs over the outer edge, toward the surgeon.
+            Box("Aba", tray.transform, new Vector3(x1 + 0.01f, top - 0.06f, cz), new Vector3(0.003f, 0.12f, length + 0.02f), drape);
+
+            // The post at the outer far corner, away from where the visitor stands.
+            float postX = x1 - 0.05f;
+            float postZ = zFar + Mathf.Sign(zNear - zFar) * 0.04f;
+            Rod("Poste", tray.transform, new Vector3(postX, (top - 0.02f) * 0.5f, postZ), 0.016f, top - 0.02f, steel);
+            Box("Base", tray.transform, new Vector3(postX, 0.015f, postZ), new Vector3(0.2f, 0.02f, 0.2f), steel);
         }
 
         /// <summary>
-        /// The electrocautery pen in its holster on the drape beside the window, the bleeders on
+        /// The electrocautery pen in its holster on the side tray, the bleeders on
         /// the wound edges it seals, their scorch marks, and the smoke from its tip.
         /// </summary>
         private static CauteryWorker BuildCautery(GameObject systems, ChestSkinPatch patch,
             out SurgicalInteractable pen, out Transform penTip)
         {
-            // Holster on the drape, surgeon's side of the window, pen lying tip toward the feet.
-            float x = _window.Center.x + _window.HalfWidth + 0.06f;
-            float z = _window.Center.z - 0.02f;
-            float y = SkinTopAt(x, z) + 0.035f;
-            Quaternion lying = Quaternion.LookRotation(Vector3.back, Vector3.up);
+            // In its holster on the side tray, pen lying tip toward the table.
+            float x = _slotCautery.position.x, y = _slotCautery.position.y, z = _slotCautery.position.z;
+            Quaternion lying = _slotCautery.rotation;
 
             GameObject tool = GrabbableTool("BisturiEletricoCaneta", "cautery-pen", "Bisturi elétrico", ToolType.Cautery,
                 ToolCapability.Cauterize, new Vector3(x, y, z), lying, new Vector3(0f, 0f, -0.02f),
@@ -2143,9 +2176,9 @@ namespace VRSurgery.EditorTools
             cable.transform.SetParent(null, true);
             cable.transform.SetParent(t, true);
 
-            // The holster: a blue plastic sleeve on the drape the pen rests in.
-            Box("Coldre", null, new Vector3(x, y - 0.012f, z - 0.01f), new Vector3(0.03f, 0.012f, 0.14f),
-                Paint("holster", new Color(0.25f, 0.5f, 0.8f), 0f, 0.4f));
+            // The holster: a blue plastic sleeve on the tray the pen rests in.
+            Box("Coldre", null, _slotCautery.position + lying * new Vector3(0f, -0.012f, -0.01f), new Vector3(0.03f, 0.012f, 0.14f),
+                Paint("holster", new Color(0.25f, 0.5f, 0.8f), 0f, 0.4f), lying);
 
             // Bleeders on the retracted wound edges, alternating sides, and a scorch for each.
             GameObject field = GameObject.Find("CampoOperatorio");
@@ -2570,17 +2603,13 @@ namespace VRSurgery.EditorTools
         /// <summary>
         /// Internal defibrillator paddles: two insulated handles, steel shafts and cupped spoons
         /// that hold the heart between them. Joined at the grip so one hand can work them — real
-        /// paddles are two separate handles, which a single controller cannot hold. Resting on
-        /// the drape beyond the cautery holster, spoons toward the head.
+        /// paddles are two separate handles, which a single controller cannot hold. Laid across the
+        /// empty donor basin when they are needed, grips toward the visitor.
         /// </summary>
         private static GameObject BuildInternalPaddles(out Transform centre, out SurgicalInteractable interactable)
         {
-            float x = _window.Center.x + _window.HalfWidth + 0.14f;
-            float z = _window.Center.z + 0.06f;
-            float y = SkinTopAt(x, z) + 0.03f;
-
             GameObject tool = GrabbableTool("PasInternas", "internal-paddles", "Pás internas", ToolType.Defibrillator,
-                ToolCapability.None, new Vector3(x, y, z), Quaternion.LookRotation(Vector3.forward, Vector3.up),
+                ToolCapability.None, _slotPaddles.position, _slotPaddles.rotation,
                 new Vector3(0f, 0f, -0.09f), Vector3.zero, new Vector3(0.1f, 0.05f, 0.27f), out interactable);
             Transform t = tool.transform;
 
@@ -2624,7 +2653,7 @@ namespace VRSurgery.EditorTools
             middle.transform.localPosition = new Vector3(0f, 0f, 0.09f);
             centre = middle.transform;
 
-            Debug.Log($"[Transplante] pás internas do desfibrilador sobre o campo em {tool.transform.position}");
+            Debug.Log($"[Transplante] pás internas do desfibrilador na mesa lateral em {tool.transform.position}");
             return tool;
         }
 
@@ -2708,9 +2737,6 @@ namespace VRSurgery.EditorTools
             return WritePng(SurfaceFolder + "/SoftDot.png", size, pixels, false);
         }
 
-        /// <summary>Top of the Mayo tray for this build, for instruments placed after it.</summary>
-        private static Vector3 _trayTop;
-
         /// <summary>
         /// The sternal saw: a pistol-grip body with a reciprocating blade pointing down at the
         /// front and a foot plate under it, the way the real one is set into the sternal notch.
@@ -2745,8 +2771,8 @@ namespace VRSurgery.EditorTools
             return tool;
         }
 
-        /// <summary>Moves the donor basin from its pedestal behind the surgeon onto the Mayo tray.</summary>
-        private static void MoveDonorToTray(Vector3 trayTop)
+        /// <summary>Moves the donor basin from its pedestal behind the surgeon onto the head-side tray.</summary>
+        private static void MoveDonorToTray(Vector3 basinSpot)
         {
             GameObject stand = GameObject.Find("DonorStand");
             if (stand == null) { return; }
@@ -2754,11 +2780,14 @@ namespace VRSurgery.EditorTools
             Transform column = stand.transform.Find("StandColumn");
             if (column != null) { Object.DestroyImmediate(column.gameObject); }
 
+            // A basin a little smaller, so it stays on the narrow tray; still roomy for the heart.
+            Transform basin = stand.transform.Find("Basin");
+            if (basin != null) { basin.localScale = new Vector3(0.16f, basin.localScale.y, 0.16f); }
+
             // Basin sits at 0.92 above the stand origin; put the origin so the basin rests on the tray.
-            Vector3 basinSpot = trayTop + new Vector3(-0.07f, 0f, 0.06f);
             stand.transform.position = basinSpot - new Vector3(0f, 0.89f, 0f);
 
-            Debug.Log($"[Transplante] coração doador na bacia sobre a mesa de Mayo em {basinSpot}");
+            Debug.Log($"[Transplante] coração doador na bacia da mesa lateral em {basinSpot}");
         }
 
         private static GameObject GrabbableTool(string name, string id, string label, ToolType type, ToolCapability capability,
@@ -3174,17 +3203,16 @@ namespace VRSurgery.EditorTools
             SternotomyController sternotomy = sternum.GetComponent<SternotomyController>();
             BuildRetractor(field.transform, sternotomy, sternum);
 
-            Transform stand = BuildMayoStand(thorax, out Vector3 trayTop);
-            MoveDonorToTray(trayTop);
+            Transform stand = BuildSideTables(thorax);
+            MoveDonorToTray(_slotBasin);
 
-            // Handles toward the surgeon, working ends away, on the near half of the tray.
-            Quaternion away = Quaternion.LookRotation(Vector3.left, Vector3.up);
-            GameObject scalpelTool = BuildScalpel(trayTop + new Vector3(0.12f, 0.012f, 0.05f), away, out Transform blade, out scalpel,
+            // Handles toward the surgeon, working ends away, on the feet-side tray.
+            GameObject scalpelTool = BuildScalpel(_slotScalpel.position, _slotScalpel.rotation, out Transform blade, out scalpel,
                 out bool bladeKnown, out Renderer bladeBlood);
-            GameObject holder = BuildNeedleHolder(trayTop + new Vector3(0.12f, 0.014f, -0.04f), away, out Transform needle, out needleHolder);
+            GameObject holder = BuildNeedleHolder(_slotNeedleHolder.position, _slotNeedleHolder.rotation, out Transform needle, out needleHolder);
 
             // Tissue forceps beside the needle holder: the other hand lifts the wound edge.
-            SkinForceps forceps = BuildSkinForceps(trayTop + new Vector3(0.12f, 0.01f, -0.12f), away, patch);
+            SkinForceps forceps = BuildSkinForceps(_slotForceps.position, _slotForceps.rotation, patch);
 
             // ---- incision visuals
             GameObject cut = MeshPart("IncisaoCorte", field.transform, null,
@@ -3296,7 +3324,7 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[Transplante] incisão de {patch.IncisionLength * 100f:F0} cm e {stitches} pontos de sutura; " +
                       $"bisturi em {scalpelTool.transform.position}, porta-agulha em {holder.transform.position}, " +
-                      $"mesa de Mayo '{stand.name}'");
+                      $"mesas '{stand.name}' ao lado da mesa cirúrgica");
         }
 
         /// <summary>
@@ -3492,12 +3520,14 @@ namespace VRSurgery.EditorTools
                 Rod("Tampa_" + i, suction.transform, at + new Vector3(0f, 0.125f, 0f), 0.072f, 0.02f, dark, null, false);
             }
 
+            // The hose runs to the side of the table and hangs there, clipped under the tray,
+            // instead of lying across the patient.
             Tube("MangueiraAspiracao", suction.transform, new[]
             {
                 suction.transform.position + new Vector3(0.09f, 1.09f, 0f),
                 suction.transform.position + new Vector3(-0.2f, 1.3f, 0.3f),
-                new Vector3(TableHalfWidth + 0.02f, TableTopY + 0.2f, _window.Center.z - 0.25f),
-                new Vector3(_window.Center.x + _window.HalfWidth + 0.04f, SkinTopAt(_window.Center.x + 0.1f, _window.Center.z - 0.12f) + 0.025f, _window.Center.z - 0.12f),
+                new Vector3(TableHalfWidth + 0.14f, TableTopY + 0.05f, thorax.z - 0.62f),
+                new Vector3(TableHalfWidth + 0.1f, TableTopY - 0.08f, thorax.z - 0.42f),
             }, 0.005f, Glass(new Color(0.9f, 0.95f, 1f, 0.6f)));
 
             // Crash cart: red drawers and a defibrillator on top, against the far wall.

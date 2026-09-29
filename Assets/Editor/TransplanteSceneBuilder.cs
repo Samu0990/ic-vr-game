@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 29;
+        public const int BuildVersion = 30;
 
         private static Vector3 _thorax;
 
@@ -1253,12 +1253,11 @@ namespace VRSurgery.EditorTools
 
             // The bone is opened with a sternal saw from the tray, not a bare hand: the blade has
             // to be held on the gold mark, and it rasps and judders in the hand while it cuts.
-            BuildSternalSaw(_trayTop + new Vector3(0.1f, 0.1f, 0.115f), Quaternion.LookRotation(Vector3.left, Vector3.up),
-                out Transform sawBlade, out SurgicalInteractable saw);
+            BuildSternalSaw(_slotSaw.position, _slotSaw.rotation, out Transform sawBlade, out SurgicalInteractable saw);
             opening.BindInstrument(saw, sawBlade);
             feedback.BindSaw(opening, saw);
 
-            // Electrocautery for the bleeders on the wound edges, in its holster on the drape.
+            // Electrocautery for the bleeders on the wound edges, in its holster on the side tray.
             CauteryWorker cautery = BuildCautery(systems, skinPatch, out SurgicalInteractable cauteryPen, out Transform penTip);
             _cautery = cautery;
             indicator.AddSource(cautery);
@@ -1281,9 +1280,13 @@ namespace VRSurgery.EditorTools
             SurgicalInteractable paddles = null;
             if (HasOwnUnclamp(plan))
             {
-                BuildInternalPaddles(out Transform paddleCentre, out paddles);
+                GameObject paddlesTool = BuildInternalPaddles(out Transform paddleCentre, out paddles);
                 DefibrillationWorker defib = systems.AddComponent<DefibrillationWorker>();
                 defib.Bind(paddleCentre, paddles, procedure, beat, donor.transform);
+
+                // No room for them on the tray until the donor basin is empty: they are laid on
+                // it when the new heart fibrillates, the way the team hands them over.
+                systems.AddComponent<ToolPresenter>().Bind(paddlesTool, defib, procedure);
                 worker.AddGate(defib);
                 indicator.AddSource(defib);
                 feedback.BindDefibrillation(defib, paddles);

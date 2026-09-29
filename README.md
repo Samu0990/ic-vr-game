@@ -90,12 +90,12 @@ a fibrilação.
 
 | Etapa | Gesto | Guia visual |
 |---|---|---|
-| Incisão | Pegar o **bisturi** na mesa de Mayo, **apontá-lo ao longo da linha roxa com a lâmina em pé** e **puxar** encostando na pele (até 4 mm acima conta; mais de 2,2 cm abaixo é "profunda demais"). Lâmina parada só afunda a pele; deitada ou empurrada de lado só raspa, e o monitor diz como segurar. **Ajuda adaptativa:** depois de ~3 s tentando com a lâmina errada, a regra cai para aquele visitante | Linha roxa de marcador cirúrgico; a pele afunda sob a lâmina e **abre onde a lâmina passou** (até 4 mm da linha), mostrando as **camadas** na parede do corte (pele, derme, gordura amarela, fáscia e, com a ferida afastada, músculo); corte fora da linha deixa **arranhão** na pele; a lâmina sai **suja de sangue**; gotas crescem e escorrem. Ao terminar, **cartão com 1–3 estrelas** sobre o tórax (passadas, desvio em mm, profundidade, arranhões) |
-| Cautério (opcional) | Pegar o **bisturi elétrico** no coldre sobre o campo e encostar a ponta nos 3 pontos que sangram na borda da ferida | Fumaça, chiado e vibração; o ponto para de sangrar e fica a marca de cauterização |
+| Incisão | Pegar o **bisturi** na bandeja à sua esquerda, **apontá-lo ao longo da linha roxa com a lâmina em pé** e **puxar** encostando na pele (até 4 mm acima conta; mais de 2,2 cm abaixo é "profunda demais"). Lâmina parada só afunda a pele; deitada ou empurrada de lado só raspa, e o monitor diz como segurar. **Ajuda adaptativa:** depois de ~3 s tentando com a lâmina errada, a regra cai para aquele visitante | Linha roxa de marcador cirúrgico; a pele afunda sob a lâmina e **abre onde a lâmina passou** (até 4 mm da linha), mostrando as **camadas** na parede do corte (pele, derme, gordura amarela, fáscia e, com a ferida afastada, músculo); corte fora da linha deixa **arranhão** na pele; a lâmina sai **suja de sangue**; gotas crescem e escorrem. Ao terminar, **cartão com 1–3 estrelas** sobre o tórax (passadas, desvio em mm, profundidade, arranhões) |
+| Cautério (opcional) | Pegar o **bisturi elétrico** no coldre da bandeja e encostar a ponta nos 3 pontos que sangram na borda da ferida | Fumaça, chiado e vibração; o ponto para de sangrar e fica a marca de cauterização |
 | Esterno | Pegar a **serra esternal** na bandeja e apoiar a lâmina na marca dourada por 3 s | Anel dourado (só nesta etapa); zumbido e vibração forte enquanto serra; o esterno se parte em duas metades presas no afastador de Finochietto |
 | Pericárdio | Com o **bisturi elétrico**, passar a ponta sobre a linha tracejada no meio da membrana (1,3 cm de tolerância) | Membrana brilhante sobre o coração, que bate por baixo; fumaça e chiado; as duas metades **dobram para os lados** e ficam abertas (o pericárdio fica aberto no fim do transplante) |
 | CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba. Cada passo **aparece no tórax**: cânula na aorta e nas duas cavas (Y até a linha venosa) ao canular, **clampe aórtico** enquanto a aorta está clampeada, linha de cardioplegia/vent na raiz da aorta |
-| Desfibrilação | Ao retirar o clampe, o coração novo **fibrila** (acontece de 10% a 80% das vezes na vida real; aqui, sempre, para ensinar). Pegar as **pás internas** sobre o campo e segurar o coração entre as colheres ~1 s: carrega e dispara. 1º choque 10 J (reverte ~60%), 2º 20 J (sempre reverte, para a rodada não depender de sorte). A bomba **recusa desarejar/sair** com o coração fibrilando | Coração tremendo; monitor com traçado de FV, "FC FV", alarme; anel vermelho "CARREGANDO 10 J", zumbido de carga, pancada e espículo no ECG a cada choque; cartão "CORAÇÃO BATENDO!" ao reverter |
+| Desfibrilação | Ao retirar o clampe, o coração novo **fibrila** (acontece de 10% a 80% das vezes na vida real; aqui, sempre, para ensinar). Pegar as **pás internas**, que a equipe põe sobre a bacia vazia do doador quando o coração fibrila, e segurar o coração entre as colheres ~1 s: carrega e dispara. 1º choque 10 J (reverte ~60%), 2º 20 J (sempre reverte, para a rodada não depender de sorte). A bomba **recusa desarejar/sair** com o coração fibrilando | Coração tremendo; monitor com traçado de FV, "FC FV", alarme; anel vermelho "CARREGANDO 10 J", zumbido de carga, pancada e espículo no ECG a cada choque; cartão "CORAÇÃO BATENDO!" ao reverter |
 | Vasos | **Porta-agulha** com a ponta da agulha no anel (1,5× mais rápido e mais firme) ou a mão firme no anel por 1,4 s; mão trêmula faz sangrar, pressão estanca | Anéis vermelho/azul (só nesta etapa); vermelho pulsante enquanto sangra |
 | Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; a pele afunda sob a agulha; cada nó fica na pele e fecha a abertura do corte no seu trecho; entre a entrada e a saída o **fio** aparece indo do ponto de entrada até a agulha. No último nó, **cartão com estrelas** da sutura (mm do alvo, furos fora do ponto, tempo); passar a agulha por baixo da pele da entrada até a saída não conta como furo. Ao fechar, **fios de aço** aparecem no esterno enquanto o osso se junta e **dois drenos mediastinais** saem abaixo da ferida até o frasco de drenagem na grade da mesa |
 | Fim | — | **Curativo** (filme e compressa com uma mancha) sobre a sutura enquanto o placar é mostrado; cartão **"TRANSPLANTE CONCLUÍDO!"** com as estrelas da incisão e da sutura e os choques. Cartões que chegam juntos entram em fila, um depois do outro |
@@ -137,7 +137,7 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
 - **Tudo ao alcance de um ponto só**: instrumentos a no máximo ~0,6 m dos ombros de quem está
   na marca dos pés (teste `TransplantErgonomicsTests` cobra 0,70 m pelos dois ombros).
 - **Soltar = cair com física** (`ReturnHomeOnRelease`, modo `DropAndRespawn`): o instrumento
-  fica onde caiu, no campo ou na bandeja de Mayo (agora sólida), e pode ser pego de novo;
+  fica onde caiu, no campo ou na bandeja de instrumentos (sólida), e pode ser pego de novo;
   **arremessar** também funciona. Só se ele parar **fora do alcance** (chão, outro lado da
   mesa, atirado longe) por 0,6 s é que some e **reaparece com um "pop"** no lugar dele. A cada
   novo visitante, tudo volta para a bandeja. Instrumento que cai **dentro do paciente** (atravessa
@@ -153,6 +153,16 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   está com o óculos, por **4 s** encerra a vez e prepara o próximo visitante (um clique na mão
   marca cada ponto). No PC/Link: **R** recentraliza, **N** encerra a vez.
 - **Marca dos pés** verde no chão onde o visitante fica.
+- **Nada em cima do paciente**: a mesa de Mayo que ficava sobre o abdome, o cautério no coldre
+  e as pás sobre o campo saíram de cima do corpo. Os instrumentos ficam numa **bandeja ao lado da
+  mesa, à esquerda do visitante**, na altura do quadril, deitados como teclas de piano (ponta
+  para a mesa, cabo para você): bisturi, bisturi elétrico no coldre, serra em pé, porta-agulha,
+  pinça e, no fim, a bacia com o coração doador. É o único lugar fora do paciente que fica ao
+  alcance dos dois ombros e na frente da linha dos ombros (`TransplantErgonomicsTests`); do lado
+  direito não cabe nada entre o quadril do visitante, o teclado do nome e a tela de anestesia.
+  As **pás do desfibrilador** não cabem junto, então a equipe as coloca **sobre a bacia vazia
+  quando o coração novo fibrila** (`ToolPresenter`) e as recolhe para o próximo visitante. A
+  mangueira da aspiração e o equipo do soro não passam mais por cima do corpo.
 - **Parado no lugar, câmera só da cabeça**: a locomoção do template (andar e girar pelo
   analógico, pular, teleporte, escalar, gravidade) e o colisor do corpo estão desligados. Eles
   deslizavam ou giravam a sala com o polegar no analógico, puxavam para baixo quem o
@@ -354,8 +364,9 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
 O código compila contra as DLLs de referência do Unity e stubs dos pacotes, mas nada foi
 renderizado nem jogado. Primeiro rebuild: olhar o Console, depois olhar a cena. Pontos a
 conferir com o óculos:
-- Posição e escala da **mesa de Mayo** (sobre o abdome), do bisturi e do porta-agulha;
-  o alcance foi calculado para ombro entre 1,10 m e 1,35 m.
+- Posição da **bandeja de instrumentos** ao lado da mesa (à esquerda do visitante), do bisturi
+  e do porta-agulha; o alcance foi calculado para ombro entre 1,10 m e 1,35 m. A pinça e o
+  porta-agulha ficam a ~83–85° do olhar (limite do teste: 90°): conferir se acham sem ajuda.
 - A **janela de pele** (`ChestSkinPatch`) e os **campos** são amostrados da malha do corpo;
   se a pele original aparecer por baixo da janela aberta, aumentar a margem em
   `CutSkinUnderPatch`.
