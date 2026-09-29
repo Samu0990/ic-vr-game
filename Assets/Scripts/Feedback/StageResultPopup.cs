@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 using VRSurgery.Transplant;
 
@@ -44,6 +45,12 @@ namespace VRSurgery.Feedback
         [SerializeField] private Color poorColor = new Color(1f, 0.6f, 0.35f);
 
         private float _elapsed = float.PositiveInfinity;
+        private readonly Queue<(string title, string detail, int stars, Vector3 at)> _waiting =
+            new Queue<(string, string, int, Vector3)>();
+
+        [Header("Operation summary (optional)")]
+        [SerializeField] private TransplantProcedure procedure;
+        private TransplantProcedure _subscribedProcedure;
         private Vector3 _at;
         private int _stars;
         private int _revealed;
@@ -88,6 +95,13 @@ namespace VRSurgery.Feedback
                 _subscribedSuture = suture;
                 _subscribedSuture.Graded += HandleSutureGraded;
             }
+
+            if (procedure != null && _subscribedProcedure == null)
+            {
+                _subscribedProcedure = procedure;
+                _subscribedProcedure.ProcedureCompleted += HandleProcedureCompleted;
+                _subscribedProcedure.StageChanged += HandleStageChanged;
+            }
         }
 
         private void Unsubscribe()
@@ -109,6 +123,61 @@ namespace VRSurgery.Feedback
                 _subscribedSuture.Graded -= HandleSutureGraded;
                 _subscribedSuture = null;
             }
+
+            if (_subscribedProcedure != null)
+            {
+                _subscribedProcedure.ProcedureCompleted -= HandleProcedureCompleted;
+                _subscribedProcedure.StageChanged -= HandleStageChanged;
+                _subscribedProcedure = null;
+            }
+        }
+
+        /// <summary>
+        /// The last card: the operation done, with the grades of the steps that have one. Its
+        /// stars are the rounded mean of theirs, so the summary never contradicts the step cards.
+        /// </summary>
+        private void HandleProcedureCompleted()
+        {
+            List<string> parts = new List<string>();
+            int total = 0, graded = 0;
+
+            if (incision != null && incision.IsComplete)
+            {
+                parts.Add($"incisão {incision.Grade.Stars}/3");
+                total += incision.Grade.Stars;
+                graded++;
+            }
+
+            if (suture != null && suture.IsComplete)
+            {
+                parts.Add($"sutura {suture.Grade.Stars}/3");
+                total += suture.Grade.Stars;
+                graded++;
+            }
+
+            if (defibrillation != null && defibrillation.Shocks > 0)
+            {
+                parts.Add($"{defibrillation.Shocks} choque{(defibrillation.Shocks == 1 ? "" : "s")}");
+            }
+
+            int stars = graded == 0 ? 0 : Mathf.Clamp(Mathf.RoundToInt(total / (float)graded), 1, 3);
+            Vector3 at = anchor != null ? anchor.position : transform.position;
+            Show("TRANSPLANTE CONCLUÍDO!", parts.Count > 0 ? string.Join(" · ", parts) : "o coração novo está batendo", stars, at);
+        }
+
+        /// <summary>The patient reset for the next visitor: last visitor's cards go with them.</summary>
+        private void HandleStageChanged(TransplantStage stage)
+        {
+            if (stage == TransplantStage.Idle) { Clear(); }
+        }
+
+        /// <summary>Adds the end-of-operation summary card.</summary>
+        public void BindProcedure(TransplantProcedure transplant)
+        {
+            bool live = Application.isPlaying && isActiveAndEnabled;
+            if (live) { Unsubscribe(); }
+            procedure = transplant;
+            if (live) { Subscribe(); }
         }
 
         private void HandleSutureGraded(SutureGrade grade)
@@ -132,8 +201,26 @@ namespace VRSurgery.Feedback
             Show(grade.Title, grade.Detail, grade.Stars, at);
         }
 
-        /// <summary>Pops the card up at a point in the world. A new card replaces one still showing.</summary>
+        /// <summary>Cards waiting for the one on screen to finish.</summary>
+        public int Waiting => _waiting.Count;
+
+        /// <summary>
+        /// Pops the card up at a point in the world. If one is still up, this one waits its turn:
+        /// the last stitch and the end of the operation happen in the same instant, and both cards
+        /// deserve to be read.
+        /// </summary>
         public void Show(string heading, string line, int starCount, Vector3 at)
+        {
+            if (IsShowing)
+            {
+                if (_waiting.Count < 4) { _waiting.Enqueue((heading, line, starCount, at)); }
+                return;
+            }
+
+            Present(heading, line, starCount, at);
+        }
+
+        private void Present(string heading, string line, int starCount, Vector3 at)
         {
             ShownTitle = heading ?? string.Empty;
             ShownDetail = line ?? string.Empty;
@@ -164,6 +251,13 @@ namespace VRSurgery.Feedback
             SetVisible(false);
         }
 
+        /// <summary>Drops the card on screen and any waiting: a new visitor starts with a clean slate.</summary>
+        public void Clear()
+        {
+            _waiting.Clear();
+            Hide();
+        }
+
         private void LateUpdate() => Tick(Time.deltaTime);
 
         public void Tick(float deltaTime)
@@ -174,6 +268,12 @@ namespace VRSurgery.Feedback
             if (_elapsed >= showSeconds)
             {
                 Hide();
+                if (_waiting.Count > 0)
+                {
+                    (string heading, string line, int count, Vector3 at) = _waiting.Dequeue();
+                    Present(heading, line, count, at);
+                }
+
                 return;
             }
 

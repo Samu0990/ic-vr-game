@@ -3146,6 +3146,7 @@ namespace VRSurgery.EditorTools
             threadLine.sharedMaterial = MakeUnlit(new Color(0.08f, 0.1f, 0.3f, 1f));
             suture.BindThread(threadLine);
             popup.BindSuture(suture);
+            popup.BindProcedure(procedure);
 
             // The chest closes itself once the heart beats, then waits for the stitches.
             systems.AddComponent<ChestClosure>().Bind(procedure, sternotomy, patch);

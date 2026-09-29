@@ -584,6 +584,27 @@ namespace VRSurgery.Tests
         }
 
         [Test]
+        public void TwoCardsAtOnceAreShownOneAfterTheOther()
+        {
+            GameObject root = Spawn("Card");
+            Transform body = new GameObject("Body").transform;
+            body.SetParent(root.transform, false);
+
+            VRSurgery.Feedback.StageResultPopup popup = root.AddComponent<VRSurgery.Feedback.StageResultPopup>();
+            popup.Bind(body, null, null, new Renderer[0], null, null, null, null);
+
+            popup.Show("SUTURA PERFEITA", "5 pontos", 3, Vector3.one);
+            popup.Show("TRANSPLANTE CONCLUÍDO!", "incisão 3/3 · sutura 3/3", 3, Vector3.one);
+
+            Assert.AreEqual("SUTURA PERFEITA", popup.ShownTitle, "The first card is not overwritten,");
+            Assert.AreEqual(1, popup.Waiting, "the second waits its turn,");
+
+            for (int i = 0; i < 300; i++) { popup.Tick(Step); }
+            Assert.AreEqual("TRANSPLANTE CONCLUÍDO!", popup.ShownTitle, "and comes up when the first is done.");
+            Assert.IsTrue(popup.IsShowing);
+        }
+
+        [Test]
         public void TheResultCardCountsTheStarsOutThenGoes()
         {
             GameObject root = Spawn("Card");
