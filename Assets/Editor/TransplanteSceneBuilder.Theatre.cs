@@ -2226,6 +2226,70 @@ namespace VRSurgery.EditorTools
             Debug.Log($"[Transplante] fechamento: {wires.Count / 2} fios de aço, 2 drenos até o frasco em {canister}, curativo");
         }
 
+        /// <summary>
+        /// The "take this one" arrow: a fat cone pointing down with a short shaft and a halo,
+        /// bright and unlit so it reads over any instrument. Hidden until there is something to
+        /// point at.
+        /// </summary>
+        private static Transform BuildNextToolArrow()
+        {
+            GameObject arrow = new GameObject("SetaProximoInstrumento");
+            Material bright = MakeUnlit(new Color(1f, 0.85f, 0.2f, 0.95f));
+            bright.renderQueue = 3002;
+
+            // Profile from the tip up: (radius, height).
+            Mesh body = LatheMesh(new[]
+            {
+                new Vector2(0f, 0f), new Vector2(0.02f, 0.032f), new Vector2(0.008f, 0.032f),
+                new Vector2(0.008f, 0.07f), new Vector2(0f, 0.07f),
+            }, 20);
+            MeshPart("Corpo", arrow.transform, body, bright);
+
+            GameObject halo = MeshPart("Halo", arrow.transform, MakeRing(0.028f, 0.034f, 32), MakeUnlit(new Color(1f, 0.9f, 0.4f, 0.5f)));
+            halo.transform.localPosition = new Vector3(0f, -0.045f, 0f);
+
+            arrow.SetActive(false);
+            return arrow.transform;
+        }
+
+        /// <summary>
+        /// A solid of revolution about +Y from a profile of (radius, height) points, smooth-shaded.
+        /// The shape every turned object has: handles, knobs, bottles, lamp heads, cones.
+        /// </summary>
+        private static Mesh LatheMesh(IList<Vector2> profile, int segments)
+        {
+            List<Vector3> vertices = new List<Vector3>();
+            List<int> triangles = new List<int>();
+            int rings = profile.Count;
+
+            for (int s = 0; s <= segments; s++)
+            {
+                float a = s / (float)segments * Mathf.PI * 2f;
+                float cos = Mathf.Cos(a), sin = Mathf.Sin(a);
+                for (int r = 0; r < rings; r++)
+                {
+                    vertices.Add(new Vector3(profile[r].x * cos, profile[r].y, profile[r].x * sin));
+                }
+            }
+
+            for (int s = 0; s < segments; s++)
+            {
+                for (int r = 0; r < rings - 1; r++)
+                {
+                    int a = s * rings + r, b = a + 1, c = a + rings, d = c + 1;
+                    triangles.Add(a); triangles.Add(b); triangles.Add(c);
+                    triangles.Add(b); triangles.Add(d); triangles.Add(c);
+                }
+            }
+
+            Mesh mesh = new Mesh { name = "Torneado" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
+        }
+
         /// <summary>Between the shoulders of a visitor standing at the stance: the middle of what they can reach.</summary>
         private static Vector3 ReachCentre() => Stance(_thorax) + new Vector3(0f, 1.3f, 0f);
 

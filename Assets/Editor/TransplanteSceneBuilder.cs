@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 14;
+        public const int BuildVersion = 15;
 
         private static Vector3 _thorax;
 
@@ -1272,9 +1272,10 @@ namespace VRSurgery.EditorTools
             // The new heart fibrillates when blood reaches it, and the internal paddles bring it
             // back. Only where unclamping is its own gesture: a level that chains the clamp, the
             // de-airing and the weaning into one hold has no moment for it.
+            SurgicalInteractable paddles = null;
             if (HasOwnUnclamp(plan))
             {
-                BuildInternalPaddles(out Transform paddleCentre, out SurgicalInteractable paddles);
+                BuildInternalPaddles(out Transform paddleCentre, out paddles);
                 DefibrillationWorker defib = systems.AddComponent<DefibrillationWorker>();
                 defib.Bind(paddleCentre, paddles, procedure, beat, donor.transform);
                 worker.AddGate(defib);
@@ -1284,6 +1285,10 @@ namespace VRSurgery.EditorTools
                 bridge.BindDefibrillation(defib);
                 _defibrillation = defib;
             }
+
+            // A bouncing arrow over whichever instrument the step needs, until it is picked up.
+            systems.AddComponent<NextToolHint>().Bind(procedure, BuildNextToolArrow(), scalpel, cauteryPen, saw,
+                needleHolder, paddles, cautery, _defibrillation);
 
             // The drapes answer the fingertips and every instrument's working end.
             WireDrapeCloth(scalpel.transform.Find("BladeTip"), needleHolder.transform.Find("NeedleTip"), sawBlade, penTip);
