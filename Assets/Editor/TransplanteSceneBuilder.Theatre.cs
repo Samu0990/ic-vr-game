@@ -110,6 +110,19 @@ namespace VRSurgery.EditorTools
 
                 return count == 0 ? float.NegativeInfinity : sum / count;
             }
+
+            /// <summary>Visits every cell that has skin: its centre and the skin's height there.</summary>
+            public void ForEachCell(System.Action<float, float, float> visit)
+            {
+                for (int iz = 0; iz < _nz; iz++)
+                {
+                    for (int ix = 0; ix < _nx; ix++)
+                    {
+                        float y = _top[iz * _nx + ix];
+                        if (!float.IsNegativeInfinity(y)) { visit(CentreX(ix), CentreZ(iz), y); }
+                    }
+                }
+            }
         }
 
         // ------------------------------------------------------------------ sampling
@@ -1479,6 +1492,10 @@ namespace VRSurgery.EditorTools
             int nx = xs.Count, nz = zs.Count;
             float[] h = new float[nx * nz];
             float[] floorOf = new float[nx * nz];
+            bool[] onTable = new bool[nx * nz];
+
+            // The skin under the window is not under any drape triangle, so it does not lift them.
+            bool InWindow(float px, float pz) => Mathf.Abs(px - cx) < wx && Mathf.Abs(pz - cz) < wz;
 
             for (int j = 0; j < nz; j++)
             {
@@ -1494,6 +1511,7 @@ namespace VRSurgery.EditorTools
                         // On the table: over the body where there is body, and never through the tabletop.
                         h[j * nx + i] = Mathf.Max(TableTopY, top) + 0.016f;
                         floorOf[j * nx + i] = Mathf.Max(TableTopY + 0.006f, float.IsNegativeInfinity(top) ? float.NegativeInfinity : top + 0.01f);
+                        onTable[j * nx + i] = true;
                     }
                     else
                     {
@@ -1524,6 +1542,15 @@ namespace VRSurgery.EditorTools
 
                 h = next;
             }
+
+            // The border rows are not smoothed; they obey the floor too.
+            for (int k = 0; k < h.Length; k++) { h[k] = Mathf.Max(h[k], floorOf[k]); }
+
+            // The shape above comes from averaged heights, which is what makes it drape rather
+            // than shrink-wrap — and what let the body come through it between grid points: the
+            // toes by up to 8 cm, a knee, a shoulder. Every triangle the skin still pokes
+            // through is lifted just enough to clear it.
+            int lifted = LiftOverSkin(h, onTable, xs, zs, InWindow);
 
             List<Vector3> vertices = new List<Vector3>(nx * nz);
             List<Vector2> uvs = new List<Vector2>(nx * nz);
@@ -1623,7 +1650,88 @@ namespace VRSurgery.EditorTools
             Box("CampoAnestesia", root.transform, new Vector3(tableX, screenTop - 0.24f, _window.NeckZ + 0.01f),
                 new Vector3(0.95f, 0.5f, 0.008f), cloth);
 
-            Debug.Log($"[Transplante] campos: {vertices.Count} vértices, janela {wx * 200f:F0}x{wz * 200f:F0} cm");
+            Debug.Log($"[Transplante] campos: {vertices.Count} vértices, janela {wx * 200f:F0}x{wz * 200f:F0} cm, " +
+                      $"{lifted} ponto(s) erguidos para o corpo não atravessar");
+        }
+
+        /// <summary>How far the drape stays above the skin under it, metres.</summary>
+        private const float DrapeClearance = 0.008f;
+
+        /// <summary>
+        /// Lifts the drape wherever the patient's skin comes through it: for each centimetre of
+        /// skin under the drape, the height of the drape triangle over it is compared with the
+        /// skin, and the triangle's corners are raised by what is missing. Raising all three
+        /// corners by the same amount raises every point of the triangle by exactly that much, so
+        /// one pass clears what it finds; a second checks that nothing moved into the way.
+        /// Returns how many drape points were raised.
+        /// </summary>
+        private static int LiftOverSkin(float[] h, bool[] onTable, List<float> xs, List<float> zs, System.Func<float, float, bool> skip)
+        {
+            if (_surface == null) { return 0; }
+
+            int nx = xs.Count;
+            float[] need = new float[h.Length];
+            bool[] raised = new bool[h.Length];
+
+            for (int pass = 0; pass < 6; pass++)
+            {
+                System.Array.Clear(need, 0, need.Length);
+                bool any = false;
+
+                _surface.ForEachCell((px, pz, skin) =>
+                {
+                    if (skip(px, pz)) { return; }
+                    int i = GridCell(xs, px), j = GridCell(zs, pz);
+                    if (i < 0 || j < 0) { return; }
+
+                    // The same two triangles the mesh makes of this grid cell, split on b-c.
+                    int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
+                    if (!onTable[a] || !onTable[b] || !onTable[c] || !onTable[d]) { return; }
+
+                    float u = (px - xs[i]) / (xs[i + 1] - xs[i]);
+                    float v = (pz - zs[j]) / (zs[j + 1] - zs[j]);
+                    int t0, t1, t2;
+                    float drape;
+                    if (u + v <= 1f)
+                    {
+                        t0 = a; t1 = b; t2 = c;
+                        drape = h[a] + (h[b] - h[a]) * u + (h[c] - h[a]) * v;
+                    }
+                    else
+                    {
+                        t0 = b; t1 = c; t2 = d;
+                        drape = h[d] + (h[c] - h[d]) * (1f - u) + (h[b] - h[d]) * (1f - v);
+                    }
+
+                    float missing = skin + DrapeClearance - drape;
+                    if (missing <= 0f) { return; }
+
+                    any = true;
+                    need[t0] = Mathf.Max(need[t0], missing);
+                    need[t1] = Mathf.Max(need[t1], missing);
+                    need[t2] = Mathf.Max(need[t2], missing);
+                });
+
+                if (!any) { break; }
+                for (int k = 0; k < h.Length; k++)
+                {
+                    if (need[k] <= 0f) { continue; }
+                    h[k] += need[k];
+                    raised[k] = true;
+                }
+            }
+
+            int count = 0;
+            for (int k = 0; k < raised.Length; k++) { if (raised[k]) { count++; } }
+            return count;
+        }
+
+        /// <summary>Index of the grid interval holding <paramref name="value"/>, or -1 outside the grid.</summary>
+        private static int GridCell(List<float> axis, float value)
+        {
+            int k = axis.BinarySearch(value);
+            if (k < 0) { k = ~k - 1; }
+            return k >= 0 && k < axis.Count - 1 ? k : -1;
         }
 
         /// <summary>Fall of the cloth below the table edge for a grid point this far past it.</summary>
@@ -1674,7 +1782,7 @@ namespace VRSurgery.EditorTools
 
         /// <summary>
         /// Turns the drape into Unity cloth held near its draped shape: pinned where the adhesive
-        /// film holds it to the skin round the window, a centimetre and a half of give where it
+        /// film holds it to the skin round the window, under a centimetre of give where it
         /// rests on the body, and free to swing where it hangs off the table.
         /// </summary>
         private static void MakeDrapeCloth(Transform parent, Mesh mesh, MeshRenderer staticDrape, Material[] materials,
@@ -1719,7 +1827,7 @@ namespace VRSurgery.EditorTools
 
                 float limit;
                 if (fromWindow < 0.03f) { limit = 0f; }
-                else if (fall <= 0f) { limit = 0.015f; }
+                else if (fall <= 0f) { limit = DrapeClearance; }
                 else { limit = Mathf.Min(0.12f, 0.02f + fall * 0.35f); }
 
                 limits[i].maxDistance = limit;

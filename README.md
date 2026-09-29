@@ -204,7 +204,7 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
 ### Física
 
 - **Campos cirúrgicos são tecido simulado** (`DrapeCloth`, Unity Cloth): presos em volta da
-  janela, cedem ~1,5 cm sob a mão ou um instrumento e balançam nas bordas que caem da mesa. Um
+  janela, cedem menos de 1 cm sob a mão ou um instrumento e balançam nas bordas que caem da mesa. Um
   vigia volta para o campo estático se a simulação sair do lugar. Desligar: `UseDrapeCloth`.
 - **O pano parece pano**: algodão de trama simples em duas escalas — de longe, rugas de pano
   deitado sobre o corpo, um vinco de lavanderia em cada sentido e o tom desigual de tecido
@@ -214,6 +214,12 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   "prateleira" azul na altura do joelho do visitante), com dobras verticais que aprofundam
   perto da barra e textura sem esticar na queda. Em volta da janela, um **painel absorvente**
   de trama mais fechada e tom mais escuro, como nos campos fenestrados de verdade.
+- **O corpo não atravessa o pano**: o formato vem da altura média da pele (é o que faz cair
+  como pano), e isso deixava o corpo furar entre os pontos da malha — os dedos dos pés em até
+  7,9 cm, joelhos e ombros em ~1–2 cm (medido na malha do paciente: 309 pontos de 5.919). Agora
+  cada triângulo que a pele atravessa é erguido só o necessário para ficar 8 mm acima dela:
+  0 pontos atravessando, 384 pontos do pano erguidos, 0,5 cm em média (até 1,4 cm perto da
+  janela; nos pés o pano forma a "tenda" sobre os dedos).
 - **Coisas não atravessam o paciente**: colisor na superfície dos campos e no fundo da cavidade;
   órgão ou instrumento solto para em cima deles. Instrumentos soltos voltam sozinhos para o
   lugar (`ReturnHomeOnRelease`). As mãos rastreadas continuam atravessando (não há mãos físicas).
