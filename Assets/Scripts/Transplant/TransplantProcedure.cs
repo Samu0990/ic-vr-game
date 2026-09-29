@@ -57,6 +57,13 @@ namespace VRSurgery.Transplant
         /// scene enables the skin stages.
         /// </summary>
         CloseSkin,
+
+        /// <summary>
+        /// Pericardiotomy: the sac around the heart opened, between the sternotomy and the pump.
+        /// Only part of the operation when the scene enables it; appended so existing values keep
+        /// their numbers.
+        /// </summary>
+        OpenPericardium,
     }
 
     /// <summary>
@@ -82,6 +89,9 @@ namespace VRSurgery.Transplant
                  "test that builds a procedure by hand expects.")]
         [SerializeField] private bool includeSkinStages;
 
+        [Tooltip("Adds opening the pericardium, with the cautery pen, after the sternotomy.")]
+        [SerializeField] private bool includePericardium;
+
         private static readonly TransplantStage[] CoreOrder =
         {
             TransplantStage.OpenChest,
@@ -96,6 +106,16 @@ namespace VRSurgery.Transplant
 
         /// <summary>True when the operation opens with the scalpel and closes with the needle.</summary>
         public bool IncludesSkinStages => includeSkinStages;
+
+        /// <summary>True when the pericardium has to be opened before the pump.</summary>
+        public bool IncludesPericardium => includePericardium;
+
+        /// <summary>Switches the pericardium stage on or off. Takes effect immediately.</summary>
+        public void SetPericardiumStage(bool enabled)
+        {
+            includePericardium = enabled;
+            RebuildOrder();
+        }
 
         /// <summary>The stages this operation runs, in order.</summary>
         public IReadOnlyList<TransplantStage> Order => _order;
@@ -112,6 +132,11 @@ namespace VRSurgery.Transplant
             _order.Clear();
             if (includeSkinStages) { _order.Add(TransplantStage.SkinIncision); }
             _order.AddRange(CoreOrder);
+            if (includePericardium)
+            {
+                _order.Insert(_order.IndexOf(TransplantStage.OpenChest) + 1, TransplantStage.OpenPericardium);
+            }
+
             if (includeSkinStages) { _order.Add(TransplantStage.CloseSkin); }
         }
 
@@ -279,6 +304,7 @@ namespace VRSurgery.Transplant
             TransplantStage.OpenChest => includeSkinStages
                 ? "Cauterize os pontos que sangram e abra o esterno com a serra na marca dourada"
                 : "Abra o esterno: pressione a mão sobre a marca dourada",
+            TransplantStage.OpenPericardium => "Abra o pericárdio: bisturi elétrico sobre a linha tracejada",
             TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
             TransplantStage.RemoveNativeHeart => "Retire o coração doente",
             TransplantStage.PlaceDonorHeart => "Posicione o coração do doador",

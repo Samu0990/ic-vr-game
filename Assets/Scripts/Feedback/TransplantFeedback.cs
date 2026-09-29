@@ -414,6 +414,7 @@ namespace VRSurgery.Feedback
             if (cauteryWorker != null && _cautery == null) { BindCautery(cauteryWorker, cauteryPen); }
             if (resultPopup != null && _popup == null) { BindResultPopup(resultPopup); }
             if (defibrillation != null && _defib == null) { BindDefibrillation(defibrillation, defibPaddles); }
+            if (pericardium != null && _pericardium == null) { BindPericardium(pericardium); }
         }
 
         private void HandleBurning()
@@ -466,6 +467,32 @@ namespace VRSurgery.Feedback
         {
             Play(ProceduralTones.DefibShock, 1f);
             PulseHolder(defibPaddles, _strong);
+        }
+
+        [Header("Pericardium (optional)")]
+        [SerializeField] private PericardiumWorker pericardium;
+        private PericardiumWorker _pericardium;
+
+        /// <summary>Adds the pericardiotomy: the pen's sizzle and a buzz in the hand as it opens.</summary>
+        public void BindPericardium(PericardiumWorker worker)
+        {
+            if (_pericardium != null) { _pericardium.Cutting -= HandlePericardiumCut; }
+            _pericardium = null;
+            pericardium = worker;
+
+            if (Application.isPlaying && worker != null)
+            {
+                _pericardium = worker;
+                _pericardium.Cutting += HandlePericardiumCut;
+            }
+        }
+
+        private void HandlePericardiumCut()
+        {
+            if (_sinceSizzle < 0.25f) { return; }
+            _sinceSizzle = 0f;
+            Play(ProceduralTones.Sizzle, 0.5f);
+            PulseHolder(_cauteryPen != null ? _cauteryPen : cauteryPen, _tick);
         }
 
         [Header("Result card (optional)")]

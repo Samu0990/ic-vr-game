@@ -111,6 +111,9 @@ namespace VRSurgery.EditorTools
         /// </summary>
         private const float SkinStageSeconds = 45f;
 
+        /// <summary>Time added to the round for opening the pericardium.</summary>
+        private const float PericardiumSeconds = 10f;
+
         /// <summary>Time added to the round for the reperfusion fibrillation and its shocks.</summary>
         private const float DefibrillationSeconds = 12f;
 
@@ -118,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 7;
+        public const int BuildVersion = 8;
 
         private static Vector3 _thorax;
 
@@ -1094,7 +1097,8 @@ namespace VRSurgery.EditorTools
                 // From the level, not from a constant. Fácil is ninety seconds because there is
                 // a third less to do, not because ninety was typed somewhere — so the booth can
                 // run a fast queue or a faithful operation without the two numbers drifting apart.
-                round: plan.RoundSeconds + SkinStageSeconds + (HasOwnUnclamp(plan) ? DefibrillationSeconds : 0f),
+                round: plan.RoundSeconds + SkinStageSeconds + PericardiumSeconds +
+                       (HasOwnUnclamp(plan) ? DefibrillationSeconds : 0f),
                 briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
                 // The round starts on the sternotomy, not on a grab: this scene has no instrument
                 // to pick up, so the grab that starts the round in every other scene never happens.
@@ -1254,6 +1258,13 @@ namespace VRSurgery.EditorTools
             feedback.BindCautery(cautery, cauteryPen);
             bridge.BindCautery(cautery);
 
+            // The pericardium over the heart, opened with the same pen after the sternotomy.
+            PericardiumWorker pericardium = BuildPericardium(systems, heart, procedure, penTip, cauteryPen, cautery.Smoke);
+            indicator.AddSource(pericardium);
+            feedback.BindPericardium(pericardium);
+            bridge.BindPericardium(pericardium);
+            procedure.SetPericardiumStage(true);
+
             // The new heart fibrillates when blood reaches it, and the internal paddles bring it
             // back. Only where unclamping is its own gesture: a level that chains the clamp, the
             // de-airing and the weaning into one hold has no moment for it.
@@ -1266,6 +1277,7 @@ namespace VRSurgery.EditorTools
                 indicator.AddSource(defib);
                 feedback.BindDefibrillation(defib, paddles);
                 resultPopup.BindDefibrillation(defib);
+                bridge.BindDefibrillation(defib);
                 _defibrillation = defib;
             }
 

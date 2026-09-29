@@ -35,6 +35,8 @@ namespace VRSurgery.Transplant
         [SerializeField] private ChestSkinPatch skinPatch;
         [SerializeField] private SutureWorker suture;
         [SerializeField] private CauteryWorker cautery;
+        [SerializeField] private PericardiumWorker pericardium;
+        [SerializeField] private DefibrillationWorker defibrillation;
 
         [Header("Booth loop")]
         [Tooltip("How long the attract screen holds before the stand offers the next turn. Zero " +
@@ -147,6 +149,8 @@ namespace VRSurgery.Transplant
             if (skinPatch != null) { skinPatch.ResetClosed(); }
             if (suture != null) { suture.ResetSuture(); }
             if (cautery != null) { cautery.ResetCautery(); }
+            if (pericardium != null) { pericardium.ResetPericardium(); }
+            if (defibrillation != null) { defibrillation.ResetDefibrillation(); }
 
             ReturnOrgansHome();
 
@@ -178,6 +182,12 @@ namespace VRSurgery.Transplant
 
         /// <summary>The next visitor gets bleeders that are still bleeding.</summary>
         public void BindCautery(CauteryWorker cauteryWorker) => cautery = cauteryWorker;
+
+        /// <summary>The next visitor gets a closed pericardium.</summary>
+        public void BindPericardium(PericardiumWorker worker) => pericardium = worker;
+
+        /// <summary>The next visitor's new heart has not fibrillated yet.</summary>
+        public void BindDefibrillation(DefibrillationWorker worker) => defibrillation = worker;
 
         private void CaptureOrganHomePoses()
         {

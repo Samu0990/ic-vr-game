@@ -30,6 +30,9 @@ namespace VRSurgery.Transplant
 
         [SerializeField] private ParticleSystem smoke;
 
+        /// <summary>The pen's smoke, shared with anything else the pen burns.</summary>
+        public ParticleSystem Smoke => smoke;
+
         [SerializeField, Min(0.003f)] private float radius = 0.012f;
         [SerializeField, Min(0.05f)] private float holdSeconds = 0.4f;
         [SerializeField, Min(0.1f)] private float pulseHz = 1.4f;

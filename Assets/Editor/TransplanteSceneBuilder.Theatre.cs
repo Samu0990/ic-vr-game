@@ -1786,6 +1786,117 @@ namespace VRSurgery.EditorTools
 
         /// <summary>Soft grey smoke that rises and thins, fed by the cautery in puffs.</summary>
         /// <summary>
+        /// The pericardium: a glistening cap over the heart in two halves hinged at its outer
+        /// edges, with a dashed line down the middle to open it on and the slit the pen leaves.
+        /// Parented to the cavity, so it shows only once the chest is open.
+        /// </summary>
+        private static PericardiumWorker BuildPericardium(GameObject systems, GameObject heart, TransplantProcedure procedure,
+            Transform penTip, SurgicalInteractable pen, ParticleSystem smoke)
+        {
+            Bounds b = WorldBounds(heart);
+            float rx = Mathf.Clamp(b.extents.x * 1.1f, 0.035f, _window.HalfWidth * 0.9f);
+            float rz = Mathf.Clamp(b.extents.z * 1.1f, 0.045f, _window.IncisionHalfLength);
+            float sag = Mathf.Clamp(b.extents.y * 0.6f, 0.015f, 0.04f);
+            float top = b.max.y + 0.008f;
+            Vector3 centre = new Vector3(b.center.x, top, b.center.z);
+
+            GameObject field = GameObject.Find("CampoOperatorio");
+            Transform cavity = field != null ? field.transform.Find("CavidadeToracica") : null;
+            Transform parent = cavity != null ? cavity : systems.transform;
+
+            GameObject root = new GameObject("Pericardio");
+            root.transform.SetParent(parent, false);
+            root.transform.SetPositionAndRotation(centre, Quaternion.identity);
+
+            Material membrane = DoubleSided(Paint("pericardium", new Color(0.86f, 0.8f, 0.68f), 0f, 0.82f));
+            float Surface(float x, float z)
+            {
+                float dx = (x - centre.x) / rx, dz = (z - centre.z) / rz;
+                return top - sag * (dx * dx + dz * dz);
+            }
+
+            Transform[] halves = new Transform[2];
+            for (int k = 0; k < 2; k++)
+            {
+                float side = k == 0 ? -1f : 1f;
+                Vector3 pivot = new Vector3(centre.x + side * rx, top - sag, centre.z);
+
+                const int cols = 7, rows = 13;
+                List<Vector3> vertices = new List<Vector3>();
+                List<int> triangles = new List<int>();
+                for (int r = 0; r < rows; r++)
+                {
+                    float v = -1f + 2f * r / (rows - 1);
+                    float w = Mathf.Max(0.002f, rx * Mathf.Sqrt(Mathf.Max(0f, 1f - v * v)));
+                    float z = centre.z + v * rz;
+                    for (int c = 0; c < cols; c++)
+                    {
+                        float x = centre.x + side * (c / (float)(cols - 1)) * w;
+                        vertices.Add(new Vector3(x, Surface(x, z), z) - pivot);
+                    }
+                }
+
+                for (int r = 0; r < rows - 1; r++)
+                {
+                    for (int c = 0; c < cols - 1; c++)
+                    {
+                        int a = r * cols + c, bb = a + 1, d = a + cols, e = d + 1;
+                        triangles.Add(a); triangles.Add(d); triangles.Add(bb);
+                        triangles.Add(bb); triangles.Add(d); triangles.Add(e);
+                    }
+                }
+
+                Mesh mesh = new Mesh { name = "PericardioMetade" };
+                mesh.SetVertices(vertices);
+                mesh.SetTriangles(triangles, 0);
+                mesh.RecalculateNormals();
+                mesh.RecalculateBounds();
+
+                GameObject half = MeshPart(side < 0f ? "PericardioEsquerdo" : "PericardioDireito", root.transform, mesh, membrane, true);
+                half.transform.SetPositionAndRotation(pivot, Quaternion.identity);
+                halves[k] = half.transform;
+            }
+
+            GameObject slit = MeshPart("PericardioCorte", root.transform, null, Paint("cutLine", new Color(0.3f, 0.02f, 0.03f), 0f, 0.85f));
+            slit.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+
+            PericardiumWorker worker = systems.AddComponent<PericardiumWorker>();
+            worker.Shape(centre, rx, rz, top, sag);
+
+            // The dashed line to open along, drawn from the worker's own idea of the line.
+            List<Vector3> dashVertices = new List<Vector3>();
+            List<int> dashTriangles = new List<int>();
+            const int dashes = 12;
+            for (int i = 0; i < dashes; i++)
+            {
+                Vector3 a = worker.LinePoint(i / (float)dashes, 0.0012f);
+                Vector3 c = worker.LinePoint((i + 0.55f) / dashes, 0.0012f);
+                int s0 = dashVertices.Count;
+                dashVertices.Add(a + Vector3.left * 0.0011f);
+                dashVertices.Add(a + Vector3.right * 0.0011f);
+                dashVertices.Add(c + Vector3.left * 0.0011f);
+                dashVertices.Add(c + Vector3.right * 0.0011f);
+                dashTriangles.Add(s0); dashTriangles.Add(s0 + 2); dashTriangles.Add(s0 + 1);
+                dashTriangles.Add(s0 + 1); dashTriangles.Add(s0 + 2); dashTriangles.Add(s0 + 3);
+            }
+
+            Mesh dashMesh = new Mesh { name = "PericardioGuia" };
+            dashMesh.SetVertices(dashVertices);
+            dashMesh.SetTriangles(dashTriangles, 0);
+            dashMesh.RecalculateNormals();
+            dashMesh.RecalculateBounds();
+            GameObject guide = MeshPart("PericardioGuia", root.transform, dashMesh, Glow(new Color(0.48f, 0.12f, 0.62f)));
+            guide.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            guide.GetComponent<MeshRenderer>().enabled = false;
+
+            worker.Bind(penTip, pen, procedure, halves[0], halves[1], guide.GetComponent<MeshRenderer>(),
+                slit.GetComponent<MeshFilter>(), smoke);
+
+            Debug.Log($"[Transplante] pericárdio de {rx * 200f:F0} x {rz * 200f:F0} cm sobre o coração, topo em y={top:F3}");
+            return worker;
+        }
+
+        /// <summary>
         /// Internal defibrillator paddles: two insulated handles, steel shafts and cupped spoons
         /// that hold the heart between them. Joined at the grip so one hand can work them — real
         /// paddles are two separate handles, which a single controller cannot hold. Resting on
