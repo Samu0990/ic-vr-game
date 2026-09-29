@@ -37,6 +37,9 @@ namespace VRSurgery.Transplant
         private readonly System.Random _random = new System.Random(19);
         private int _seenCuts;
 
+        /// <summary>Stretches of the line already given their chance to bleed, so none is rolled twice.</summary>
+        private bool[] _considered = new bool[0];
+
         private sealed class Trickle
         {
             public Transform Body;
@@ -61,6 +64,7 @@ namespace VRSurgery.Transplant
             if (incision.CutCount < _seenCuts || patch.Openness01 > 0.02f)
             {
                 if (_live.Count > 0) { HideAll(); }
+                if (incision.CutCount < _seenCuts) { _considered = new bool[incision.Bins]; }
                 _seenCuts = incision.CutCount;
                 return;
             }
@@ -82,9 +86,12 @@ namespace VRSurgery.Transplant
 
         private void SpawnForNewCuts()
         {
+            if (_considered == null || _considered.Length != incision.Bins) { _considered = new bool[incision.Bins]; }
+
             for (int bin = 0; bin < incision.Bins; bin++)
             {
-                if (!incision.IsBinCut(bin) || incision.BinAge(bin) > 0.05f) { continue; }
+                if (!incision.IsBinCut(bin) || _considered[bin]) { continue; }
+                _considered[bin] = true;
 
                 bool deep = incision.IsBinDeep(bin);
                 if (!deep && _random.NextDouble() > chance) { continue; }
