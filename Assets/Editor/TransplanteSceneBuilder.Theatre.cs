@@ -465,6 +465,7 @@ namespace VRSurgery.EditorTools
             BuildIvPole(r, thorax);
             BuildSmallFurniture(r, thorax);
             BuildTheatreEquipment(r, thorax);
+            BuildTransplantDecor(r, thorax);
 
             AudioSource hum = room.AddComponent<AudioSource>();
             hum.playOnAwake = false;
@@ -475,6 +476,9 @@ namespace VRSurgery.EditorTools
                 if (renderer.GetComponent<LineRenderer>() != null || renderer is SkinnedMeshRenderer) { continue; }
                 if (renderer.GetComponentInParent<WallClock>() != null) { continue; }
                 if (renderer.GetComponentInParent<VitalSignsMonitor>() != null) { continue; }
+
+                // A TextMesh builds its mesh at runtime; static batching would bake it empty.
+                if (renderer.GetComponent<TextMesh>() != null) { continue; }
                 GameObjectUtility.SetStaticEditorFlags(renderer.gameObject, StaticEditorFlags.BatchingStatic);
             }
 
@@ -853,6 +857,228 @@ namespace VRSurgery.EditorTools
 
             // Arm and the vitals monitor, turned to the surgeon.
             Rod("MonitorPole", s, new Vector3(-0.3f, 1.55f, 0.2f), 0.02f, 0.5f, steel);
+        }
+
+        /// <summary>
+        /// What a heart-transplant room has that any operating room does not, and the paperwork
+        /// every Brazilian theatre has on its walls: the organ's transport cooler, the WHO safe
+        /// surgery checklist, the whiteboard with the counts and the ischaemia time, the
+        /// transoesophageal echo, the heater-cooler and cell saver beside the pump, and the
+        /// sponge counter. All static and low-poly, sharing materials, so they batch on the Quest.
+        /// </summary>
+        private static void BuildTransplantDecor(Transform r, Vector3 thorax)
+        {
+            Material white = Paint("casing", new Color(0.9f, 0.91f, 0.92f), 0.1f, 0.45f);
+            Material dark = Paint("dark", new Color(0.12f, 0.13f, 0.15f), 0.2f, 0.4f);
+            Material steel = Paint("steel", new Color(0.78f, 0.8f, 0.82f), 0.9f, 0.7f);
+            Material plastic = Glass(new Color(0.85f, 0.92f, 0.98f, 0.35f));
+            Material screen = Glow(new Color(0.03f, 0.05f, 0.06f));
+            Material arterial = Paint("bloodArterial", new Color(0.62f, 0.04f, 0.05f), 0f, 0.85f);
+
+            // ---- the organ's transport cooler, lid open, ice inside, beside the back table
+            {
+                GameObject cooler = new GameObject("CaixaTermicaOrgao");
+                cooler.transform.SetParent(r, false);
+                cooler.transform.position = new Vector3(1.6f, 0f, thorax.z - 1.05f);
+                // Front (local -Z) turned to the surgeon at the table, lid hinged at the back.
+                cooler.transform.rotation = Quaternion.LookRotation(new Vector3(1.15f, 0f, -1.05f), Vector3.up);
+                Transform c = cooler.transform;
+
+                Material blue = Paint("coolerBlue", new Color(0.13f, 0.32f, 0.68f), 0f, 0.35f);
+                Material ice = Glass(new Color(0.85f, 0.95f, 1f, 0.7f));
+                Box("Corpo", c, new Vector3(0f, 0.19f, 0f), new Vector3(0.5f, 0.36f, 0.36f), blue);
+                Box("Borda", c, new Vector3(0f, 0.375f, 0f), new Vector3(0.52f, 0.02f, 0.38f), white);
+                Box("Interior", c, new Vector3(0f, 0.37f, 0f), new Vector3(0.44f, 0.012f, 0.3f), white, null, false);
+                Box("Tampa", c, new Vector3(0f, 0.55f, 0.2f), new Vector3(0.52f, 0.36f, 0.05f), blue, Quaternion.Euler(-12f, 0f, 0f));
+
+                System.Random random = new System.Random(3);
+                for (int i = 0; i < 9; i++)
+                {
+                    Vector3 at = new Vector3(-0.18f + (float)random.NextDouble() * 0.36f, 0.385f, -0.11f + (float)random.NextDouble() * 0.22f);
+                    Box("Gelo_" + i, c, at, Vector3.one * (0.035f + (float)random.NextDouble() * 0.02f), ice,
+                        Quaternion.Euler(0f, (float)random.NextDouble() * 90f, 0f), false);
+                }
+
+                for (int side = -1; side <= 1; side += 2)
+                {
+                    Box("Alca_" + side, c, new Vector3(side * 0.265f, 0.3f, 0f), new Vector3(0.02f, 0.03f, 0.16f), dark);
+                }
+
+                Box("Etiqueta", c, new Vector3(0f, 0.2f, -0.182f), new Vector3(0.36f, 0.16f, 0.004f), white, null, false);
+                Box("Faixa", c, new Vector3(0f, 0.265f, -0.185f), new Vector3(0.36f, 0.03f, 0.002f),
+                    Paint("signRed", new Color(0.7f, 0.08f, 0.08f)), null, false);
+                TextMesh label = BuildScreenText(c, "Rotulo", new Vector3(0f, 0.19f, -0.186f), 0.026f);
+                label.transform.localRotation = Quaternion.identity;
+                label.text = "ÓRGÃO HUMANO\nPARA TRANSPLANTE";
+                label.color = new Color(0.65f, 0.05f, 0.05f);
+            }
+
+            // ---- WHO safe surgery checklist, on the wall by the doors
+            {
+                GameObject board = new GameObject("CirurgiaSegura");
+                board.transform.SetParent(r, false);
+                board.transform.position = new Vector3(1.6f, 1.5f, RoomMinZ + 0.02f);
+                board.transform.rotation = Quaternion.LookRotation(Vector3.back, Vector3.up);
+                Transform b = board.transform;
+
+                Box("Placa", b, Vector3.zero, new Vector3(0.8f, 1.0f, 0.015f), white, null, false);
+                Box("Cabecalho", b, new Vector3(0f, 0.44f, -0.009f), new Vector3(0.8f, 0.12f, 0.004f),
+                    Paint("checklistGreen", new Color(0.1f, 0.5f, 0.3f)), null, false);
+
+                TextMesh head = BuildScreenText(b, "Titulo", new Vector3(0f, 0.44f, -0.013f), 0.04f);
+                head.text = "CIRURGIA SEGURA\nLista de verificação — OMS";
+                head.color = Color.white;
+
+                TextMesh body = BuildScreenText(b, "Itens", new Vector3(0f, -0.06f, -0.01f), 0.022f);
+                body.anchor = TextAnchor.MiddleCenter;
+                body.alignment = TextAlignment.Left;
+                body.color = new Color(0.12f, 0.14f, 0.16f);
+                body.text =
+                    "ANTES DA INDUÇÃO\n" +
+                    "[x] Identidade, sítio e procedimento\n" +
+                    "[x] Consentimento assinado\n" +
+                    "[x] Oxímetro no paciente\n" +
+                    "[x] Reserva de sangue\n\n" +
+                    "ANTES DA INCISÃO (TIME-OUT)\n" +
+                    "[x] Equipe se apresentou\n" +
+                    "[x] Antibiótico nos últimos 60 min\n" +
+                    "[x] Órgão conferido: tipo sanguíneo\n\n" +
+                    "ANTES DE SAIR DA SALA\n" +
+                    "[ ] Contagem de compressas e agulhas\n" +
+                    "[ ] Peças identificadas";
+                foreach (TextMesh t in new[] { head, body }) { t.transform.localRotation = Quaternion.identity; }
+            }
+
+            // ---- whiteboard with the counts and the clock that matters most here, above the crash cart
+            {
+                GameObject board = new GameObject("QuadroBranco");
+                board.transform.SetParent(r, false);
+                board.transform.position = new Vector3(RoomMinX + 0.02f, 1.85f, -1.85f);
+                board.transform.rotation = Quaternion.LookRotation(Vector3.left, Vector3.up);
+                Transform b = board.transform;
+
+                Box("Moldura", b, Vector3.zero, new Vector3(1.0f, 0.62f, 0.02f), steel, null, false);
+                Box("Quadro", b, new Vector3(0f, 0f, -0.011f), new Vector3(0.96f, 0.58f, 0.004f),
+                    Paint("whiteboard", new Color(0.97f, 0.97f, 0.96f), 0f, 0.8f), null, false);
+                Box("Bandeja", b, new Vector3(0f, -0.32f, -0.03f), new Vector3(0.9f, 0.015f, 0.05f), steel, null, false);
+                Rod("Marcador_Azul", b, new Vector3(-0.2f, -0.305f, -0.035f), 0.008f, 0.12f,
+                    Paint("markerBlue", new Color(0.1f, 0.2f, 0.7f)), Quaternion.Euler(0f, 0f, 90f), false);
+                Rod("Marcador_Vermelho", b, new Vector3(-0.05f, -0.305f, -0.035f), 0.008f, 0.12f,
+                    Paint("signRed", new Color(0.7f, 0.08f, 0.08f)), Quaternion.Euler(0f, 0f, 90f), false);
+
+                TextMesh text = BuildScreenText(b, "Anotacoes", new Vector3(0f, 0.02f, -0.015f), 0.034f);
+                text.transform.localRotation = Quaternion.identity;
+                text.alignment = TextAlignment.Left;
+                text.color = new Color(0.1f, 0.2f, 0.65f);
+                text.text =
+                    "SALA 3 — TRANSPLANTE CARDÍACO\n" +
+                    "Receptor: 54 a  ·  sangue A+\n" +
+                    "Isquemia fria do enxerto: 02h10\n" +
+                    "Compressas 10/10   Agulhas 5/5\n" +
+                    "Instrumental conferido";
+            }
+
+            // ---- transoesophageal echo at the head, screen turned to the surgeon
+            {
+                GameObject tee = new GameObject("EcoTransesofagico");
+                tee.transform.SetParent(r, false);
+                tee.transform.position = new Vector3(-1.0f, 0f, _bodyBounds.max.z + 1.25f);
+                // Screen (local -Z) toward the surgeon's side of the table.
+                tee.transform.rotation = Quaternion.LookRotation(new Vector3(-1f, 0f, 1.2f).normalized, Vector3.up);
+                Transform e = tee.transform;
+
+                Box("Base", e, new Vector3(0f, 0.05f, 0f), new Vector3(0.5f, 0.06f, 0.5f), dark);
+                Rod("Coluna", e, new Vector3(0f, 0.5f, 0f), 0.04f, 0.85f, white);
+                Box("Console", e, new Vector3(0f, 0.95f, -0.05f), new Vector3(0.5f, 0.06f, 0.35f), white);
+                Box("Teclado", e, new Vector3(0f, 0.985f, -0.08f), new Vector3(0.4f, 0.01f, 0.2f), dark, null, false);
+                Box("Monitor", e, new Vector3(0f, 1.3f, 0.12f), new Vector3(0.46f, 0.34f, 0.04f), dark);
+                Box("Tela", e, new Vector3(0f, 1.3f, 0.099f), new Vector3(0.42f, 0.3f, 0.002f), screen, null, false);
+
+                // The echo's sector: a grey fan with the heart's chambers as darker blots.
+                GameObject fan = MeshPart("Setor", e, FanMesh(0.13f, 70f, 16), Glow(new Color(0.42f, 0.42f, 0.42f)));
+                fan.transform.localPosition = new Vector3(0f, 1.43f, 0.097f);
+                fan.transform.localRotation = Quaternion.Euler(0f, 0f, 180f);
+                Material chamber = Glow(new Color(0.08f, 0.08f, 0.08f));
+                Part(PrimitiveType.Sphere, "CamaraE", e, new Vector3(-0.02f, 1.35f, 0.096f), new Vector3(0.035f, 0.05f, 0.001f), chamber, null, false, false);
+                Part(PrimitiveType.Sphere, "CamaraD", e, new Vector3(0.025f, 1.33f, 0.096f), new Vector3(0.03f, 0.04f, 0.001f), chamber, null, false, false);
+                Tube("Sonda", e, new[]
+                {
+                    tee.transform.TransformPoint(new Vector3(0.2f, 0.95f, 0.2f)),
+                    tee.transform.TransformPoint(new Vector3(0.45f, 0.8f, 0.4f)),
+                    new Vector3(0.05f, TableTopY + 0.3f, _bodyBounds.max.z - 0.12f),
+                }, 0.004f, dark);
+            }
+
+            // ---- beside the pump: the heater-cooler for the oxygenator and the cell saver
+            {
+                GameObject heater = new GameObject("TermorreguladorCEC");
+                heater.transform.SetParent(r, false);
+                heater.transform.position = new Vector3(-1.95f, 0f, thorax.z - 1.1f);
+                Transform h = heater.transform;
+                Box("Corpo", h, new Vector3(0f, 0.45f, 0f), new Vector3(0.45f, 0.85f, 0.55f), white);
+                Box("Painel", h, new Vector3(0.226f, 0.72f, 0f), new Vector3(0.004f, 0.14f, 0.3f), screen, null, false);
+                Box("Visor", h, new Vector3(0.23f, 0.72f, -0.06f), new Vector3(0.002f, 0.05f, 0.1f), Glow(new Color(0.2f, 0.9f, 0.4f)), null, false);
+                Vector3 oxygenator = new Vector3(-1.4f, 1.0f, thorax.z - 0.42f);
+                Tube("Mangueira_Azul", h, new[] { h.position + new Vector3(0.2f, 0.5f, 0.15f), h.position + new Vector3(0.45f, 0.35f, 0.4f), oxygenator + new Vector3(-0.04f, -0.05f, 0f) },
+                    0.009f, Paint("hoseBlue", new Color(0.2f, 0.4f, 0.8f), 0f, 0.5f));
+                Tube("Mangueira_Vermelha", h, new[] { h.position + new Vector3(0.2f, 0.55f, 0.2f), h.position + new Vector3(0.45f, 0.45f, 0.45f), oxygenator + new Vector3(-0.04f, 0.05f, 0f) },
+                    0.009f, Paint("hoseRed", new Color(0.8f, 0.2f, 0.18f), 0f, 0.5f));
+
+                GameObject saver = new GameObject("RecuperadorCelular");
+                saver.transform.SetParent(r, false);
+                saver.transform.position = new Vector3(-1.95f, 0f, thorax.z - 0.1f);
+                Transform v = saver.transform;
+                Box("Corpo", v, new Vector3(0f, 0.45f, 0f), new Vector3(0.45f, 0.9f, 0.45f), white);
+                Rod("Centrifuga", v, new Vector3(0f, 0.92f, 0.05f), 0.09f, 0.04f, plastic, null, false);
+                Box("Tela", v, new Vector3(0.226f, 0.75f, -0.1f), new Vector3(0.004f, 0.12f, 0.16f), screen, null, false);
+                Rod("Haste", v, new Vector3(-0.15f, 1.25f, -0.15f), 0.012f, 0.7f, steel);
+                Box("BolsaSangue", v, new Vector3(-0.15f, 1.45f, -0.1f), new Vector3(0.1f, 0.16f, 0.03f), arterial);
+            }
+
+            // ---- sponge counter: hanging clear pockets, the used ones red, so the count is visible
+            {
+                GameObject rack = new GameObject("PortaCompressas");
+                rack.transform.SetParent(r, false);
+                rack.transform.position = new Vector3(0.55f, 0f, thorax.z - 1.55f);
+                rack.transform.rotation = Quaternion.LookRotation(Vector3.back, Vector3.up);
+                Transform k = rack.transform;
+                Rod("Poste", k, new Vector3(0f, 0.65f, 0f), 0.012f, 1.3f, steel);
+                Box("Base", k, new Vector3(0f, 0.02f, 0f), new Vector3(0.4f, 0.03f, 0.4f), steel);
+                Box("Travessa", k, new Vector3(0f, 1.28f, 0f), new Vector3(0.5f, 0.015f, 0.015f), steel);
+                Box("Folha", k, new Vector3(0f, 1.0f, -0.01f), new Vector3(0.46f, 0.52f, 0.004f), plastic, null, false);
+                Material used = Paint("spongeUsed", new Color(0.6f, 0.1f, 0.12f), 0f, 0.5f);
+                Material clean = Paint("spongeClean", new Color(0.95f, 0.95f, 0.93f), 0f, 0.2f);
+                for (int i = 0; i < 10; i++)
+                {
+                    int col = i % 2, row = i / 2;
+                    Box("Compressa_" + i, k, new Vector3(-0.11f + col * 0.22f, 1.2f - row * 0.1f, -0.012f),
+                        new Vector3(0.18f, 0.08f, 0.006f), i < 4 ? used : clean, null, false);
+                }
+            }
+
+            Debug.Log("[Transplante] decoração do transplante: caixa térmica do órgão, cirurgia segura, quadro, eco, " +
+                      "termorregulador, recuperador celular, porta-compressas");
+        }
+
+        /// <summary>A flat circular sector pointing down from its apex, facing -Z: the echo's image.</summary>
+        private static Mesh FanMesh(float radius, float degrees, int segments)
+        {
+            List<Vector3> vertices = new List<Vector3> { Vector3.zero };
+            List<int> triangles = new List<int>();
+            for (int i = 0; i <= segments; i++)
+            {
+                float a = Mathf.Lerp(-degrees * 0.5f, degrees * 0.5f, i / (float)segments) * Mathf.Deg2Rad;
+                vertices.Add(new Vector3(Mathf.Sin(a) * radius, Mathf.Cos(a) * radius, 0f));
+                if (i == 0) { continue; }
+                triangles.Add(0); triangles.Add(i); triangles.Add(i + 1);
+            }
+
+            Mesh mesh = new Mesh { name = "SetorEco" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         private static void BuildBypassMachine(Transform r, Vector3 thorax)

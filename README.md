@@ -135,6 +135,18 @@ campo de anestesia no pescoço, máquina de anestesia com circuito até a via a�
 mesa auxiliar, suporte de soro, negatoscópio com raio-X, relógio de parede com a hora real,
 gases medicinais, armário, portas com visor, pia de escovação e lixeiras.
 
+Do transplante em particular: **caixa térmica do órgão** aberta com gelo e o rótulo
+"ÓRGÃO HUMANO PARA TRANSPLANTE", quadro de **Cirurgia Segura (OMS)** ao lado das portas,
+**quadro branco** com a contagem de compressas/agulhas e o tempo de isquemia do enxerto,
+**ecocardiógrafo transesofágico** na cabeceira com a sonda até a boca, **termorregulador**
+com as mangueiras até o oxigenador e **recuperador celular** ao lado da bomba, e o
+**porta-compressas** com as usadas em vermelho. Tudo estático e com materiais
+compartilhados, para o static batching juntar no Quest. Textos 3D (`TextMesh`) ficam fora
+do static batching: ele congelaria a malha antes do texto existir.
+
+O monitor mostra também a **fibrilação ventricular** ao retirar o clampe (traçado
+caótico, "FC FV", alarme) e um espículo a cada choque das pás.
+
 O monitor de sinais vitais conta a história da cirurgia: coração doente taquicárdico e
 hipotenso → linha reta e "CEC — BOMBA LIGADA" em bomba → ritmo sinusal quando o doador
 bate. Um vaso vazando derruba a pressão e dispara o alarme.
