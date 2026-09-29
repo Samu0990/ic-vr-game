@@ -130,6 +130,24 @@ namespace VRSurgery.Tests
         }
 
         [Test]
+        public void DroppedThroughTheSkinIntoThePatient_ItComesBack()
+        {
+            ReturnHomeOnRelease release = Tool(out SurgicalInteractable grab, out _);
+            Bounds insidePatient = new Bounds(new Vector3(0f, 1.05f, 0f), new Vector3(0.2f, 0.2f, 0.3f));
+            release.UseDropAndRespawn(new Vector3(0.45f, 1.3f, 0f), 0.85f, 0.65f, insidePatient);
+
+            grab.OnGrabbed(null);
+            grab.OnReleased();
+            Run(release, 0.1f);
+
+            // Within arm's reach, but inside the chest where nobody can see it.
+            grab.transform.position = new Vector3(0.02f, 1.02f, 0.05f);
+            Run(release, 1.2f);
+
+            Assert.AreEqual(Home, grab.transform.position, "Unseen counts as lost.");
+        }
+
+        [Test]
         public void ANewVisitorGetsTheInstrumentBackOnTheTray()
         {
             ReturnHomeOnRelease release = Tool(out SurgicalInteractable grab, out Rigidbody body);

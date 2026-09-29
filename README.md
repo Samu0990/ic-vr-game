@@ -115,9 +115,11 @@ na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órg�
   fica onde caiu, no campo ou na bandeja de Mayo (agora sólida), e pode ser pego de novo;
   **arremessar** também funciona. Só se ele parar **fora do alcance** (chão, outro lado da
   mesa, atirado longe) por 0,6 s é que some e **reaparece com um "pop"** no lugar dele. A cada
-  novo visitante, tudo volta para a bandeja.
+  novo visitante, tudo volta para a bandeja. Instrumento que cai **dentro do paciente** (atravessa
+  a pele da janela, que não tem colisor) também conta como perdido e reaparece.
 - **A mesa vai até o visitante** (`VisitorFit` no XR Origin): no início de cada briefing (e de
-  novo 3 s depois, com o óculos já no rosto) o rig é movido para a cabeça ficar exatamente
+  novo 3 s depois) e **quando o sensor de presença do óculos detecta que alguém o colocou**, nunca
+  com a rodada correndo o rig é movido para a cabeça ficar exatamente
   sobre a marca e virada para o paciente. **Modo baixinho**: olhos abaixo de 1,48 m são
   levantados até 40 cm, para uma criança alcançar a mesa como um adulto. Tecla **R** no PC
   recentraliza a qualquer momento (para o operador).

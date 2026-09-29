@@ -46,6 +46,10 @@ namespace VRSurgery.Interaction
         [Tooltip("Seconds out of reach before it pops back, so a bounce off the edge can come back on its own.")]
         [SerializeField, Min(0f)] private float lostSeconds = 0.6f;
 
+        [Tooltip("Places that count as lost even within reach: inside the patient, under the skin, " +
+                 "where a dropped instrument would lie unseen.")]
+        [SerializeField] private Bounds[] lostZones = new Bounds[0];
+
         [SerializeField, Min(0.05f)] private float popSeconds = 0.25f;
 
         private Vector3 _homePosition;
@@ -195,6 +199,14 @@ namespace VRSurgery.Interaction
         public bool IsReachable(Vector3 point)
         {
             if (point.y < lostBelowY) { return false; }
+            if (lostZones != null)
+            {
+                for (int i = 0; i < lostZones.Length; i++)
+                {
+                    if (lostZones[i].Contains(point)) { return false; }
+                }
+            }
+
             return (point - reachCentre).sqrMagnitude <= reachRadius * reachRadius;
         }
 
@@ -247,12 +259,13 @@ namespace VRSurgery.Interaction
         public void Bind(SurgicalInteractable tool) => interactable = tool;
 
         /// <summary>Switches to the Job Simulator behaviour: drops where let go, pops back only when out of reach.</summary>
-        public void UseDropAndRespawn(Vector3 reachFrom, float radius, float floorY)
+        public void UseDropAndRespawn(Vector3 reachFrom, float radius, float floorY, params Bounds[] hidden)
         {
             mode = ReleaseMode.DropAndRespawn;
             reachCentre = reachFrom;
             reachRadius = radius;
             lostBelowY = floorY;
+            lostZones = hidden ?? new Bounds[0];
         }
     }
 }

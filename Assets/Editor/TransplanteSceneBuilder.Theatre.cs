@@ -2290,6 +2290,21 @@ namespace VRSurgery.EditorTools
             return mesh;
         }
 
+        /// <summary>
+        /// The torso under the skin window, from the table up to just below the skin: an
+        /// instrument dropped over the chest falls through the skin (it has no collider) and would
+        /// lie there unseen but "within reach". It counts as lost instead, and pops back.
+        /// </summary>
+        private static Bounds InsideThePatient()
+        {
+            float skin = SkinTopAt(_window.Center.x, _window.Center.z) - 0.015f;
+            float bottom = TableTopY - 0.05f;
+            Vector3 centre = new Vector3(_window.Center.x, (skin + bottom) * 0.5f, _window.Center.z);
+            Vector3 size = new Vector3(2f * (_window.HalfWidth + 0.04f), Mathf.Max(0.02f, skin - bottom),
+                2f * (_window.HalfLength + 0.04f));
+            return new Bounds(centre, size);
+        }
+
         /// <summary>Between the shoulders of a visitor standing at the stance: the middle of what they can reach.</summary>
         private static Vector3 ReachCentre() => Stance(_thorax) + new Vector3(0f, 1.3f, 0f);
 
@@ -2705,7 +2720,7 @@ namespace VRSurgery.EditorTools
 
             ReturnHomeOnRelease release = tool.AddComponent<ReturnHomeOnRelease>();
             release.Bind(interactable);
-            release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f);
+            release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f, InsideThePatient());
             return tool;
         }
 

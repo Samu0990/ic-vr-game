@@ -50,7 +50,12 @@ namespace VRSurgery.VR
         [Tooltip("Seconds into the briefing for a second fit, once the headset is surely on.")]
         [SerializeField, Min(0f)] private float settleSeconds = 3f;
 
+        [Tooltip("Seconds after the headset's presence sensor says someone put it on before fitting.")]
+        [SerializeField, Min(0f)] private float putOnSettleSeconds = 1.2f;
+
         private float _sinceBriefing = -1f;
+        private float _sincePutOn = -1f;
+        private bool _present = true;
 
         /// <summary>How far the floor was lifted at the last fit, in metres.</summary>
         public float Lift { get; private set; }
@@ -70,20 +75,52 @@ namespace VRSurgery.VR
         private void HandleState(SessionState state)
         {
             if (state != SessionState.Briefing) { return; }
-            Fit();
+
+            // A headset lying on the table is not a visitor: measure only a head that is in it.
+            if (HeadsetOn()) { Fit(); }
             _sinceBriefing = 0f;
         }
+
+        /// <summary>
+        /// Whether someone is wearing the headset, from its presence sensor. True when the device
+        /// does not say (the Editor, a headset without the sensor), so fitting still works there.
+        /// </summary>
+        private static bool HeadsetOn()
+        {
+            // Fully qualified: the Input System has its own InputDevice and CommonUsages.
+            UnityEngine.XR.InputDevice headset = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(UnityEngine.XR.XRNode.Head);
+            if (!headset.isValid) { return true; }
+            return !headset.TryGetFeatureValue(UnityEngine.XR.CommonUsages.userPresence, out bool present) || present;
+        }
+
+        /// <summary>Never while the clock runs: the table jumping mid-incision would be far worse than a slightly off stance.</summary>
+        private bool MayFit => session == null || session.State != SessionState.Running;
 
         private void Update()
         {
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { Fit(); }
+
+            // Someone just put the headset on: fit them once it has settled on their face.
+            bool present = HeadsetOn();
+            if (present && !_present) { _sincePutOn = 0f; }
+            _present = present;
+
+            if (_sincePutOn >= 0f)
+            {
+                _sincePutOn += Time.deltaTime;
+                if (_sincePutOn >= putOnSettleSeconds)
+                {
+                    _sincePutOn = -1f;
+                    if (MayFit) { Fit(); }
+                }
+            }
 
             if (_sinceBriefing < 0f) { return; }
             _sinceBriefing += Time.deltaTime;
             if (_sinceBriefing >= settleSeconds)
             {
                 _sinceBriefing = -1f;
-                if (session == null || session.State == SessionState.Briefing) { Fit(); }
+                if ((session == null || session.State == SessionState.Briefing) && present) { Fit(); }
             }
         }
 
