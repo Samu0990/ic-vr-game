@@ -2324,10 +2324,11 @@ namespace VRSurgery.EditorTools
 
             GameObject rig = GameObject.Find("XR Origin");
             Camera head = rig != null ? rig.GetComponentInChildren<Camera>(true) : null;
+            VisitorFit fit = null;
             if (rig != null && head != null)
             {
                 // Not ??: a missing component is a fake null in the Editor, which ?? does not see.
-                VisitorFit fit = rig.GetComponent<VisitorFit>();
+                fit = rig.GetComponent<VisitorFit>();
                 if (fit == null) { fit = rig.AddComponent<VisitorFit>(); }
                 fit.Bind(rig.transform, head.transform, point.transform, session);
             }
@@ -2335,6 +2336,9 @@ namespace VRSurgery.EditorTools
             {
                 Debug.LogWarning("[Transplante] sem XR Origin com câmera: o ajuste ao visitante não foi ligado.");
             }
+
+            // The operator's controls on the left controller's menu button: no keyboard at the stand.
+            systems.AddComponent<OperatorControls>().Bind(session, fit);
 
             Material mark = MakeUnlit(new Color(0.35f, 0.95f, 0.65f, 0.55f));
             Mesh foot = FootMesh();

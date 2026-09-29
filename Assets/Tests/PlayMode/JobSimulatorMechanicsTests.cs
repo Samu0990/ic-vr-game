@@ -185,6 +185,29 @@ namespace VRSurgery.Tests
             Assert.IsFalse(renderer.HasPropertyBlock(), "Gone without a trace once the hand leaves.");
         }
 
+        // ------------------------------------------------------------------ operator
+
+        [Test]
+        public void TheOperatorsHoldRecentresAtTwoSecondsAndEndsTheTurnAtFour()
+        {
+            VRSurgery.Session.OperatorControls controls = Spawn("Operator").AddComponent<VRSurgery.Session.OperatorControls>();
+            int recentred = 0, ended = 0;
+            controls.Recentred += () => recentred++;
+            controls.TurnEnded += () => ended++;
+
+            for (float t = 0f; t < 1.5f; t += Step) { controls.Tick(Step, true); }
+            controls.Tick(Step, false);
+            Assert.AreEqual(0, recentred + ended, "A visitor's short press does nothing.");
+
+            for (float t = 0f; t < 2.1f; t += Step) { controls.Tick(Step, true); }
+            Assert.AreEqual(1, recentred);
+            Assert.AreEqual(0, ended);
+
+            for (float t = 0f; t < 2.1f; t += Step) { controls.Tick(Step, true); }
+            Assert.AreEqual(1, recentred, "Once per hold,");
+            Assert.AreEqual(1, ended, "and past four seconds the turn ends.");
+        }
+
         // ------------------------------------------------------------------ visitor fit
 
         private VisitorFit Rig(float eyeHeight, out Transform rig, out Transform head, out Transform stance)

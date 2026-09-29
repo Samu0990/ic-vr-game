@@ -123,6 +123,10 @@ na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órg�
   sobre a marca e virada para o paciente. **Modo baixinho**: olhos abaixo de 1,48 m são
   levantados até 40 cm, para uma criança alcançar a mesa como um adulto. Tecla **R** no PC
   recentraliza a qualquer momento (para o operador).
+- **Controles do operador sem teclado** (`OperatorControls`), porque o Quest roda sozinho no
+  evento: segurar o **botão de menu do controle esquerdo** por **2 s** recentraliza a mesa em quem
+  está com o óculos, por **4 s** encerra a vez e prepara o próximo visitante (um clique na mão
+  marca cada ponto). No PC/Link: **R** recentraliza, **N** encerra a vez.
 - **Marca dos pés** verde no chão onde o visitante fica.
 - **Brilho ao aproximar a mão** (`GrabGlow`): o instrumento clareia e pulsa em ciano enquanto
   a mão está perto o bastante para pegar, sem trocar o material (a textura do bisturi continua).
