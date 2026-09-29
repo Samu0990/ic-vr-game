@@ -38,6 +38,10 @@ namespace VRSurgery.Transplant
         [SerializeField] private SternotomyController sternotomy;
         [SerializeField] private TransplantProcedure procedure;
 
+        [Tooltip("Optional. The sternal saw: when set, the bone is only cut while it is held, and " +
+                 "the tip above is its blade rather than a bare hand.")]
+        [SerializeField] private SurgicalInteractable instrument;
+
         private bool _announcedStart;
         private bool _requestedOpen;
 
@@ -84,6 +88,13 @@ namespace VRSurgery.Transplant
             if (procedure != null && procedure.Stage != TransplantStage.OpenChest) { return; }
             if (sternotomy != null && (sternotomy.IsOpen || sternotomy.IsMoving)) { return; }
 
+            // A saw on the tray is not cutting anything, however close it lies to the chest.
+            if (instrument != null && !instrument.IsHeld)
+            {
+                Held = Mathf.Max(0f, Held - deltaTime);
+                return;
+            }
+
             if (Vector3.Distance(tip.position, site.position) > radius)
             {
                 Held = Mathf.Max(0f, Held - deltaTime);
@@ -119,6 +130,19 @@ namespace VRSurgery.Transplant
         }
 
         /// <summary>Puts the gesture back in play for the next visitor.</summary>
+        /// <summary>
+        /// Hands the gesture to a sternal saw: the bone is cut by its blade, and only while it is
+        /// held. Without this the sternotomy stays a bare-hand gesture.
+        /// </summary>
+        public void BindInstrument(SurgicalInteractable saw, Transform blade)
+        {
+            instrument = saw;
+            if (blade != null) { tip = blade; }
+        }
+
+        /// <summary>True once a saw has been bound. The monitor's wording follows it.</summary>
+        public bool UsesSaw => instrument != null;
+
         public void ResetGesture()
         {
             Held = 0f;

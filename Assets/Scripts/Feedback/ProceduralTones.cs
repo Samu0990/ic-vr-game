@@ -44,6 +44,9 @@ namespace VRSurgery.Feedback
         /// <summary>Needle through skin: a tiny click.</summary>
         public static AudioClip Stitch => Get("stitch", () => Tone("stitch", 0.05f, 0.4f, 1760f, 2637f));
 
+        /// <summary>The sternal saw: an oscillating blade's rasp, meant to loop while it cuts.</summary>
+        public static AudioClip SawBuzz => Get("saw-buzz", () => Saw("saw-buzz", 0.5f));
+
         /// <summary>A constant soft ventilator/room hum, meant to loop.</summary>
         public static AudioClip RoomHum => Get("room-hum", () => Hum("room-hum", 2f));
 
@@ -134,6 +137,33 @@ namespace VRSurgery.Feedback
                 // 50 and 100 Hz: whole cycles in the loop length, so the loop point never clicks.
                 float mains = 0.5f * Mathf.Sin(2f * Mathf.PI * 50f * t) + 0.25f * Mathf.Sin(2f * Mathf.PI * 100f * t);
                 data[i] = (mains * 0.05f + smoothed * 0.35f) * 0.5f;
+            }
+
+            return Build(name, data);
+        }
+
+        /// <summary>
+        /// A sawtooth at a whole number of cycles per loop, roughened with filtered noise and
+        /// throbbing at the blade's oscillation rate. Loops without a click.
+        /// </summary>
+        private static AudioClip Saw(string name, float seconds)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+            System.Random random = new System.Random(23);
+            float smoothed = 0f;
+            const float motorHz = 140f;
+            const float throbHz = 24f;
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float phase = t * motorHz % 1f;
+                float saw = phase * 2f - 1f;
+                float white = (float)(random.NextDouble() * 2.0 - 1.0);
+                smoothed = Mathf.Lerp(smoothed, white, 0.35f);
+                float throb = 0.75f + 0.25f * Mathf.Sin(2f * Mathf.PI * throbHz * t);
+                data[i] = (saw * 0.22f + smoothed * 0.18f) * throb;
             }
 
             return Build(name, data);

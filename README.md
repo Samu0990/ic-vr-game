@@ -87,11 +87,14 @@ antes, que é o que todos os testes antigos montam à mão. Com elas a rodada ga
 
 | Etapa | Gesto | Guia visual |
 |---|---|---|
-| Incisão | Pegar o **bisturi** na mesa de Mayo e passar a lâmina sobre a linha roxa, encostando na pele | Linha roxa de marcador cirúrgico; o corte vermelho e as gotas de sangue aparecem só onde a lâmina passou |
-| Esterno | Mão sobre a marca dourada por 3 s | Anel dourado (só nesta etapa); o afastador de Finochietto abre junto |
+| Incisão | Pegar o **bisturi** na mesa de Mayo e passar a lâmina sobre a linha roxa, **encostando** na pele (até 4 mm acima conta; mais de 2,2 cm abaixo é "profunda demais") | Linha roxa de marcador cirúrgico; a pele afunda sob a lâmina, o corte abre ~4 mm atrás dela pela tensão da pele, as gotas de sangue crescem e às vezes escorrem pela lateral do tórax |
+| Esterno | Pegar a **serra esternal** na bandeja e apoiar a lâmina na marca dourada por 3 s | Anel dourado (só nesta etapa); zumbido e vibração forte enquanto serra; o esterno se parte em duas metades presas no afastador de Finochietto |
 | CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba |
 | Vasos | Mão firme no anel por 1,4 s; mão trêmula faz sangrar, pressão estanca | Anéis vermelho/azul (só nesta etapa); vermelho pulsante enquanto sangra |
-| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; o nó fica na pele |
+| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; a pele afunda sob a agulha; cada nó fica na pele e fecha a abertura do corte no seu trecho |
+
+Com o tórax aberto, uma poça de sangue fica no fundo da cavidade e **sobe enquanto um vaso
+vaza** (`CavityBloodPool`), baixando devagar quando o vazamento é estancado.
 
 Todo gesto de "segurar" mostra um **anel de progresso flutuante** sobre o local
 (`WorkProgressIndicator`), com rótulo e porcentagem, e vibra de leve na mão enquanto avança.

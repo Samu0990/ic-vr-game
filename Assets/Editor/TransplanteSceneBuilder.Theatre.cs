@@ -1443,6 +1443,7 @@ namespace VRSurgery.EditorTools
                 Paint("gauze", new Color(0.97f, 0.97f, 0.95f), 0f, 0.1f));
 
             trayTop = new Vector3(centre.x, topY + 0.003f, centre.z);
+            _trayTop = trayTop;
 
             int operatorLayer = LayerMask.NameToLayer(OperatorLayer);
             if (operatorLayer >= 0)
@@ -1452,6 +1453,43 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[Transplante] mesa de Mayo sobre o abdome, bandeja em {trayTop}");
             return stand.transform;
+        }
+
+        /// <summary>Top of the Mayo tray for this build, for instruments placed after it.</summary>
+        private static Vector3 _trayTop;
+
+        /// <summary>
+        /// The sternal saw: a pistol-grip body with a reciprocating blade pointing down at the
+        /// front and a foot plate under it, the way the real one is set into the sternal notch.
+        /// Stood on its grip on the tray. Its cutting point is the bottom of the blade.
+        /// </summary>
+        private static GameObject BuildSternalSaw(Vector3 position, Quaternion rotation, out Transform bladeTip,
+            out SurgicalInteractable interactable)
+        {
+            Vector3 grip = new Vector3(0f, -0.045f, -0.035f);
+            GameObject tool = GrabbableTool("SerraEsternal", "sternal-saw", "Serra esternal", ToolType.Retractor, ToolCapability.Cut,
+                position, rotation, grip, new Vector3(0f, -0.01f, 0.02f), new Vector3(0.05f, 0.14f, 0.16f), out interactable);
+            Transform t = tool.transform;
+
+            Material body = Paint("sawBody", new Color(0.22f, 0.3f, 0.42f), 0.3f, 0.55f);
+            Material rubber = Paint("sawGrip", new Color(0.08f, 0.08f, 0.09f), 0f, 0.3f);
+            Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
+            Material trigger = Paint("sawTrigger", new Color(0.85f, 0.2f, 0.12f), 0f, 0.4f);
+
+            Box("Corpo", t, new Vector3(0f, 0.03f, 0.02f), new Vector3(0.045f, 0.06f, 0.15f), body);
+            Box("Nariz", t, new Vector3(0f, 0.012f, 0.1f), new Vector3(0.03f, 0.03f, 0.03f), body);
+            Box("Empunhadura", t, new Vector3(0f, -0.045f, -0.035f), new Vector3(0.034f, 0.1f, 0.04f), rubber,
+                Quaternion.Euler(15f, 0f, 0f));
+            Box("Gatilho", t, new Vector3(0f, -0.018f, -0.008f), new Vector3(0.012f, 0.025f, 0.01f), trigger);
+            Box("Lamina", t, new Vector3(0f, -0.016f, 0.1f), new Vector3(0.0018f, 0.045f, 0.012f), steel);
+            Box("Sapata", t, new Vector3(0f, -0.038f, 0.104f), new Vector3(0.012f, 0.004f, 0.032f), steel);
+
+            GameObject tip = new GameObject("BladeTip");
+            tip.transform.SetParent(t, false);
+            tip.transform.localPosition = new Vector3(0f, -0.036f, 0.1f);
+            bladeTip = tip.transform;
+
+            return tool;
         }
 
         /// <summary>Moves the donor basin from its pedestal behind the surgeon onto the Mayo tray.</summary>

@@ -42,6 +42,13 @@ namespace VRSurgery.Feedback
         [SerializeField] private SurgicalInteractable scalpel;
         [SerializeField] private SurgicalInteractable needleHolder;
 
+        [Header("Sternal saw (optional)")]
+        [SerializeField] private SternotomyWorker sternotomy;
+        [SerializeField] private SurgicalInteractable saw;
+
+        [Tooltip("Seconds between the saw's pulses in the hand while it is cutting bone.")]
+        [SerializeField, Min(0.02f)] private float sawPulseInterval = 0.07f;
+
         [Header("Output")]
         [SerializeField] private AudioSource audioSource;
 
@@ -60,6 +67,11 @@ namespace VRSurgery.Feedback
         private float _alarmElapsed;
         private float _tickElapsed;
         private float _sinceSlice = float.PositiveInfinity;
+        private float _sinceSawPulse;
+        private AudioSource _sawSource;
+
+        /// <summary>True while the saw's loop is playing. Exposed for tests.</summary>
+        public bool IsSawing { get; private set; }
 
         /// <summary>Pulses sent since the scene started. Exposed for tests.</summary>
         public int PulsesSent { get; private set; }
@@ -82,6 +94,14 @@ namespace VRSurgery.Feedback
 
             audioSource.playOnAwake = false;
             audioSource.spatialBlend = 0f;
+
+            // Its own source: a loop that starts and stops with the blade must not cut off the
+            // one-shot chimes and alarms playing on the main one.
+            _sawSource = gameObject.AddComponent<AudioSource>();
+            _sawSource.playOnAwake = false;
+            _sawSource.loop = true;
+            _sawSource.spatialBlend = 0f;
+            _sawSource.volume = 0.45f;
         }
 
         private void OnEnable()
@@ -138,6 +158,7 @@ namespace VRSurgery.Feedback
             if (deltaTime <= 0f) { return; }
 
             _sinceSlice += deltaTime;
+            TickSaw(deltaTime);
 
             bool leaking = anastomosis != null && anastomosis.BleedingSite != null;
             if (leaking)
@@ -209,6 +230,38 @@ namespace VRSurgery.Feedback
         {
             Play(ProceduralTones.SoftConfirm, 0.6f);
             Pulse(_confirm);
+        }
+
+        /// <summary>The saw rasps and judders in the hand for exactly as long as it is on the bone.</summary>
+        private void TickSaw(float deltaTime)
+        {
+            bool sawing = sternotomy != null && sternotomy.UsesSaw && sternotomy.IsWorking;
+
+            if (sawing != IsSawing)
+            {
+                IsSawing = sawing;
+                if (_sawSource != null)
+                {
+                    if (sawing)
+                    {
+                        _sawSource.clip = ProceduralTones.SawBuzz;
+                        _sawSource.Play();
+                    }
+                    else
+                    {
+                        _sawSource.Stop();
+                    }
+                }
+            }
+
+            if (!sawing) { _sinceSawPulse = 0f; return; }
+
+            _sinceSawPulse += deltaTime;
+            if (_sinceSawPulse >= sawPulseInterval)
+            {
+                _sinceSawPulse = 0f;
+                PulseHolder(saw, _confirm);
+            }
         }
 
         private void HandleCutting()
@@ -311,6 +364,13 @@ namespace VRSurgery.Feedback
             }
 
             return best;
+        }
+
+        /// <summary>Adds the sternal saw: its sound and its vibration while it cuts.</summary>
+        public void BindSaw(SternotomyWorker sternotomyWorker, SurgicalInteractable sternalSaw)
+        {
+            sternotomy = sternotomyWorker;
+            saw = sternalSaw;
         }
 
         /// <summary>Adds the scalpel and the needle to what this component answers.</summary>

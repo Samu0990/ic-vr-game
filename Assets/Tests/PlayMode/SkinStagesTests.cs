@@ -397,6 +397,37 @@ namespace VRSurgery.Tests
             }
         }
 
+        // ------------------------------------------------------------------ sternal saw
+
+        [Test]
+        public void TheSawOnlyCutsBoneWhileItIsHeld()
+        {
+            TransplantProcedure procedure = Spawn("Procedure").AddComponent<TransplantProcedure>();
+            procedure.Begin();
+
+            SternotomyController bone = Spawn("Sternum").AddComponent<SternotomyController>();
+            Transform site = Spawn("Site").transform;
+            Transform blade = Spawn("SawBlade").transform;
+            blade.position = site.position;
+
+            SternotomyWorker worker = Spawn("Worker").AddComponent<SternotomyWorker>();
+            worker.Bind(blade, site, bone, procedure, 0.1f, 3f);
+
+            VRSurgery.Interaction.SurgicalInteractable saw =
+                Spawn("Saw").AddComponent<VRSurgery.Interaction.SurgicalInteractable>();
+            worker.BindInstrument(saw, blade);
+
+            for (int i = 0; i < 240; i++) { worker.Tick(Step); }
+            Assert.AreEqual(0f, worker.Progress01, "A saw lying on the tray over the chest cuts nothing.");
+            Assert.IsFalse(bone.IsMoving);
+
+            saw.OnGrabbed(null);
+            for (int i = 0; i < 200; i++) { worker.Tick(Step); }
+
+            Assert.IsTrue(worker.UsesSaw);
+            Assert.IsTrue(bone.IsMoving || bone.IsOpen, "Three seconds of saw on the bone opens the sternum.");
+        }
+
         // ------------------------------------------------------------------ suture
 
         private SutureWorker Suture(ChestSkinPatch patch, out Transform needle, out List<GameObject> knots)

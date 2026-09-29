@@ -1199,6 +1199,13 @@ namespace VRSurgery.EditorTools
             feedback.Bind(procedure, worker, sewing, beat, indicator, tipObject.transform, RigHands());
             feedback.BindSkinStages(incision, suture, scalpel, needleHolder);
 
+            // The bone is opened with a sternal saw from the tray, not a bare hand: the blade has
+            // to be held on the gold mark, and it rasps and judders in the hand while it cuts.
+            BuildSternalSaw(_trayTop + new Vector3(0.1f, 0.1f, 0.115f), Quaternion.LookRotation(Vector3.left, Vector3.up),
+                out Transform sawBlade, out SurgicalInteractable saw);
+            opening.BindInstrument(saw, sawBlade);
+            feedback.BindSaw(opening, saw);
+
             BuildVitalsMonitor(_thorax, procedure, beat, sewing);
 
             // A leaking join fills the open chest; the pool reads the same joins the monitor does.
