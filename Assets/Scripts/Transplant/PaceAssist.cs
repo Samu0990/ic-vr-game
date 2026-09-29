@@ -15,8 +15,7 @@ namespace VRSurgery.Transplant
     /// threshold the hand-held steps — the pump and the five vessels, the long ones — count
     /// faster; past the second, faster still. The visitor still performs every step: the help
     /// is that holding works sooner, the way an assistant's hands make a surgeon quicker. It is
-    /// announced, so nobody wonders why it got easier, and every level given is written to the
-    /// research log, so the data can tell assisted turns apart.
+    /// announced, so nobody wonders why it got easier.
     ///
     /// Help only goes up within a turn and is taken away for the next visitor.
     /// </summary>
@@ -62,7 +61,6 @@ namespace VRSurgery.Transplant
         [SerializeField] private TransplantProcedure procedure;
         [SerializeField] private BypassWorker bypass;
         [SerializeField] private VesselAnastomosis[] vessels = new VesselAnastomosis[0];
-        [SerializeField] private ResearchLog log;
 
         private float _spent;
         private float _stageEnteredAt;
@@ -120,7 +118,6 @@ namespace VRSurgery.Transplant
 
             Level = wanted;
             Apply(Level == 2 ? moreHelpSpeed : helpSpeed);
-            if (log != null) { log.NoteAssist(); }
 
             SurgeryEvents.RaiseError(ErrorSeverity.Warning, Level == 2
                 ? "A equipe está com você: segurar agora vale bem mais rápido."
@@ -187,7 +184,7 @@ namespace VRSurgery.Transplant
         }
 
         public void Bind(EventSessionController controller, TransplantProcedure transplant, BypassWorker pump,
-            VesselAnastomosis[] joins, ResearchLog researchLog)
+            VesselAnastomosis[] joins)
         {
             bool live = Application.isPlaying && isActiveAndEnabled;
             if (live) { Unsubscribe(); }
@@ -196,7 +193,6 @@ namespace VRSurgery.Transplant
             procedure = transplant;
             bypass = pump;
             vessels = joins ?? new VesselAnastomosis[0];
-            log = researchLog;
 
             if (live) { Subscribe(); }
         }

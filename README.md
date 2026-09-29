@@ -114,7 +114,7 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
 - **Ritmo** (`PaceAssist`): cada etapa tem um orçamento de tempo (escalado para caber em 85% da
   rodada). Quem passa **15 s** atrás do orçamento tem os gestos de segurar (CEC e vasos)
   contando **1,6×** mais rápido; **35 s** atrás, **2,5×**. O visitante continua fazendo tudo,
-  é avisado no monitor, e cada ajuda vai para o registro da pesquisa. Não diminui durante a vez;
+  é avisado no monitor. Não diminui durante a vez;
   zera para o próximo visitante.
 - **Lâmina**: depois de ~3 s tentando cortar com a lâmina errada, a regra do fio cai.
 - **Seta** sobre o instrumento da etapa e **brilho** ao aproximar a mão.
@@ -222,28 +222,6 @@ O texto de cada fala está em `Tools/voz/roteiro.tsv` (edite e rode de novo). Ta
 gravar com a própria voz: um `.wav` por id em `Assets/Resources/Voz/`. Sem arquivo, a fala é
 pulada e o estande funciona em silêncio.
 
-## Dados para a pesquisa (IC)
-
-Cada vez de um visitante vira **uma linha JSON** (`ResearchLog`), gravada no próprio óculos em
-`Android/data/<pacote>/files/pesquisa/sessoes.jsonl` — hoje o pacote é
-`com.DefaultCompany.VRTemplate` (Project Settings, não alterado aqui). Para copiar:
-
-```
-adb pull /sdcard/Android/data/com.DefaultCompany.VRTemplate/files/pesquisa/sessoes.jsonl
-```
-
-Cada linha tem: data/hora, número do visitante, se concluiu ou desistiu, tempo total e **tempo
-de cada etapa**, erros por gravidade, vazamentos nas anastomoses, choques, **nota da incisão**
-(passadas, desvio em mm, arranhões, se precisou da ajuda da lâmina), **nota da sutura** (mm do
-alvo, furos), quantas ajudas adaptativas recebeu, altura dos olhos e o levantamento do modo
-baixinho. **Anônimo por construção**: o nome digitado para o placar nunca é lido.
-Para ver os dados: abra `Tools/painel/painel-ic.html` no navegador (funciona offline) e arraste
-o `sessoes.jsonl` — tempo médio por etapa contra o orçamento da ajuda, onde quem não concluiu
-parou, distribuição de estrelas, histograma do tempo total e a tabela das vezes; "Copiar como
-CSV" leva tudo para uma planilha. O arquivo nunca sai do computador.
-
-Mesmo anônima, coleta com pessoas em evento pode precisar de aprovação do comitê de ética:
-confirme com o orientador antes de usar os dados num trabalho.
 
 ## Arquitetura
 

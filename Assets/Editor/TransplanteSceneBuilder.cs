@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 24;
+        public const int BuildVersion = 25;
 
         private static Vector3 _thorax;
 
@@ -1325,15 +1325,11 @@ namespace VRSurgery.EditorTools
             // drawn as text), and Display 3 is a monitor beside it carrying the clock, the risk
             // colour and the scoreboard — the reading that a torso-shaped prop cannot show.
             // The table comes to the visitor: recentred at each briefing, lifted for short visitors.
-            VisitorFit fit = WireVisitorFit(systems, session, out Transform headTransform);
-
-            // One anonymous line per visitor on the headset, for the research.
-            ResearchLog researchLog = systems.AddComponent<ResearchLog>();
-            researchLog.Bind(session, procedure, incision, suture, _defibrillation, vessels, fit, headTransform);
+            WireVisitorFit(systems, session, out _);
 
             // Adaptive help: a visitor falling behind gets the hand-held steps counting faster.
             PaceAssist pace = systems.AddComponent<PaceAssist>();
-            pace.Bind(session, procedure, worker, vessels, researchLog);
+            pace.Bind(session, procedure, worker, vessels);
 
             // The team's voice, from the head of the table where the anaesthetist stands.
             GameObject voice = new GameObject("VozEquipe");

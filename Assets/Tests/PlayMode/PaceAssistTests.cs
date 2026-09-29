@@ -35,7 +35,7 @@ namespace VRSurgery.Tests
             vessel = join.AddComponent<VesselAnastomosis>();
 
             PaceAssist assist = host.AddComponent<PaceAssist>();
-            assist.Bind(null, procedure, null, new[] { vessel }, null);
+            assist.Bind(null, procedure, null, new[] { vessel });
             assist.ResetAssist();
             return assist;
         }
