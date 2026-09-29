@@ -107,6 +107,19 @@ O **coração nativo bate** fraco e irregular (fibrilação atrial) até a cardi
 volta a bater ao sair de bomba. Os dois monitores (anestesia e a **tela grande de batimentos
 na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órgão.
 
+### Física da pele
+
+A pele da janela (`ChestSkinPatch`) reage como nos jogos de cirurgia:
+- **Afunda** sob a lâmina e a agulha, e é **arrastada** alguns milímetros junto com a lâmina
+  que corta.
+- Cada trecho recém-cortado **estremece** ao abrir e assenta na abertura (pele sob tensão).
+- **Pinça de dissecção** na bandeja (`SkinForceps`): segure, encoste as pontas na pele e
+  **aperte o gatilho** — a pele fica presa e acompanha a mão, esticando até 3 cm; do outro lado
+  do corte a pele não vem junto (é outro pedaço). Solte o gatilho e ela **volta com balanço
+  elástico**. As pontas da pinça fecham enquanto o gatilho está apertado.
+- **Costurar segurando a borda**: com a borda presa pela pinça perto do ponto, a agulha passa
+  **2× mais rápido** — a técnica de duas mãos de verdade, recompensada, não obrigatória.
+
 ### Ajuda adaptativa (nível único)
 
 Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem precisa:

@@ -375,7 +375,8 @@ namespace VRSurgery.Transplant
             bool moving = speed >= minSliceSpeed;
 
             // Skin is elastic: it dents under the blade before it parts, on or off the line.
-            if (depth > 0f && Mathf.Abs(lateral) < lateralTolerance * 4f) { patch.Press(tip, depth); }
+            // Drawn through it, the skin is dragged a little along with the blade.
+            if (depth > 0f && Mathf.Abs(lateral) < lateralTolerance * 4f) { patch.Press(tip, depth, slide); }
 
             if (Mathf.Abs(lateral) > lateralTolerance)
             {

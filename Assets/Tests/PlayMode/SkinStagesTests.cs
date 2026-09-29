@@ -630,6 +630,121 @@ namespace VRSurgery.Tests
             Assert.IsFalse(body.gameObject.activeSelf);
         }
 
+        // ------------------------------------------------------------------ skin physics
+
+        private static void Settle(ChestSkinPatch patch, float seconds)
+        {
+            for (float t = 0f; t < seconds; t += Step) { patch.Tick(Step); }
+        }
+
+        [Test]
+        public void APinchedEdgeLiftsAndTheFarEdgeStaysPut()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            patch.SetCut(0f, 1f, true);
+            Settle(patch, 1f);
+
+            float lon = Mathf.Lerp(patch.IncisionStart, patch.IncisionEnd, 0.5f);
+            int handle = patch.Grab(patch.IncisionPoint(0.5f, 0.004f, 0f));
+            Assert.GreaterOrEqual(handle, 0, "The skin next to the cut can be taken with forceps.");
+
+            patch.Drag(handle, patch.IncisionPoint(0.5f, 0.004f, 0.02f));
+            Settle(patch, 0.5f);
+
+            Assert.Greater(patch.SurfacePoint(0.004f, lon, 0f).y, SkinY + 0.012f, "The near edge comes up with the pull,");
+            Assert.Less(patch.SurfacePoint(-0.004f, lon, 0f).y, SkinY + 0.002f,
+                "and the far edge, a separate piece of skin across the cut, does not.");
+        }
+
+        [Test]
+        public void SkinGivesOnlySoFar()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            int handle = patch.Grab(patch.IncisionPoint(0.5f, 0.02f, 0f));
+
+            patch.Drag(handle, patch.IncisionPoint(0.5f, 0.02f, 0.2f));
+            Settle(patch, 0.5f);
+
+            Assert.LessOrEqual(patch.PullDistance(handle), 0.0301f, "Twenty centimetres of pull is three of stretch.");
+        }
+
+        [Test]
+        public void LetGoItSpringsBackPastRestAndSettles()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            float lon = Mathf.Lerp(patch.IncisionStart, patch.IncisionEnd, 0.5f);
+            int handle = patch.Grab(patch.IncisionPoint(0.5f, 0.02f, 0f));
+            patch.Drag(handle, patch.IncisionPoint(0.5f, 0.02f, 0.02f));
+            Settle(patch, 0.5f);
+
+            patch.Release(handle);
+            float lowest = float.MaxValue;
+            for (int i = 0; i < 30; i++)
+            {
+                patch.Tick(Step);
+                lowest = Mathf.Min(lowest, patch.SurfacePoint(0.02f, lon, 0f).y);
+            }
+
+            Assert.Less(lowest, SkinY - 0.0005f, "Elastic: it overshoots below where it rests,");
+
+            Settle(patch, 2f);
+            Assert.AreEqual(SkinY, patch.SurfacePoint(0.02f, lon, 0f).y, 5e-4f, "then settles back.");
+        }
+
+        [Test]
+        public void TheBladeDragsTheSkinAlongWithIt()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            TransplantProcedure procedure = ProcedureWithSkinStages();
+            SkinIncisionWorker worker = Incision(patch, procedure, out Transform blade);
+
+            Stroke(worker, patch, blade, 0.2f, 0.5f, 30);
+
+            Assert.Greater(patch.DragDistance, 0.001f, "Skin bunches a few millimetres along a moving blade.");
+        }
+
+        [Test]
+        public void ForcepsClosedOnTheSkinHoldIt_ClosedInTheAirHoldNothing()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            Transform tip = Spawn("ForcepsTip").transform;
+            SkinForceps forceps = Spawn("Forceps").AddComponent<SkinForceps>();
+            forceps.Bind(tip, null, null, patch, null);
+
+            tip.position = patch.IncisionPoint(0.5f, 0.01f, 0.05f);
+            forceps.SetPinch(true);
+            Assert.IsFalse(forceps.IsHoldingSkin, "Squeezed in the air: nothing to hold.");
+            forceps.SetPinch(false);
+
+            tip.position = patch.IncisionPoint(0.5f, 0.01f, 0.001f);
+            forceps.SetPinch(true);
+            Assert.IsTrue(forceps.IsHoldingSkin, "Squeezed on the skin: it holds.");
+
+            forceps.SetPinch(false);
+            Assert.IsFalse(forceps.IsHoldingSkin);
+        }
+
+        [Test]
+        public void HoldingTheEdgeWithForcepsMakesTheBiteQuicker()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            SutureWorker worker = Suture(patch, out Transform needle, out _);
+
+            Transform tip = Spawn("ForcepsTip").transform;
+            SkinForceps forceps = Spawn("Forceps").AddComponent<SkinForceps>();
+            forceps.Bind(tip, null, null, patch, null);
+            worker.BindForceps(forceps);
+
+            tip.position = patch.IncisionPoint(0.9f, 0.012f, 0.001f);
+            forceps.SetPinch(true);
+            Assert.IsTrue(forceps.IsHoldingSkin, "test setup: the edge is held beside the first stitch");
+
+            // 0.35 s alone; with the edge held, 0.2 s is enough.
+            Hold(worker, needle, worker.MarkPosition(0, 0), 0.2f);
+            Assert.IsTrue(worker.EdgeHeld || worker.Progress01 > 0f);
+            Assert.AreEqual(0.1f, worker.Progress01, 1e-4f, "The first bite went in: half a stitch.");
+        }
+
         [Test]
         public void StitchesDrawTheGapingCutShut()
         {

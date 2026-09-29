@@ -3039,7 +3039,49 @@ namespace VRSurgery.EditorTools
             return tool;
         }
 
-        // ------------------------------------------------------------------ skin stages
+        /// <summary>
+        /// Adson tissue forceps: two slim tines joined at the heel, fine teeth at the tip.
+        /// Squeeze the trigger with the tips on the skin to hold it; the tines close while
+        /// squeezed. Built from parts: there is no forceps model in the project.
+        /// </summary>
+        private static SkinForceps BuildSkinForceps(Vector3 position, Quaternion rotation, ChestSkinPatch patch)
+        {
+            GameObject tool = GrabbableTool("PincaDenteRato", "adson-forceps", "Pinça de dissecção", ToolType.Forceps,
+                ToolCapability.GrabTissue, position, rotation, new Vector3(0f, 0f, -0.02f), new Vector3(0f, 0f, 0.005f),
+                new Vector3(0.024f, 0.02f, 0.13f), out SurgicalInteractable interactable);
+            Transform t = tool.transform;
+            Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
+            Material grip = Paint("steelGrip", new Color(0.62f, 0.64f, 0.66f), 0.9f, 0.45f);
+
+            Box("Calcanhar", t, new Vector3(0f, 0f, -0.052f), new Vector3(0.009f, 0.004f, 0.012f), steel);
+            Transform[] tines = new Transform[2];
+            for (int i = 0; i < 2; i++)
+            {
+                float side = i == 0 ? -1f : 1f;
+                GameObject pivot = new GameObject("Haste_" + (i == 0 ? "E" : "D"));
+                pivot.transform.SetParent(t, false);
+                pivot.transform.localPosition = new Vector3(side * 0.003f, 0f, -0.048f);
+                Box("Lamina", pivot.transform, new Vector3(0f, 0f, 0.055f), new Vector3(0.0022f, 0.0035f, 0.11f), steel);
+                // Serrated grip where the fingers press.
+                for (int k = 0; k < 5; k++)
+                {
+                    Box("Estria_" + k, pivot.transform, new Vector3(side * 0.0014f, 0f, 0.03f + k * 0.006f),
+                        new Vector3(0.0008f, 0.0036f, 0.0025f), grip, null, false);
+                }
+
+                tines[i] = pivot.transform;
+            }
+
+            GameObject tipObject = new GameObject("PontaPinca");
+            tipObject.transform.SetParent(t, false);
+            tipObject.transform.localPosition = new Vector3(0f, 0f, 0.061f);
+
+            SkinForceps forceps = tool.AddComponent<SkinForceps>();
+            forceps.Bind(tipObject.transform, interactable, tool.GetComponent<XRGrabInteractable>(), patch, tines);
+            return forceps;
+        }
+
+        // ------------------------------------------------------------------ skin stages        // ------------------------------------------------------------------ skin stages
 
         /// <summary>
         /// The incision and the suture, and everything that shows them: purple guide line, cut
@@ -3066,6 +3108,9 @@ namespace VRSurgery.EditorTools
             GameObject scalpelTool = BuildScalpel(trayTop + new Vector3(0.12f, 0.012f, 0.05f), away, out Transform blade, out scalpel,
                 out bool bladeKnown, out Renderer bladeBlood);
             GameObject holder = BuildNeedleHolder(trayTop + new Vector3(0.12f, 0.014f, -0.04f), away, out Transform needle, out needleHolder);
+
+            // Tissue forceps beside the needle holder: the other hand lifts the wound edge.
+            SkinForceps forceps = BuildSkinForceps(trayTop + new Vector3(0.12f, 0.01f, -0.12f), away, patch);
 
             // ---- incision visuals
             GameObject cut = MeshPart("IncisaoCorte", field.transform, null,
@@ -3167,6 +3212,7 @@ namespace VRSurgery.EditorTools
             threadLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             threadLine.sharedMaterial = MakeUnlit(new Color(0.08f, 0.1f, 0.3f, 1f));
             suture.BindThread(threadLine);
+            suture.BindForceps(forceps);
             popup.BindSuture(suture);
             popup.BindProcedure(procedure);
 

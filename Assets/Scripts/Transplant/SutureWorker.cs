@@ -97,6 +97,12 @@ namespace VRSurgery.Transplant
         [Tooltip("One tied stitch per stitch, hidden until it is made.")]
         [SerializeField] private List<GameObject> knots = new List<GameObject>();
 
+        [Tooltip("Forceps holding the wound edge. With the edge held near the stitch, the needle passes quicker.")]
+        [SerializeField] private SkinForceps forceps;
+
+        [Tooltip("How much faster a bite goes in with the edge held up by the forceps.")]
+        [SerializeField, Min(1f)] private float heldEdgeBonus = 2f;
+
         [Tooltip("The thread running from the last bite to the needle while a stitch is being made.")]
         [SerializeField] private LineRenderer thread;
 
@@ -145,6 +151,9 @@ namespace VRSurgery.Transplant
         /// <summary>Times the needle went through skin away from the mark being aimed at.</summary>
         public int Misses => _misses;
 
+        /// <summary>True while the forceps hold the wound edge next to the stitch being made.</summary>
+        public bool EdgeHeld { get; private set; }
+
         private void Update() => Tick(Time.deltaTime);
 
         /// <summary>Entry (phase 0) or exit (phase 1) mark of stitch <paramref name="index"/>, in world space.</summary>
@@ -169,6 +178,7 @@ namespace VRSurgery.Transplant
         public void Tick(float deltaTime)
         {
             IsWorking = false;
+            EdgeHeld = false;
             _clock += Mathf.Max(0f, deltaTime);
 
             bool active = !IsComplete && patch != null &&
@@ -199,7 +209,12 @@ namespace VRSurgery.Transplant
             if (_started < 0f) { _started = _clock; }
 
             IsWorking = true;
-            _held += deltaTime;
+
+            // Two hands, like a surgeon: the edge lifted with the forceps takes the needle sooner.
+            bool edgeHeld = forceps != null && forceps.IsHoldingSkin &&
+                            Vector3.Distance(forceps.HoldPoint, CurrentTarget()) < 0.04f;
+            EdgeHeld = edgeHeld;
+            _held += deltaTime * (edgeHeld ? heldEdgeBonus : 1f);
 
             // The needle point dents the skin as it is pushed, then the skin gives.
             float surface = patch.SurfaceHeightUnder(needleTip.position);
@@ -337,6 +352,9 @@ namespace VRSurgery.Transplant
 
         /// <summary>Distance of the marks from the incision. The builder places marks and knots from it.</summary>
         public float BiteDistance => bite;
+
+        /// <summary>The forceps that can hold the edge while stitching. Optional.</summary>
+        public void BindForceps(SkinForceps skinForceps) => forceps = skinForceps;
 
         /// <summary>The thread shown while a stitch is being made. Optional.</summary>
         public void BindThread(LineRenderer line)

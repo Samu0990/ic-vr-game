@@ -67,6 +67,25 @@ namespace VRSurgery.Transplant
         [Tooltip("Deepest dent the skin takes before it gives way, in metres.")]
         [SerializeField, Min(0f)] private float maxPress = 0.006f;
 
+        [Header("Skin physics")]
+        [Tooltip("How far a pinched edge can be pulled before the skin will not give more, in metres.")]
+        [SerializeField, Min(0.005f)] private float maxStretch = 0.03f;
+
+        [Tooltip("Radius over which a pinch drags the skin around it, in metres.")]
+        [SerializeField, Min(0.005f)] private float pullRadius = 0.018f;
+
+        [Tooltip("Stiffness of the skin springing back when let go. Higher is snappier.")]
+        [SerializeField, Min(10f)] private float elasticity = 240f;
+
+        [Tooltip("0 wobbles forever, 1 settles without overshoot. Skin sits well below 1.")]
+        [SerializeField, Range(0.05f, 1f)] private float damping = 0.32f;
+
+        [Tooltip("How far skin is dragged along by a blade moving through it, in metres.")]
+        [SerializeField, Min(0f)] private float bladeDrag = 0.004f;
+
+        [Tooltip("How much a freshly cut edge shivers as it springs open, as a fraction of the gape.")]
+        [SerializeField, Range(0f, 2f)] private float cutWobble = 0.9f;
+
         [Tooltip("Farthest the wound may lie from the drawn midline, in metres. The skin parts " +
                  "where the blade actually went, within this much: a hand that wandered leaves " +
                  "a wound that wanders, never one that crosses the stitch marks.")]
@@ -85,6 +104,25 @@ namespace VRSurgery.Transplant
         private float _pressTarget;
         private float _pressCurrent;
         private bool _pressedThisFrame;
+        private Vector3 _dragTarget;
+        private Vector3 _dragCurrent;
+
+        /// <summary>A pinch on the skin: where it was taken, how far it is pulled, how fast it moves.</summary>
+        private struct Pull
+        {
+            public bool Active;
+            public bool Held;
+            public Vector3 Anchor;
+            public float Side;
+            public int Row;
+            public Vector3 Target;
+            public Vector3 Offset;
+            public Vector3 Velocity;
+        }
+
+        private readonly Pull[] _pulls = new Pull[4];
+        private float[] _wobbleAge = new float[0];
+        private float[] _wobbleAmp = new float[0];
 
         public float Openness01 { get; private set; }
         public bool IsOpen => Openness01 >= 1f;
@@ -162,6 +200,9 @@ namespace VRSurgery.Transplant
             for (int i = 0; i < _gapeTarget.Length; i++) { _gapeTarget[i] = 0f; _gapeCurrent[i] = 0f; _wander[i] = 0f; }
             _pressTarget = 0f;
             _pressCurrent = 0f;
+            _dragTarget = _dragCurrent = Vector3.zero;
+            for (int i = 0; i < _pulls.Length; i++) { _pulls[i] = default; }
+            for (int i = 0; i < _wobbleAmp.Length; i++) { _wobbleAmp[i] = 0f; }
             _dirty = true;
             Rebuild(0f);
         }
@@ -192,6 +233,13 @@ namespace VRSurgery.Transplant
                 if (along < lo - 1e-4f || along > hi + 1e-4f || along < 0f || along > 1f) { continue; }
 
                 float target = cut ? gapeWidth * EndTaper(along) : 0f;
+                if (cut && _gapeTarget[r] <= 0f && target > 0f)
+                {
+                    // Skin under tension shivers as it parts, then settles into its gape.
+                    _wobbleAmp[r] = target * cutWobble;
+                    _wobbleAge[r] = 0f;
+                }
+
                 if (!Mathf.Approximately(_gapeTarget[r], target)) { _gapeTarget[r] = target; _dirty = true; }
 
                 if (!cut) { continue; }
@@ -251,11 +299,96 @@ namespace VRSurgery.Transplant
         /// A tip pushing into the skin this frame. The skin dents under it up to its give, then the
         /// tip is through. Call every frame the tip is pressing; the dent relaxes when it stops.
         /// </summary>
-        public void Press(Vector3 world, float depth)
+        public void Press(Vector3 world, float depth) => Press(world, depth, Vector3.zero);
+
+        /// <summary>
+        /// As <see cref="Press(Vector3, float)"/>, with the tip moving: skin is dragged a few
+        /// millimetres along with a blade drawn through it, the way it bunches ahead of a scalpel.
+        /// </summary>
+        public void Press(Vector3 world, float depth, Vector3 worldVelocity)
         {
             _pressLocal = transform.InverseTransformPoint(world);
             _pressTarget = Mathf.Clamp(depth, 0f, maxPress);
             _pressedThisFrame = true;
+
+            Vector3 slide = transform.InverseTransformDirection(worldVelocity);
+            slide.y = 0f;
+            _dragTarget = Vector3.ClampMagnitude(slide * 0.03f, bladeDrag);
+        }
+
+        /// <summary>How far the skin is currently dragged along by a tip, in metres. Exposed for tests.</summary>
+        public float DragDistance => _dragCurrent.magnitude;
+
+        // ---------------------------------------------------------------- pinching
+
+        /// <summary>
+        /// Takes hold of the skin at a point (a pinch with forceps). Returns a handle to drag and
+        /// release it with, or -1 when the point is not on this skin, the wound is retracted
+        /// open, or every hold is in use.
+        /// </summary>
+        public int Grab(Vector3 world)
+        {
+            if (Openness01 > 0.05f) { return -1; }
+
+            Vector3 local = transform.InverseTransformPoint(world);
+            if (Mathf.Abs(local.x) > halfWidth || Mathf.Abs(local.z) > halfLength) { return -1; }
+            if (Mathf.Abs(local.y - Height(local.x, local.z)) > 0.015f) { return -1; }
+
+            for (int i = 0; i < _pulls.Length; i++)
+            {
+                if (_pulls[i].Active) { continue; }
+
+                EnsureGape();
+                int row = Mathf.Clamp(Mathf.RoundToInt(Mathf.InverseLerp(-halfLength, halfLength, local.z) * (rows - 1)), 0, rows - 1);
+                _pulls[i] = new Pull
+                {
+                    Active = true,
+                    Held = true,
+                    Anchor = new Vector3(local.x, Height(local.x, local.z), local.z),
+                    Side = local.x >= WanderRow(row) ? 1f : -1f,
+                    Row = row,
+                };
+                return i;
+            }
+
+            return -1;
+        }
+
+        /// <summary>Pulls a held pinch toward a point. The skin gives up to its stretch and no further.</summary>
+        public void Drag(int handle, Vector3 world)
+        {
+            if (handle < 0 || handle >= _pulls.Length || !_pulls[handle].Active) { return; }
+            Vector3 local = transform.InverseTransformPoint(world);
+            _pulls[handle].Target = Vector3.ClampMagnitude(local - _pulls[handle].Anchor, maxStretch);
+            _pulls[handle].Held = true;
+        }
+
+        /// <summary>Lets go: the skin springs back, with a little wobble, as skin does.</summary>
+        public void Release(int handle)
+        {
+            if (handle < 0 || handle >= _pulls.Length || !_pulls[handle].Active) { return; }
+            _pulls[handle].Held = false;
+            _pulls[handle].Target = Vector3.zero;
+        }
+
+        /// <summary>How far a pinch is pulling the skin right now, in metres.</summary>
+        public float PullDistance(int handle) =>
+            handle >= 0 && handle < _pulls.Length && _pulls[handle].Active ? _pulls[handle].Offset.magnitude : 0f;
+
+        /// <summary>True while any pinch is holding the skin, and where the first one is, in world space.</summary>
+        public bool IsPinched(out Vector3 world)
+        {
+            for (int i = 0; i < _pulls.Length; i++)
+            {
+                if (_pulls[i].Active && _pulls[i].Held)
+                {
+                    world = transform.TransformPoint(_pulls[i].Anchor + _pulls[i].Offset);
+                    return true;
+                }
+            }
+
+            world = default;
+            return false;
         }
 
         /// <summary>Current dent depth, in metres. Exposed for tests.</summary>
@@ -273,7 +406,21 @@ namespace VRSurgery.Transplant
             }
 
             float pressGoal = _pressedThisFrame ? _pressTarget : 0f;
+            if (!_pressedThisFrame) { _dragTarget = Vector3.zero; }
             _pressedThisFrame = false;
+
+            Vector3 dragged = Vector3.MoveTowards(_dragCurrent, _dragTarget, 0.05f * deltaTime);
+            if ((dragged - _dragCurrent).sqrMagnitude > 1e-12f) { _dragCurrent = dragged; _dirty = true; }
+
+            TickPulls(deltaTime);
+
+            for (int r = 0; r < _wobbleAmp.Length; r++)
+            {
+                if (_wobbleAmp[r] <= 0f) { continue; }
+                _wobbleAge[r] += deltaTime;
+                if (_wobbleAge[r] > 0.9f) { _wobbleAmp[r] = 0f; }
+                _dirty = true;
+            }
 
             // Skin gives quickly under a tip and comes back a little slower, as it does.
             float rate = pressGoal > _pressCurrent ? 0.08f : 0.03f;
@@ -281,11 +428,72 @@ namespace VRSurgery.Transplant
             if (!Mathf.Approximately(pressed, _pressCurrent)) { _pressCurrent = pressed; _dirty = true; }
         }
 
+        /// <summary>
+        /// Each pinch is a damped spring: held, it follows the pull quickly and firmly; let go, it
+        /// swings back past rest and settles, the way pinched skin does.
+        /// </summary>
+        private void TickPulls(float deltaTime)
+        {
+            float step = Mathf.Min(deltaTime, 1f / 30f);
+            for (int i = 0; i < _pulls.Length; i++)
+            {
+                if (!_pulls[i].Active) { continue; }
+
+                float k = _pulls[i].Held ? elasticity * 4f : elasticity;
+                float c = 2f * (_pulls[i].Held ? 1f : damping) * Mathf.Sqrt(k);
+                Vector3 force = (_pulls[i].Target - _pulls[i].Offset) * k - _pulls[i].Velocity * c;
+                _pulls[i].Velocity += force * step;
+                _pulls[i].Offset += _pulls[i].Velocity * step;
+                _dirty = true;
+
+                if (!_pulls[i].Held && _pulls[i].Offset.sqrMagnitude < 1e-8f && _pulls[i].Velocity.sqrMagnitude < 1e-6f)
+                {
+                    _pulls[i] = default;
+                }
+            }
+        }
+
+        /// <summary>What the pinches and the blade do to a point of skin at rest position (x, z) on one side.</summary>
+        private Vector3 Physics(float side, float restX, float z, int row)
+        {
+            Vector3 moved = Vector3.zero;
+
+            if (_dragCurrent.sqrMagnitude > 0f)
+            {
+                float dx = restX - _pressLocal.x, dz = z - _pressLocal.z;
+                float sigma = pressRadius * 0.6f;
+                moved += _dragCurrent * Mathf.Exp(-(dx * dx + dz * dz) / (2f * sigma * sigma));
+            }
+
+            bool parted = GapeRow(row) > 1e-5f || (_gapeTarget.Length > row && _gapeTarget[row] > 0f);
+            for (int i = 0; i < _pulls.Length; i++)
+            {
+                if (!_pulls[i].Active) { continue; }
+
+                // Across an open cut the far edge is a separate piece of skin: it does not follow.
+                if (parted && _pulls[i].Side != side) { continue; }
+
+                float dx = restX - _pulls[i].Anchor.x, dz = z - _pulls[i].Anchor.z;
+                float w = Mathf.Exp(-(dx * dx + dz * dz) / (2f * pullRadius * pullRadius));
+                moved += _pulls[i].Offset * w;
+            }
+
+            return moved;
+        }
+
+        private float Wobble(int row)
+        {
+            if (_wobbleAmp == null || row >= _wobbleAmp.Length || _wobbleAmp[row] <= 0f) { return 0f; }
+            float age = _wobbleAge[row];
+            return _wobbleAmp[row] * Mathf.Exp(-age / 0.18f) * Mathf.Sin(age * Mathf.PI * 2f * 9f);
+        }
+
         private void EnsureGape()
         {
             if (_gapeTarget == null || _gapeTarget.Length != rows) { _gapeTarget = new float[rows]; }
             if (_gapeCurrent == null || _gapeCurrent.Length != rows) { _gapeCurrent = new float[rows]; }
             if (_wander == null || _wander.Length != rows) { _wander = new float[rows]; }
+            if (_wobbleAmp == null || _wobbleAmp.Length != rows) { _wobbleAmp = new float[rows]; _wobbleAge = new float[rows]; }
         }
 
         /// <summary>A cut gapes least at its two ends, where the skin either side is uncut.</summary>
@@ -451,13 +659,17 @@ namespace VRSurgery.Transplant
             // Both edges move with the wound's line, so the two halves still meet exactly where
             // the blade went; the shift fades out across the skin so nothing under the drape moves.
             float wander = WanderRow(row) * Mathf.Pow(1f - u, 3f);
-            float x = side * (u * halfWidth + retraction * g * falloff + gape) + wander;
+            float wobble = Wobble(row) * Mathf.Pow(1f - u, 3f);
+            float x = side * (u * halfWidth + retraction * g * falloff + gape + wobble) + wander;
 
             // The cut edge rolls a little into the wound as it is pulled back, which is what
             // makes a retracted incision read as thick skin rather than a sheet of paper.
             float curl = woundDepth * 0.35f * g * Mathf.Pow(1f - u, 4f)
                        + gape * 0.5f * Mathf.Pow(1f - u, 6f);
-            return new Vector3(x, Height(x, z) - curl - Dent(x, z), z);
+            Vector3 point = new Vector3(x, Height(x, z) - curl - Dent(x, z), z);
+
+            // Pinches and a dragging blade move the skin on top of all that.
+            return point + Physics(side, side * u * halfWidth + wander, z, row);
         }
 
         // Reused between rebuilds. The patch is rebuilt every frame a blade or needle presses on
