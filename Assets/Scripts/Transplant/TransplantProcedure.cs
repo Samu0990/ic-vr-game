@@ -168,6 +168,14 @@ namespace VRSurgery.Transplant
             }
         }
 
+        private string _urgent = string.Empty;
+
+        /// <summary>
+        /// Something the patient needs right now that the stage's own instruction does not say
+        /// — a heart in fibrillation. Replaces the instruction until cleared with null.
+        /// </summary>
+        public void SetUrgentInstruction(string text) => _urgent = text ?? string.Empty;
+
         public event Action<TransplantStage> StageChanged;
         public event Action<int, int> VesselConnected;
         public event Action ProcedureCompleted;
@@ -175,6 +183,7 @@ namespace VRSurgery.Transplant
         public void Begin()
         {
             RebuildOrder();
+            _urgent = string.Empty;
             VesselsConnected = 0;
             Bypass.Reset();
 
@@ -201,6 +210,7 @@ namespace VRSurgery.Transplant
 
         public void ResetProcedure()
         {
+            _urgent = string.Empty;
             VesselsConnected = 0;
             Bypass.Reset();
             SetStage(TransplantStage.Idle);
@@ -262,7 +272,7 @@ namespace VRSurgery.Transplant
         }
 
         /// <summary>What the room should be telling the visitor to do right now, in pt-BR.</summary>
-        public string CurrentInstruction => Stage switch
+        public string CurrentInstruction => !string.IsNullOrEmpty(_urgent) ? _urgent : Stage switch
         {
             TransplantStage.SkinIncision => "Pegue o bisturi e corte a pele sobre a linha roxa",
             // The scene that adds the scalpel and the needle also puts a sternal saw on the tray.

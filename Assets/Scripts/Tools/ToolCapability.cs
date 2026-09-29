@@ -26,5 +26,6 @@ namespace VRSurgery.Tools
         Scissors,
         Suction,
         Cautery,
+        Defibrillator,
     }
 }

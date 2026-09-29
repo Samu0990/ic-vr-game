@@ -42,7 +42,7 @@ namespace VRSurgery.EditorTools
             bool rebuild = EditorUtility.DisplayDialog(
                 "Cena do transplante desatualizada",
                 "O construtor da cena TransplanteCardiaco mudou desde a última vez que ela foi gerada neste " +
-                "computador (sala de cirurgia, bisturi com nota da incisão, serra, cautério, sutura, tecido, monitores).\n\n" +
+                "computador (sala de cirurgia, bisturi com nota da incisão, serra, cautério, cânulas e clampe, desfibrilador, sutura, tecido, monitores).\n\n" +
                 "Reconstruir agora no nível Médio? Leva alguns segundos e substitui o arquivo da cena.",
                 "Reconstruir agora", "Depois");
 

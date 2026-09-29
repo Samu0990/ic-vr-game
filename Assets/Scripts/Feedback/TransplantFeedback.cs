@@ -161,7 +161,9 @@ namespace VRSurgery.Feedback
             _sinceSizzle += deltaTime;
             TickSaw(deltaTime);
 
+            // A leaking join and a fibrillating heart are the two alarms in this operation.
             bool leaking = anastomosis != null && anastomosis.BleedingSite != null;
+            leaking |= defibrillation != null && defibrillation.IsFibrillating;
             if (leaking)
             {
                 _alarmElapsed += deltaTime;
@@ -411,6 +413,7 @@ namespace VRSurgery.Feedback
         {
             if (cauteryWorker != null && _cautery == null) { BindCautery(cauteryWorker, cauteryPen); }
             if (resultPopup != null && _popup == null) { BindResultPopup(resultPopup); }
+            if (defibrillation != null && _defib == null) { BindDefibrillation(defibrillation, defibPaddles); }
         }
 
         private void HandleBurning()
@@ -425,6 +428,44 @@ namespace VRSurgery.Feedback
         {
             Play(ProceduralTones.SoftConfirm, 0.5f);
             PulseHolder(_cauteryPen, _confirm);
+        }
+
+        [Header("Defibrillation (optional)")]
+        [SerializeField] private DefibrillationWorker defibrillation;
+        [SerializeField] private SurgicalInteractable defibPaddles;
+        private DefibrillationWorker _defib;
+
+        /// <summary>Adds the internal paddles: the charging whine, the thump of the shock in the hands.</summary>
+        public void BindDefibrillation(DefibrillationWorker worker, SurgicalInteractable paddleTool)
+        {
+            if (_defib != null)
+            {
+                _defib.ChargeStarted -= HandleCharge;
+                _defib.Shocked -= HandleShock;
+            }
+
+            _defib = null;
+            defibrillation = worker;
+            defibPaddles = paddleTool;
+
+            if (Application.isPlaying && worker != null)
+            {
+                _defib = worker;
+                _defib.ChargeStarted += HandleCharge;
+                _defib.Shocked += HandleShock;
+            }
+        }
+
+        private void HandleCharge()
+        {
+            Play(ProceduralTones.DefibCharge, 0.6f);
+            PulseHolder(defibPaddles, _tick);
+        }
+
+        private void HandleShock(bool converted)
+        {
+            Play(ProceduralTones.DefibShock, 1f);
+            PulseHolder(defibPaddles, _strong);
         }
 
         [Header("Result card (optional)")]

@@ -44,6 +44,15 @@ namespace VRSurgery.Transplant
     /// the cardioplegia before the clamp should learn why that does nothing, not watch a gesture
     /// fail silently.
     /// </summary>
+    /// <summary>
+    /// Something outside the pump that can hold a bypass step back — a heart in fibrillation
+    /// cannot be de-aired and weaned. Returns the clinical reason, or null to let it through.
+    /// </summary>
+    public interface IBypassGate
+    {
+        string Blocks(BypassStep step);
+    }
+
     public class BypassWorker : MonoBehaviour
     {
         [SerializeField] private Transform tip;
@@ -52,6 +61,9 @@ namespace VRSurgery.Transplant
 
         [Tooltip("Require the instrument to be held. Off lets a bare tracked hand drive the sites.")]
         [SerializeField] private bool requireHeldInstrument = true;
+
+        [Tooltip("Components implementing IBypassGate, asked before each step.")]
+        [SerializeField] private List<MonoBehaviour> gates = new List<MonoBehaviour>();
 
         private SurgicalInteractable _interactable;
 
@@ -117,6 +129,15 @@ namespace VRSurgery.Transplant
 
             ActiveSite = best;
 
+            // The patient can hold a step back too, before any time is banked on it.
+            string blocked = GateReason(best.Chain != null && best.Chain.Length > 0 ? best.Chain[0] : best.Step);
+            if (!string.IsNullOrEmpty(blocked))
+            {
+                best.Held = 0f;
+                Refuse(blocked);
+                return;
+            }
+
             // Working the wrong site is refused before any time is banked, so a visitor cannot
             // hold on the clamp for six seconds and only then be told it was the wrong move.
             if (best.Step != expected)
@@ -153,6 +174,26 @@ namespace VRSurgery.Transplant
                 LastRefusal = string.Empty;
                 StepPerformed?.Invoke(step);
             }
+        }
+
+        private string GateReason(BypassStep step)
+        {
+            for (int i = 0; i < gates.Count; i++)
+            {
+                if (gates[i] is IBypassGate gate && gates[i].isActiveAndEnabled)
+                {
+                    string reason = gate.Blocks(step);
+                    if (!string.IsNullOrEmpty(reason)) { return reason; }
+                }
+            }
+
+            return null;
+        }
+
+        /// <summary>Adds a gate that may hold a step back. Used by the scene builder.</summary>
+        public void AddGate(MonoBehaviour gate)
+        {
+            if (gate is IBypassGate && !gates.Contains(gate)) { gates.Add(gate); }
         }
 
         private void Refuse(string reason)

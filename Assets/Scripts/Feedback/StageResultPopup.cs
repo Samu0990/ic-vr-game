@@ -27,6 +27,7 @@ namespace VRSurgery.Feedback
 
         [Header("Sources")]
         [SerializeField] private SkinIncisionWorker incision;
+        [SerializeField] private DefibrillationWorker defibrillation;
 
         [Tooltip("Where the card appears when a source is graded: above the middle of the chest.")]
         [SerializeField] private Transform anchor;
@@ -47,6 +48,7 @@ namespace VRSurgery.Feedback
         private int _revealed;
         private Camera _camera;
         private SkinIncisionWorker _subscribed;
+        private DefibrillationWorker _subscribedDefib;
 
         public bool IsShowing => _elapsed < showSeconds;
         public string ShownTitle { get; private set; } = string.Empty;
@@ -72,6 +74,12 @@ namespace VRSurgery.Feedback
                 _subscribed = incision;
                 _subscribed.Graded += HandleIncisionGraded;
             }
+
+            if (defibrillation != null && _subscribedDefib == null)
+            {
+                _subscribedDefib = defibrillation;
+                _subscribedDefib.Converted += HandleConverted;
+            }
         }
 
         private void Unsubscribe()
@@ -81,6 +89,21 @@ namespace VRSurgery.Feedback
                 _subscribed.Graded -= HandleIncisionGraded;
                 _subscribed = null;
             }
+
+            if (_subscribedDefib != null)
+            {
+                _subscribedDefib.Converted -= HandleConverted;
+                _subscribedDefib = null;
+            }
+        }
+
+        /// <summary>No stars for a shock: whether it converts is the heart's doing, not the visitor's.</summary>
+        private void HandleConverted(int shocks)
+        {
+            Vector3 at = anchor != null ? anchor.position : transform.position;
+            int energy = _subscribedDefib != null ? _subscribedDefib.LastJoules : 0;
+            Show("CORAÇÃO BATENDO!",
+                $"ritmo sinusal após {shocks} choque{(shocks == 1 ? "" : "s")} de {energy} J", 0, at);
         }
 
         private void HandleIncisionGraded(IncisionGrade grade)
@@ -99,14 +122,15 @@ namespace VRSurgery.Feedback
             _at = at;
             _elapsed = 0f;
 
-            Color colour = _stars >= 3 ? bestColor : _stars == 2 ? goodColor : poorColor;
+            Color colour = _stars >= 3 ? bestColor : _stars == 2 || _stars == 0 ? goodColor : poorColor;
             if (title != null) { title.text = ShownTitle; title.color = colour; }
             if (detail != null) { detail.text = ShownDetail; }
 
             for (int i = 0; i < stars.Length; i++)
             {
                 if (stars[i] == null) { continue; }
-                stars[i].enabled = i < Mathf.Max(3, _stars);
+                // A card without a grade hides the row rather than showing three empty stars.
+                stars[i].enabled = _stars > 0;
                 if (starDim != null) { stars[i].sharedMaterial = starDim; }
             }
 
@@ -175,6 +199,15 @@ namespace VRSurgery.Feedback
         {
             GameObject target = body != null ? body.gameObject : null;
             if (target != null && target.activeSelf != visible) { target.SetActive(visible); }
+        }
+
+        /// <summary>Adds the defibrillation: a card when the new heart is back in rhythm.</summary>
+        public void BindDefibrillation(DefibrillationWorker worker)
+        {
+            bool live = Application.isPlaying && isActiveAndEnabled;
+            if (live) { Unsubscribe(); }
+            defibrillation = worker;
+            if (live) { Subscribe(); }
         }
 
         public void Bind(Transform cardBody, TextMesh heading, TextMesh line, Renderer[] starRenderers,

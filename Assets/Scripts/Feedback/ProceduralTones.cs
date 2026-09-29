@@ -61,6 +61,12 @@ namespace VRSurgery.Feedback
         /// <summary>A constant soft ventilator/room hum, meant to loop.</summary>
         public static AudioClip RoomHum => Get("room-hum", () => Hum("room-hum", 2f));
 
+        /// <summary>The defibrillator charging: the rising whine everyone recognises from television.</summary>
+        public static AudioClip DefibCharge => Get("defib-charge", () => Sweep("defib-charge", 1.1f, 0.22f, 600f, 2400f));
+
+        /// <summary>The shock: a dull thump through the table, more felt than heard.</summary>
+        public static AudioClip DefibShock => Get("defib-shock", () => Thump("defib-shock", 0.35f));
+
         private static AudioClip Get(string key, System.Func<AudioClip> build)
         {
             if (!Cache.TryGetValue(key, out AudioClip clip) || clip == null)
@@ -212,6 +218,44 @@ namespace VRSurgery.Feedback
 
             float release = Mathf.Clamp01((length - t) / Mathf.Max(0.01f, length * 0.35f));
             return release * Mathf.Exp(-3f * t / Mathf.Max(0.01f, length));
+        }
+
+        /// <summary>A sine gliding from one pitch to another, held at the top.</summary>
+        private static AudioClip Sweep(string name, float seconds, float volume, float fromHz, float toHz)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+            float phase = 0f;
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float k = Mathf.Clamp01(t / (seconds * 0.85f));
+                float hz = Mathf.Lerp(fromHz, toHz, k * k);
+                phase += 2f * Mathf.PI * hz / SampleRate;
+                float fade = Mathf.Clamp01(t / 0.02f) * Mathf.Clamp01((seconds - t) / 0.05f);
+                data[i] = Mathf.Sin(phase) * volume * fade;
+            }
+
+            return Build(name, data);
+        }
+
+        /// <summary>A low decaying thud with a crack of noise on top.</summary>
+        private static AudioClip Thump(string name, float seconds)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+            System.Random random = new System.Random(11);
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float body = Mathf.Sin(2f * Mathf.PI * Mathf.Lerp(90f, 45f, t / seconds) * t) * Mathf.Exp(-t * 14f);
+                float crack = (float)(random.NextDouble() * 2.0 - 1.0) * Mathf.Exp(-t * 60f) * 0.5f;
+                data[i] = (body + crack) * 0.7f;
+            }
+
+            return Build(name, data);
         }
 
         private static AudioClip Build(string name, float[] data)

@@ -908,14 +908,13 @@ namespace VRSurgery.EditorTools
             // The lines: arterial out to the aorta, venous back from the atrium. They cross to the
             // table and lie on the drape beside the operative window, where the cannulas go in.
             Vector3 window = _window.Center + new Vector3(-_window.HalfWidth - 0.03f, 0f, 0f);
-            float drape = SkinTopAt(window.x + 0.02f, window.z) + 0.03f;
 
             Tube("ArterialLine", m, new[]
             {
                 origin + new Vector3(0.1f, 0.92f, -0.48f),
                 origin + new Vector3(0.45f, 1.18f, 0.1f),
                 new Vector3(-0.42f, TableTopY + 0.12f, window.z + 0.05f),
-                new Vector3(window.x, drape, window.z + 0.08f),
+                ArterialLineEnd(),
             }, 0.0065f, arterial);
 
             Tube("VenousLine", m, new[]
@@ -923,8 +922,105 @@ namespace VRSurgery.EditorTools
                 origin + new Vector3(0.1f, 0.92f, 0.46f),
                 origin + new Vector3(0.45f, 1.1f, 0.6f),
                 new Vector3(-0.44f, TableTopY + 0.1f, window.z - 0.02f),
-                new Vector3(window.x - 0.005f, drape - 0.005f, window.z - 0.02f),
+                VenousLineEnd(),
             }, 0.0085f, venous);
+        }
+
+        /// <summary>Where the arterial line from the pump lies on the drape, beside the window.</summary>
+        private static Vector3 ArterialLineEnd()
+        {
+            Vector3 window = _window.Center + new Vector3(-_window.HalfWidth - 0.03f, 0f, 0f);
+            return new Vector3(window.x, SkinTopAt(window.x + 0.02f, window.z) + 0.03f, window.z + 0.08f);
+        }
+
+        /// <summary>Where the venous line back to the pump lies on the drape.</summary>
+        private static Vector3 VenousLineEnd()
+        {
+            Vector3 window = _window.Center + new Vector3(-_window.HalfWidth - 0.03f, 0f, 0f);
+            return new Vector3(window.x - 0.005f, SkinTopAt(window.x + 0.02f, window.z) + 0.025f, window.z - 0.02f);
+        }
+
+        /// <summary>
+        /// The cannulas from the pump lines into the chest, the cardioplegia/vent line to the aortic
+        /// root and the aortic cross-clamp, all hidden until the pump step that puts them there.
+        /// </summary>
+        private static void BuildBypassHardware(GameObject systems, Vector3 thorax, TransplantProcedure procedure)
+        {
+            GameObject root = new GameObject("CanulasEClampe");
+            root.transform.SetParent(systems.transform, true);
+            Transform r = root.transform;
+
+            Material arterial = Paint("bloodArterial", new Color(0.62f, 0.04f, 0.05f), 0f, 0.85f);
+            Material venous = Paint("bloodVenous", new Color(0.32f, 0.03f, 0.07f), 0f, 0.85f);
+            Material clear = Paint("cannulaTip", new Color(0.85f, 0.88f, 0.9f), 0f, 0.9f);
+            Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
+
+            Vector3 aorta = thorax + new Vector3(-0.004f, 0.04f, 0.085f);
+            Vector3 svc = thorax + new Vector3(0.028f, 0.03f, 0.085f);
+            Vector3 ivc = thorax + new Vector3(0.04f, 0.012f, -0.04f);
+            Vector3 aorticRoot = thorax + BypassAnatomy[BypassStep.Cardioplegia];
+            Vector3 clampAt = thorax + BypassAnatomy[BypassStep.ClampAorta];
+            // The tubing arcs over the wound edge a few centimetres above the skin.
+            float above = SkinTopAt(thorax.x, thorax.z) + 0.05f;
+
+            List<Renderer> cannulas = new List<Renderer>();
+            Vector3 art = ArterialLineEnd();
+            cannulas.Add(Tube("CanulaAortica", r, new[]
+            {
+                art, art + new Vector3(0.03f, 0.03f, 0f), new Vector3(aorta.x - 0.02f, above, aorta.z + 0.01f),
+                aorta + new Vector3(0f, 0.02f, 0f), aorta,
+            }, 0.004f, arterial).GetComponent<Renderer>());
+
+            // Bicaval: one cannula in each cava, joined by a Y to the single venous line.
+            Vector3 ven = VenousLineEnd();
+            Vector3 y = new Vector3(ven.x + 0.06f, above - 0.01f, ven.z);
+            cannulas.Add(Tube("LinhaVenosaY", r, new[] { ven, ven + new Vector3(0.03f, 0.03f, 0f), y }, 0.0055f, venous)
+                .GetComponent<Renderer>());
+            cannulas.Add(Tube("CanulaCavaSuperior", r, new[]
+            {
+                y, new Vector3(svc.x - 0.01f, above + 0.01f, svc.z), svc + new Vector3(0f, 0.02f, 0f), svc,
+            }, 0.0045f, venous).GetComponent<Renderer>());
+            cannulas.Add(Tube("CanulaCavaInferior", r, new[]
+            {
+                y, new Vector3(ivc.x - 0.01f, above + 0.005f, ivc.z + 0.02f), ivc + new Vector3(0f, 0.02f, 0f), ivc,
+            }, 0.0045f, venous).GetComponent<Renderer>());
+
+            foreach (Vector3 tip in new[] { aorta, svc, ivc })
+            {
+                // The purse-string tourniquet snugged down where each cannula goes in.
+                cannulas.Add(Rod("Torniquete", r, tip + new Vector3(0f, 0.012f, 0f), 0.006f, 0.02f, clear).GetComponent<Renderer>());
+            }
+
+            // Cardioplegia into the aortic root; the same needle vents the air out at the end.
+            Vector3 lineStart = new Vector3(_window.Center.x - _window.HalfWidth - 0.05f,
+                SkinTopAt(_window.Center.x - _window.HalfWidth - 0.05f, _window.Center.z + 0.12f) + 0.03f,
+                _window.Center.z + 0.12f);
+            Renderer rootLine = Tube("LinhaCardioplegia", r, new[]
+            {
+                lineStart, new Vector3(aorticRoot.x - 0.02f, above + 0.02f, aorticRoot.z + 0.02f),
+                aorticRoot + new Vector3(0f, 0.015f, 0f), aorticRoot,
+            }, 0.002f, Paint("cardioplegia", new Color(0.75f, 0.2f, 0.18f), 0f, 0.8f)).GetComponent<Renderer>();
+
+            // The cross-clamp: jaws across the aorta, shanks and finger rings standing out of the
+            // chest away from the surgeon so they do not block the work.
+            List<Renderer> clamp = new List<Renderer>();
+            clamp.Add(Box("ClampeMandibula", r, Vector3.zero, new Vector3(0.05f, 0.004f, 0.006f), steel).GetComponent<Renderer>());
+            clamp[0].transform.position = clampAt;
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Vector3 hinge = clampAt + new Vector3(-0.027f, 0.004f, side * 0.003f);
+                Vector3 top = clampAt + new Vector3(-0.075f, 0.13f, side * 0.012f);
+                clamp.Add(Tube("ClampeHaste_" + side, r, new[] { hinge, hinge + new Vector3(-0.02f, 0.05f, 0f), top }, 0.0022f, steel)
+                    .GetComponent<Renderer>());
+
+                GameObject ring = MeshPart("ClampeArgola_" + side, r, MakeRing(0.008f, 0.012f, 18), steel, true);
+                ring.transform.position = top + new Vector3(-0.004f, 0.011f, 0f);
+                ring.transform.rotation = Quaternion.LookRotation(Vector3.forward, Vector3.up);
+                clamp.Add(ring.GetComponent<Renderer>());
+            }
+
+            root.AddComponent<BypassHardware>().Bind(procedure, cannulas.ToArray(), new[] { rootLine }, clamp.ToArray());
+            Debug.Log($"[Transplante] {cannulas.Count} peça(s) de canulação, linha de cardioplegia e clampe aórtico em {clampAt}");
         }
 
         private static void BuildBackTable(Transform r, Vector3 thorax)
@@ -1689,6 +1785,67 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>Soft grey smoke that rises and thins, fed by the cautery in puffs.</summary>
+        /// <summary>
+        /// Internal defibrillator paddles: two insulated handles, steel shafts and cupped spoons
+        /// that hold the heart between them. Joined at the grip so one hand can work them — real
+        /// paddles are two separate handles, which a single controller cannot hold. Resting on
+        /// the drape beyond the cautery holster, spoons toward the head.
+        /// </summary>
+        private static GameObject BuildInternalPaddles(out Transform centre, out SurgicalInteractable interactable)
+        {
+            float x = _window.Center.x + _window.HalfWidth + 0.14f;
+            float z = _window.Center.z + 0.06f;
+            float y = SkinTopAt(x, z) + 0.03f;
+
+            GameObject tool = GrabbableTool("PasInternas", "internal-paddles", "Pás internas", ToolType.Defibrillator,
+                ToolCapability.None, new Vector3(x, y, z), Quaternion.LookRotation(Vector3.forward, Vector3.up),
+                new Vector3(0f, 0f, -0.09f), Vector3.zero, new Vector3(0.1f, 0.05f, 0.27f), out interactable);
+            Transform t = tool.transform;
+
+            Material grip = Paint("paddleGrip", new Color(0.12f, 0.13f, 0.15f), 0f, 0.35f);
+            Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
+            Material button = Paint("paddleButton", new Color(0.95f, 0.45f, 0.1f), 0f, 0.4f);
+            Material cable = Paint("paddleCable", new Color(0.9f, 0.9f, 0.88f), 0f, 0.3f);
+
+            for (int side = -1; side <= 1; side += 2)
+            {
+                Rod("Cabo_" + side, t, new Vector3(side * 0.011f, 0f, -0.08f), 0.008f, 0.09f, grip, Quaternion.Euler(90f, 0f, 0f));
+
+                GameObject shaft = MeshPart("Haste_" + side, t, TubeMesh(new[]
+                {
+                    t.TransformPoint(new Vector3(side * 0.011f, 0f, -0.035f)),
+                    t.TransformPoint(new Vector3(side * 0.02f, 0f, 0.01f)),
+                    t.TransformPoint(new Vector3(side * 0.038f, 0f, 0.07f)),
+                }, 0.0025f, 8, 6), steel, true);
+                shaft.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                shaft.transform.SetParent(null, true);
+                shaft.transform.SetParent(t, true);
+
+                // The spoon: a shallow cup facing the other one, the heart goes between.
+                Ball("Colher_" + side, t, new Vector3(side * 0.042f, 0f, 0.09f), new Vector3(0.008f, 0.045f, 0.05f), steel);
+
+                GameObject lead = MeshPart("Fio_" + side, t, TubeMesh(new[]
+                {
+                    t.TransformPoint(new Vector3(side * 0.011f, 0f, -0.125f)),
+                    t.TransformPoint(new Vector3(side * 0.02f, -0.01f, -0.17f)),
+                    t.TransformPoint(new Vector3(side * 0.05f, -0.03f, -0.22f)),
+                }, 0.0025f, 6, 6), cable);
+                lead.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+                lead.transform.SetParent(null, true);
+                lead.transform.SetParent(t, true);
+            }
+
+            Box("BotaoChoque", t, new Vector3(0.011f, 0.009f, -0.07f), new Vector3(0.006f, 0.003f, 0.012f), button);
+
+            GameObject middle = new GameObject("CentroPas");
+            middle.transform.SetParent(t, false);
+            middle.transform.localPosition = new Vector3(0f, 0f, 0.09f);
+            centre = middle.transform;
+
+            Debug.Log($"[Transplante] pás internas do desfibrilador sobre o campo em {tool.transform.position}");
+            return tool;
+        }
+
         private static ParticleSystem BuildSmoke(Transform parent)
         {
             GameObject go = new GameObject("FumacaCauterio");

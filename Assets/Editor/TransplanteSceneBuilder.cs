@@ -111,11 +111,14 @@ namespace VRSurgery.EditorTools
         /// </summary>
         private const float SkinStageSeconds = 45f;
 
+        /// <summary>Time added to the round for the reperfusion fibrillation and its shocks.</summary>
+        private const float DefibrillationSeconds = 12f;
+
         /// <summary>
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 6;
+        public const int BuildVersion = 7;
 
         private static Vector3 _thorax;
 
@@ -126,6 +129,7 @@ namespace VRSurgery.EditorTools
             _drapeCloth = null;
             _drapeStatic = null;
             _bloodPool = null;
+            _defibrillation = null;
             PrepareSurfaces();
 
             GameObject area = GameObject.Find("Teleport Area");
@@ -604,24 +608,29 @@ namespace VRSurgery.EditorTools
         /// which is the share of a four-minute operation bypass is allowed before it stops being
         /// a procedure and becomes a minigame.
         /// </summary>
+        /// <summary>
+        /// Anatomy, not layout: where each pump step is performed on a real patient, from the
+        /// thorax centre. Shared by the sites the hands work and the cannulas and clamp shown there.
+        /// </summary>
+        private static readonly Dictionary<BypassStep, Vector3> BypassAnatomy = new Dictionary<BypassStep, Vector3>
+        {
+            { BypassStep.Cannulate,    new Vector3( 0.035f,  0.020f,  0.030f) },
+            { BypassStep.ClampAorta,   new Vector3(-0.010f,  0.035f,  0.060f) },
+            { BypassStep.Cardioplegia, new Vector3(-0.005f,  0.030f,  0.048f) },
+            { BypassStep.Unclamp,      new Vector3(-0.010f,  0.035f,  0.060f) },
+            { BypassStep.DeAir,        new Vector3(-0.028f,  0.032f,  0.035f) },
+            { BypassStep.Wean,         new Vector3( 0.060f,  0.010f, -0.060f) },
+        };
+
         private static List<BypassSite> BuildBypassSites(GameObject systems, Vector3 thorax,
             BypassPlan plan)
         {
             GameObject root = new GameObject("BypassSites");
             root.transform.SetParent(systems.transform, true);
 
-            // Anatomy, not layout: where each step is performed on a real patient. A gesture that
-            // carries several steps is placed at the last of them, which is the one the surgeon's
-            // hands finish on.
-            Dictionary<BypassStep, Vector3> where = new Dictionary<BypassStep, Vector3>
-            {
-                { BypassStep.Cannulate,    new Vector3( 0.035f,  0.020f,  0.030f) },
-                { BypassStep.ClampAorta,   new Vector3(-0.010f,  0.035f,  0.060f) },
-                { BypassStep.Cardioplegia, new Vector3(-0.005f,  0.030f,  0.048f) },
-                { BypassStep.Unclamp,      new Vector3(-0.010f,  0.035f,  0.060f) },
-                { BypassStep.DeAir,        new Vector3(-0.028f,  0.032f,  0.035f) },
-                { BypassStep.Wean,         new Vector3( 0.060f,  0.010f, -0.060f) },
-            };
+            // A gesture that carries several steps is placed at the last of them, which is the
+            // one the surgeon's hands finish on.
+            Dictionary<BypassStep, Vector3> where = BypassAnatomy;
 
             List<BypassSite> sites = new List<BypassSite>();
 
@@ -1059,6 +1068,19 @@ namespace VRSurgery.EditorTools
             return hands.ToArray();
         }
 
+        private static DefibrillationWorker _defibrillation;
+
+        /// <summary>True when the level has the visitor unclamp the aorta as a gesture of its own.</summary>
+        private static bool HasOwnUnclamp(BypassPlan plan)
+        {
+            foreach (BypassGesture gesture in plan.Gestures)
+            {
+                if (gesture.Steps.Length == 1 && gesture.Steps[0] == BypassStep.Unclamp) { return true; }
+            }
+
+            return false;
+        }
+
         private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart,
             GameObject donor, VesselAnastomosis[] vessels, List<BypassSite> bypass, BypassPlan plan,
             GameObject monitor)
@@ -1072,7 +1094,8 @@ namespace VRSurgery.EditorTools
                 // From the level, not from a constant. Fácil is ninety seconds because there is
                 // a third less to do, not because ninety was typed somewhere — so the booth can
                 // run a fast queue or a faithful operation without the two numbers drifting apart.
-                round: plan.RoundSeconds + SkinStageSeconds, briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
+                round: plan.RoundSeconds + SkinStageSeconds + (HasOwnUnclamp(plan) ? DefibrillationSeconds : 0f),
+                briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
                 // The round starts on the sternotomy, not on a grab: this scene has no instrument
                 // to pick up, so the grab that starts the round in every other scene never happens.
                 startOnGrab: false, pointsPerSecond: 100f,
@@ -1204,6 +1227,9 @@ namespace VRSurgery.EditorTools
 
             systems.AddComponent<BypassSiteMarkers>().Bind(procedure, worker, BuildBypassMarkers(bypass));
 
+            // What the pump puts in the chest, shown as each step puts it there.
+            BuildBypassHardware(systems, _thorax, procedure);
+
             // Feedback in the world and in the hand: the progress ring over the work, sound and
             // vibration for every step, the anaesthesia monitor telling the story in numbers.
             WorkProgressIndicator indicator = BuildProgressIndicator(opening, worker, sewing);
@@ -1228,6 +1254,21 @@ namespace VRSurgery.EditorTools
             feedback.BindCautery(cautery, cauteryPen);
             bridge.BindCautery(cautery);
 
+            // The new heart fibrillates when blood reaches it, and the internal paddles bring it
+            // back. Only where unclamping is its own gesture: a level that chains the clamp, the
+            // de-airing and the weaning into one hold has no moment for it.
+            if (HasOwnUnclamp(plan))
+            {
+                BuildInternalPaddles(out Transform paddleCentre, out SurgicalInteractable paddles);
+                DefibrillationWorker defib = systems.AddComponent<DefibrillationWorker>();
+                defib.Bind(paddleCentre, paddles, procedure, beat, donor.transform);
+                worker.AddGate(defib);
+                indicator.AddSource(defib);
+                feedback.BindDefibrillation(defib, paddles);
+                resultPopup.BindDefibrillation(defib);
+                _defibrillation = defib;
+            }
+
             // The drapes answer the fingertips and every instrument's working end.
             WireDrapeCloth(scalpel.transform.Find("BladeTip"), needleHolder.transform.Find("NeedleTip"), sawBlade, penTip);
 
@@ -1236,9 +1277,11 @@ namespace VRSurgery.EditorTools
 
             VitalSignsMonitor anaesthesiaMonitor = BuildVitalsMonitor(_thorax, procedure, beat, sewing);
             anaesthesiaMonitor.BindNativeHeart(nativeBeat);
+            anaesthesiaMonitor.BindDefibrillation(_defibrillation);
 
             VitalSignsMonitor wallMonitor = BuildVitalsMonitor(_thorax, procedure, beat, sewing);
             wallMonitor.BindNativeHeart(nativeBeat);
+            wallMonitor.BindDefibrillation(_defibrillation);
             MountVitalsOnWall(wallMonitor, _thorax);
 
             // A leaking join fills the open chest; the pool reads the same joins the monitor does.

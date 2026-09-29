@@ -21,6 +21,9 @@ namespace VRSurgery.Feedback
         [SerializeField] private Heartbeat nativeHeart;
         [SerializeField] private AnastomosisWorker anastomosis;
 
+        [Tooltip("Optional: the reperfused heart's fibrillation and the shocks that end it.")]
+        [SerializeField] private DefibrillationWorker defibrillation;
+
         [Header("Screen")]
         [SerializeField] private LineRenderer ecg;
         [SerializeField] private LineRenderer pleth;
@@ -49,6 +52,9 @@ namespace VRSurgery.Feedback
         private float _textClock = 1f;
         private float _noiseSeed;
         private bool _widthScaled;
+        private float _signalClock;
+        private int _seenShocks;
+        private int _spike;
 
         /// <summary>The rhythm currently shown. Exposed for tests.</summary>
         public VitalsState State { get; private set; } = VitalsState.FailingHeart;
@@ -58,7 +64,7 @@ namespace VRSurgery.Feedback
         public int Diastolic { get; private set; }
         public int Saturation { get; private set; }
 
-        public enum VitalsState { FailingHeart, OnBypass, NewHeart, Bleeding }
+        public enum VitalsState { FailingHeart, OnBypass, NewHeart, Bleeding, Fibrillation }
 
         private void Awake()
         {
@@ -92,11 +98,16 @@ namespace VRSurgery.Feedback
 
             // The heart in the chest sets the pace when it can be seen: the trace, the number and
             // the beep follow the organ the visitor is looking at, beat for beat.
-            Heartbeat visible = VisibleHeart();
+            Heartbeat visible = State == VitalsState.Fibrillation ? null : VisibleHeart();
             if (visible != null && State != VitalsState.Bleeding)
             {
                 HeartRate = Mathf.RoundToInt(visible.BeatsPerMinute);
             }
+
+            // Each shock is a huge spike off the top of the trace, as on a real monitor.
+            int shocks = defibrillation != null ? defibrillation.Shocks : 0;
+            if (shocks > _seenShocks) { _spike = 6; }
+            _seenShocks = shocks;
 
             float frameStart = _beatPhase;
             float beatsPerSecond = HeartRate / 60f;
@@ -106,29 +117,40 @@ namespace VRSurgery.Feedback
             while (_sampleClock >= step)
             {
                 _sampleClock -= step;
+                _signalClock += step;
 
                 _beatPhase += beatsPerSecond * step;
                 if (_beatPhase >= 1f) { _beatPhase -= 1f; }
 
                 _ecgValues[_cursor] = State == VitalsState.OnBypass
                     ? Mathf.PerlinNoise(_noiseSeed, Time.time * 3f) * 0.06f - 0.03f
-                    : Ecg(_beatPhase);
+                    : State == VitalsState.Fibrillation
+                        ? Fibrillation(_signalClock)
+                        : Ecg(_beatPhase);
 
-                _plethValues[_cursor] = State == VitalsState.OnBypass
+                if (_spike > 0)
+                {
+                    _ecgValues[_cursor] = _spike > 3 ? 2.2f : -0.9f * _spike / 3f;
+                    _spike--;
+                }
+
+                // On the pump, fibrillating or not, the pressure is the machine's: flat.
+                _plethValues[_cursor] = State == VitalsState.OnBypass || State == VitalsState.Fibrillation
                     ? 0.15f
                     : Pleth(_beatPhase) * (State == VitalsState.FailingHeart ? 0.6f : 1f);
 
                 _cursor = (_cursor + 1) % samples;
             }
 
-            if (visible != null && State != VitalsState.OnBypass)
+            if (visible != null && State != VitalsState.OnBypass && State != VitalsState.Fibrillation)
             {
                 // Electrical just ahead of mechanical: the R wave leads the squeeze slightly.
                 _beatPhase = Mathf.Repeat(visible.Phase01 + 0.1f, 1f);
             }
 
             // R wave: the beep lands on it, as on a real monitor.
-            if (State != VitalsState.OnBypass && Crossed(frameStart, _beatPhase, 0.12f)) { Beep(); }
+            if (State != VitalsState.OnBypass && State != VitalsState.Fibrillation &&
+                Crossed(frameStart, _beatPhase, 0.12f)) { Beep(); }
 
             Draw(ecg, _ecgValues, 0.5f);
             Draw(pleth, _plethValues, 0.8f);
@@ -159,9 +181,13 @@ namespace VRSurgery.Feedback
         /// <summary>The patient's own heart, so the trace follows it until it is arrested.</summary>
         public void BindNativeHeart(Heartbeat heart) => nativeHeart = heart;
 
+        /// <summary>The reperfusion fibrillation and its shocks.</summary>
+        public void BindDefibrillation(DefibrillationWorker worker) => defibrillation = worker;
+
         private VitalsState Resolve()
         {
             if (anastomosis != null && anastomosis.BleedingSite != null) { return VitalsState.Bleeding; }
+            if (defibrillation != null && defibrillation.IsFibrillating) { return VitalsState.Fibrillation; }
             if (donorHeart != null && donorHeart.IsBeating) { return VitalsState.NewHeart; }
             if (procedure != null && procedure.Bypass.IsOnPump) { return VitalsState.OnBypass; }
             return VitalsState.FailingHeart;
@@ -177,6 +203,8 @@ namespace VRSurgery.Feedback
                     HeartRate = 88; Systolic = 118; Diastolic = 74; Saturation = 98; break;
                 case VitalsState.Bleeding:
                     HeartRate = 128; Systolic = 78; Diastolic = 46; Saturation = 95; break;
+                case VitalsState.Fibrillation:
+                    HeartRate = 0; Systolic = 58; Diastolic = 58; Saturation = 98; break;
                 default:
                     HeartRate = 112; Systolic = 86; Diastolic = 54; Saturation = 92; break;
             }
@@ -191,6 +219,18 @@ namespace VRSurgery.Feedback
             float s = -0.22f * G(phase, 0.137f, 0.01f);
             float t = 0.28f * G(phase, 0.36f, 0.045f);
             return p + q + r + s + t;
+        }
+
+        /// <summary>
+        /// Ventricular fibrillation: no complexes at all, a coarse irregular wave of 4 to 7 per
+        /// second whose size drifts. Two detuned sines under a slow swell, plus noise.
+        /// </summary>
+        public static float Fibrillation(float seconds)
+        {
+            float swell = 0.65f + 0.35f * Mathf.Sin(seconds * 2f * Mathf.PI * 0.45f);
+            float wave = Mathf.Sin(seconds * 2f * Mathf.PI * 5.3f) + 0.6f * Mathf.Sin(seconds * 2f * Mathf.PI * 7.1f + 1.3f);
+            float noise = (Mathf.PerlinNoise(seconds * 9f, 3.7f) - 0.5f) * 0.4f;
+            return (wave * 0.28f + noise) * swell;
         }
 
         private static float Pleth(float phase)
@@ -229,8 +269,11 @@ namespace VRSurgery.Feedback
 
             if (heartRateText != null)
             {
-                heartRateText.text = HeartRate <= 0 ? "FC --" : $"FC {HeartRate + jitter}";
-                heartRateText.color = State == VitalsState.Bleeding ? new Color(1f, 0.35f, 0.3f) : new Color(0.3f, 1f, 0.45f);
+                heartRateText.text = State == VitalsState.Fibrillation ? "FC FV"
+                    : HeartRate <= 0 ? "FC --" : $"FC {HeartRate + jitter}";
+                heartRateText.color = State == VitalsState.Bleeding || State == VitalsState.Fibrillation
+                    ? new Color(1f, 0.35f, 0.3f)
+                    : new Color(0.3f, 1f, 0.45f);
             }
 
             if (saturationText != null)
@@ -240,7 +283,7 @@ namespace VRSurgery.Feedback
 
             if (pressureText != null)
             {
-                pressureText.text = State == VitalsState.OnBypass
+                pressureText.text = State == VitalsState.OnBypass || State == VitalsState.Fibrillation
                     ? $"PAM {Systolic}"
                     : $"PA {Systolic + jitter}/{Diastolic}";
                 pressureText.color = State == VitalsState.Bleeding || State == VitalsState.FailingHeart
@@ -255,9 +298,12 @@ namespace VRSurgery.Feedback
                     VitalsState.OnBypass => "CEC — BOMBA LIGADA",
                     VitalsState.NewHeart => "RITMO SINUSAL",
                     VitalsState.Bleeding => "ALARME: HIPOTENSÃO",
+                    VitalsState.Fibrillation => "ALARME: FV — DESFIBRILAR",
                     _ => "INSUFICIÊNCIA CARDÍACA",
                 };
-                statusText.color = State == VitalsState.Bleeding ? new Color(1f, 0.3f, 0.25f) : new Color(1f, 0.85f, 0.35f);
+                statusText.color = State == VitalsState.Bleeding || State == VitalsState.Fibrillation
+                    ? new Color(1f, 0.3f, 0.25f)
+                    : new Color(1f, 0.85f, 0.35f);
             }
         }
 
