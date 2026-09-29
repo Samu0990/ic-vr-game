@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 23;
+        public const int BuildVersion = 24;
 
         private static Vector3 _thorax;
 
@@ -134,6 +134,7 @@ namespace VRSurgery.EditorTools
             _drapeStatic = null;
             _bloodPool = null;
             _defibrillation = null;
+            _cautery = null;
             PrepareSurfaces();
 
             GameObject area = GameObject.Find("Teleport Area");
@@ -1073,6 +1074,7 @@ namespace VRSurgery.EditorTools
         }
 
         private static DefibrillationWorker _defibrillation;
+        private static CauteryWorker _cautery;
 
         /// <summary>True when the level has the visitor unclamp the aorta as a gesture of its own.</summary>
         private static bool HasOwnUnclamp(BypassPlan plan)
@@ -1255,6 +1257,7 @@ namespace VRSurgery.EditorTools
 
             // Electrocautery for the bleeders on the wound edges, in its holster on the drape.
             CauteryWorker cautery = BuildCautery(systems, skinPatch, out SurgicalInteractable cauteryPen, out Transform penTip);
+            _cautery = cautery;
             indicator.AddSource(cautery);
             feedback.BindCautery(cautery, cauteryPen);
             bridge.BindCautery(cautery);
@@ -1329,7 +1332,19 @@ namespace VRSurgery.EditorTools
             researchLog.Bind(session, procedure, incision, suture, _defibrillation, vessels, fit, headTransform);
 
             // Adaptive help: a visitor falling behind gets the hand-held steps counting faster.
-            systems.AddComponent<PaceAssist>().Bind(session, procedure, worker, vessels, researchLog);
+            PaceAssist pace = systems.AddComponent<PaceAssist>();
+            pace.Bind(session, procedure, worker, vessels, researchLog);
+
+            // The team's voice, from the head of the table where the anaesthetist stands.
+            GameObject voice = new GameObject("VozEquipe");
+            voice.transform.SetParent(systems.transform, true);
+            voice.transform.position = new Vector3(_thorax.x - 0.35f, 1.6f, _thorax.z + 0.8f);
+            AudioSource speaker = voice.AddComponent<AudioSource>();
+            speaker.playOnAwake = false;
+            speaker.spatialBlend = 0.6f;
+            speaker.minDistance = 1.5f;
+            speaker.volume = 1f;
+            voice.AddComponent<VoiceGuide>().Bind(speaker, session, procedure, incision, _cautery, _defibrillation, pace, vessels);
 
             BuildProjectionHUD(systems, session, leaderboard, vessels);
             WireUrgencyTint(systems);

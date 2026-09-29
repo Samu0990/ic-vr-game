@@ -1,0 +1,11 @@
+FALAS DA EQUIPE
+===============
+
+Aqui ficam os áudios da narração, um por fala, com o nome do id do roteiro
+(Tools/voz/roteiro.tsv): boas_vindas.wav, etapa_incisao.wav, sangrando.wav...
+
+Para gerar todos com voz neural em português (Piper, gratuito):
+    bash Tools/voz/gerar_vozes.sh
+
+Ou grave você mesmo (celular serve), salve como .wav ou .ogg com o nome do id e
+coloque aqui. Fala que não tiver arquivo é simplesmente pulada.

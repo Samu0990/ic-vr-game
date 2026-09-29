@@ -203,6 +203,25 @@ bate. Um vaso vazando derruba a pressão e dispara o alarme.
 Todos os sons (bipe, alarme, bisturi, agulha, sucesso, ruído da sala) são sintetizados
 em tempo de execução (`ProceduralTones`); não há arquivo de áudio.
 
+## Narração da equipe (voz)
+
+`VoiceGuide` fala com o visitante em cada etapa e em cada emergência (24 falas: boas-vindas,
+cada etapa, "fique na linha roxa", "está vazando! pressione", "fibrilação! pegue as pás",
+"carregando... afasta!", "voltou, ritmo sinusal", "trinta segundos"...). Uma voz por vez; as
+urgentes interrompem; cada fala tem intervalo mínimo para não repetir.
+
+Os áudios **ainda não existem** (o ambiente onde isso foi escrito não alcança os modelos de voz).
+Para gerar, no PC, na raiz do projeto:
+
+```
+bash Tools/voz/gerar_vozes.sh           # Piper, voz pt_BR-faber-medium, offline depois do 1º download
+VOZ=pt_BR-cadu-medium bash Tools/voz/gerar_vozes.sh   # outra voz
+```
+
+O texto de cada fala está em `Tools/voz/roteiro.tsv` (edite e rode de novo). Também dá para
+gravar com a própria voz: um `.wav` por id em `Assets/Resources/Voz/`. Sem arquivo, a fala é
+pulada e o estande funciona em silêncio.
+
 ## Dados para a pesquisa (IC)
 
 Cada vez de um visitante vira **uma linha JSON** (`ResearchLog`), gravada no próprio óculos em
