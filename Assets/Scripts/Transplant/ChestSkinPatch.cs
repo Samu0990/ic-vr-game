@@ -460,13 +460,49 @@ namespace VRSurgery.Transplant
             return new Vector3(x, Height(x, z) - curl - Dent(x, z), z);
         }
 
+        // Reused between rebuilds. The patch is rebuilt every frame a blade or needle presses on
+        // it, and new arrays each time were tens of kilobytes of garbage per frame on the Quest.
+        private Vector3[] _halfVertices = new Vector3[0];
+        private Vector2[] _halfUvs = new Vector2[0];
+        private int[] _leftTriangles = new int[0];
+        private int[] _rightTriangles = new int[0];
+        private Vector3[] _wallVertices = new Vector3[0];
+        private Vector2[] _wallUvs = new Vector2[0];
+        private int[] _wallTriangles = new int[0];
+
+        /// <summary>Uploads a rebuild; the triangles only when the mesh is new or resized.</summary>
+        private static void Upload(Mesh mesh, Vector3[] vertices, Vector2[] uvs, int[] triangles)
+        {
+            if (mesh.vertexCount != vertices.Length)
+            {
+                mesh.Clear();
+                mesh.vertices = vertices;
+                mesh.uv = uvs;
+                mesh.triangles = triangles;
+            }
+            else
+            {
+                mesh.vertices = vertices;
+                mesh.uv = uvs;
+            }
+
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+        }
+
         private void BuildHalf(Mesh mesh, float side, float amount)
         {
             if (mesh == null) { return; }
 
             int cols = columnsPerHalf;
-            Vector3[] vertices = new Vector3[cols * rows];
-            Vector2[] uvs = new Vector2[cols * rows];
+            if (_halfVertices.Length != cols * rows)
+            {
+                _halfVertices = new Vector3[cols * rows];
+                _halfUvs = new Vector2[cols * rows];
+            }
+
+            Vector3[] vertices = _halfVertices;
+            Vector2[] uvs = _halfUvs;
 
             for (int r = 0; r < rows; r++)
             {
@@ -479,42 +515,50 @@ namespace VRSurgery.Transplant
                 }
             }
 
-            int[] triangles = new int[(rows - 1) * (cols - 1) * 6];
-            int k = 0;
-            for (int r = 0; r < rows - 1; r++)
+            int count = (rows - 1) * (cols - 1) * 6;
+            int[] triangles = side > 0f ? _rightTriangles : _leftTriangles;
+            if (triangles.Length != count)
             {
-                for (int c = 0; c < cols - 1; c++)
+                triangles = new int[count];
+                int k = 0;
+                for (int r = 0; r < rows - 1; r++)
                 {
-                    int a = r * cols + c, b = a + 1, d = a + cols, e = d + 1;
+                    for (int c = 0; c < cols - 1; c++)
+                    {
+                        int a = r * cols + c, b = a + 1, d = a + cols, e = d + 1;
 
-                    // Winding chosen per side so both halves face up (+Y).
-                    if (side > 0f)
-                    {
-                        triangles[k++] = a; triangles[k++] = d; triangles[k++] = b;
-                        triangles[k++] = b; triangles[k++] = d; triangles[k++] = e;
-                    }
-                    else
-                    {
-                        triangles[k++] = a; triangles[k++] = b; triangles[k++] = d;
-                        triangles[k++] = b; triangles[k++] = e; triangles[k++] = d;
+                        // Winding chosen per side so both halves face up (+Y).
+                        if (side > 0f)
+                        {
+                            triangles[k++] = a; triangles[k++] = d; triangles[k++] = b;
+                            triangles[k++] = b; triangles[k++] = d; triangles[k++] = e;
+                        }
+                        else
+                        {
+                            triangles[k++] = a; triangles[k++] = b; triangles[k++] = d;
+                            triangles[k++] = b; triangles[k++] = e; triangles[k++] = d;
+                        }
                     }
                 }
+
+                if (side > 0f) { _rightTriangles = triangles; } else { _leftTriangles = triangles; }
             }
 
-            mesh.Clear();
-            mesh.vertices = vertices;
-            mesh.uv = uvs;
-            mesh.triangles = triangles;
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
+            Upload(mesh, vertices, uvs, triangles);
         }
 
         private void BuildWall(Mesh mesh, float side, float amount)
         {
             if (mesh == null) { return; }
 
-            Vector3[] vertices = new Vector3[rows * 2];
-            Vector2[] uvs = new Vector2[rows * 2];
+            if (_wallVertices.Length != rows * 2)
+            {
+                _wallVertices = new Vector3[rows * 2];
+                _wallUvs = new Vector2[rows * 2];
+            }
+
+            Vector3[] vertices = _wallVertices;
+            Vector2[] uvs = _wallUvs;
 
             for (int r = 0; r < rows; r++)
             {
@@ -538,25 +582,23 @@ namespace VRSurgery.Transplant
                 uvs[r * 2 + 1] = new Vector2(woundDepth > 0f ? Mathf.Clamp01(depth / woundDepth) : 1f, t);
             }
 
-            int[] triangles = new int[(rows - 1) * 12];
-            int k = 0;
-            for (int r = 0; r < rows - 1; r++)
+            if (_wallTriangles.Length != (rows - 1) * 12)
             {
-                int a = r * 2, b = a + 1, c = a + 2, d = a + 3;
+                _wallTriangles = new int[(rows - 1) * 12];
+                int k = 0;
+                for (int r = 0; r < rows - 1; r++)
+                {
+                    int a = r * 2, b = a + 1, c = a + 2, d = a + 3;
 
-                // Both windings: the wall is seen from across the wound and from above.
-                triangles[k++] = a; triangles[k++] = c; triangles[k++] = b;
-                triangles[k++] = b; triangles[k++] = c; triangles[k++] = d;
-                triangles[k++] = a; triangles[k++] = b; triangles[k++] = c;
-                triangles[k++] = b; triangles[k++] = d; triangles[k++] = c;
+                    // Both windings: the wall is seen from across the wound and from above.
+                    _wallTriangles[k++] = a; _wallTriangles[k++] = c; _wallTriangles[k++] = b;
+                    _wallTriangles[k++] = b; _wallTriangles[k++] = c; _wallTriangles[k++] = d;
+                    _wallTriangles[k++] = a; _wallTriangles[k++] = b; _wallTriangles[k++] = c;
+                    _wallTriangles[k++] = b; _wallTriangles[k++] = d; _wallTriangles[k++] = c;
+                }
             }
 
-            mesh.Clear();
-            mesh.vertices = vertices;
-            mesh.uv = uvs;
-            mesh.triangles = triangles;
-            mesh.RecalculateNormals();
-            mesh.RecalculateBounds();
+            Upload(mesh, vertices, uvs, _wallTriangles);
         }
 
         /// <summary>Stores the sampled surface and the parts. Called by the scene builder.</summary>
@@ -580,6 +622,11 @@ namespace VRSurgery.Transplant
             _gapeTarget = new float[0];
             _gapeCurrent = new float[0];
             _wander = new float[0];
+            _halfVertices = new Vector3[0];
+            _leftTriangles = new int[0];
+            _rightTriangles = new int[0];
+            _wallVertices = new Vector3[0];
+            _wallTriangles = new int[0];
             EnsureMeshes();
             Rebuild(0f);
         }
