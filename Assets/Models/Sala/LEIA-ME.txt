@@ -1,0 +1,30 @@
+MODELOS PRONTOS PARA A SALA DE CIRURGIA
+=======================================
+
+Coloque aqui um modelo (.glb, .gltf, .fbx ou .obj) com um destes nomes e rode de novo
+VRSurgery -> Transplante — nível Médio. O construtor põe o modelo no lugar do objeto
+gerado, na mesma altura e no mesmo ponto do chão (o foco fica pendurado no teto), e
+esconde o gerado. Sem arquivo, nada muda.
+
+  maquina_anestesia   máquina de anestesia
+  maquina_cec         máquina de circulação extracorpórea (as linhas até o paciente ficam)
+  carrinho_parada     carrinho de parada / desfibrilador
+  mesa_auxiliar       mesa auxiliar de instrumentos
+  suporte_soro        suporte de soro
+  armario             armário de materiais
+  aspirador           aspirador cirúrgico
+  bisturi_eletrico    gerador do bisturi elétrico
+  banqueta            banqueta / escadinha
+  eco                 ecocardiógrafo (a sonda até a boca fica)
+  termorregulador     termorregulador da CEC (as mangueiras ficam)
+  cell_saver          recuperador celular
+  caixa_termica       caixa térmica do órgão
+  porta_compressas    porta-compressas
+  pia_escovacao       pia de escovação
+  foco_cirurgico      foco cirúrgico do teto
+
+Se o modelo aparecer virado, renomeie com o giro em graus: carrinho_parada@90.glb,
+carrinho_parada@180.glb, carrinho_parada@-90.glb.
+
+O Console avisa quando um modelo passa de 20 mil triângulos (pesado para o Quest).
+Confira a licença de tudo que colocar aqui (CC0 ou comprada) antes de apresentar.

@@ -165,6 +165,13 @@ do static batching: ele congelaria a malha antes do texto existir.
 O monitor mostra também a **fibrilação ventricular** ao retirar o clampe (traçado
 caótico, "FC FV", alarme) e um espículo a cada choque das pás.
 
+**Modelos prontos no lugar dos gerados**: qualquer `.glb/.gltf/.fbx/.obj` colocado em
+`Assets/Models/Sala/` com o nome de um encaixe (`maquina_anestesia`, `carrinho_parada`,
+`foco_cirurgico`… lista completa em `Assets/Models/Sala/LEIA-ME.txt`) substitui a peça
+gerada no próximo rebuild, na mesma altura e posição; `nome@90.glb` gira o modelo. O ambiente
+em nuvem onde este código foi escrito não alcança sites de modelos (Sketchfab, Kenney,
+Poly Haven, itch.io bloqueados), então os modelos têm de ser baixados no PC.
+
 O monitor de sinais vitais conta a história da cirurgia: coração doente taquicárdico e
 hipotenso → linha reta e "CEC — BOMBA LIGADA" em bomba → ritmo sinusal quando o doador
 bate. Um vaso vazando derruba a pressão e dispara o alarme.

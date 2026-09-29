@@ -560,6 +560,9 @@ namespace VRSurgery.EditorTools
             BuildTheatreEquipment(r, thorax);
             BuildTransplantDecor(r, thorax);
 
+            // Ready-made models dropped into Assets/Models/Sala take the place of generated ones.
+            ApplyModelSlots(r);
+
             AudioSource hum = room.AddComponent<AudioSource>();
             hum.playOnAwake = false;
             room.AddComponent<AmbientLoop>();
