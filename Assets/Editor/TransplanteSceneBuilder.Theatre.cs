@@ -289,9 +289,102 @@ namespace VRSurgery.EditorTools
             return go;
         }
 
+        /// <summary>Boxes thinner than this stay sharp cubes: plates, films, ticks, labels.</summary>
+        private const float RoundedBoxMinSize = 0.015f;
+
+        private static readonly Dictionary<Vector3Int, Mesh> RoundedBoxes = new Dictionary<Vector3Int, Mesh>();
+
+        /// <summary>
+        /// A box. Anything thick enough gets rounded edges with smooth shading — the soft, chunky
+        /// look of Job Simulator's props instead of the sharp primitive cubes that made the room
+        /// read as a test level. Thin plates stay plain cubes, where a bevel would be invisible.
+        /// </summary>
         private static GameObject Box(string name, Transform parent, Vector3 position, Vector3 size, Material m,
-            Quaternion? rotation = null, bool shadows = true) =>
-            Part(PrimitiveType.Cube, name, parent, position, size, m, rotation, false, shadows);
+            Quaternion? rotation = null, bool shadows = true)
+        {
+            float thinnest = Mathf.Min(size.x, Mathf.Min(size.y, size.z));
+            if (thinnest < RoundedBoxMinSize)
+            {
+                return Part(PrimitiveType.Cube, name, parent, position, size, m, rotation, false, shadows);
+            }
+
+            GameObject go = MeshPart(name, parent, RoundedBox(size, Mathf.Min(thinnest * 0.25f, 0.03f)), m, shadows);
+            go.transform.localPosition = position;
+            go.transform.localRotation = rotation ?? Quaternion.identity;
+            return go;
+        }
+
+        /// <summary>
+        /// A box of the given size with rounded edges: each face a 4 x 4 grid whose outer ring is
+        /// pulled onto a sphere of <paramref name="radius"/> around the inner box, with normals
+        /// taken from that sphere. One segment per edge, smooth-shaded, so 108 triangles instead
+        /// of 12 — cheap enough for the Quest, round enough to stop reading as a primitive.
+        /// Shared between boxes of the same size (to the millimetre).
+        /// </summary>
+        private static Mesh RoundedBox(Vector3 size, float radius)
+        {
+            Vector3Int key = new Vector3Int(Mathf.RoundToInt(size.x * 1000f), Mathf.RoundToInt(size.y * 1000f),
+                Mathf.RoundToInt(size.z * 1000f));
+            if (RoundedBoxes.TryGetValue(key, out Mesh cached) && cached != null) { return cached; }
+
+            Vector3 h = size * 0.5f;
+            Vector3 inner = new Vector3(h.x - radius, h.y - radius, h.z - radius);
+            List<Vector3> vertices = new List<Vector3>();
+            List<Vector3> normals = new List<Vector3>();
+            List<Vector2> uvs = new List<Vector2>();
+            List<int> triangles = new List<int>();
+
+            // Each face: its outward normal and two in-plane axes with Cross(u, v) == normal, so
+            // every triangle faces out.
+            (Vector3 n, Vector3 u, Vector3 v)[] faces =
+            {
+                (Vector3.right, Vector3.up, Vector3.forward), (Vector3.left, Vector3.forward, Vector3.up),
+                (Vector3.up, Vector3.forward, Vector3.right), (Vector3.down, Vector3.right, Vector3.forward),
+                (Vector3.forward, Vector3.right, Vector3.up), (Vector3.back, Vector3.up, Vector3.right),
+            };
+
+            foreach ((Vector3 n, Vector3 u, Vector3 v) in faces)
+            {
+                float hn = Mathf.Abs(Vector3.Dot(h, n)), hu = Mathf.Abs(Vector3.Dot(h, u)), hv = Mathf.Abs(Vector3.Dot(h, v));
+                float[] cu = { -hu, -hu + radius, hu - radius, hu };
+                float[] cv = { -hv, -hv + radius, hv - radius, hv };
+                int start = vertices.Count;
+
+                for (int j = 0; j < 4; j++)
+                {
+                    for (int i = 0; i < 4; i++)
+                    {
+                        Vector3 p = n * hn + u * cu[i] + v * cv[j];
+                        Vector3 core = new Vector3(Mathf.Clamp(p.x, -inner.x, inner.x), Mathf.Clamp(p.y, -inner.y, inner.y),
+                            Mathf.Clamp(p.z, -inner.z, inner.z));
+                        Vector3 normal = (p - core).normalized;
+                        vertices.Add(core + normal * radius);
+                        normals.Add(normal);
+                        uvs.Add(new Vector2((cu[i] + hu) / (2f * hu), (cv[j] + hv) / (2f * hv)));
+                    }
+                }
+
+                for (int j = 0; j < 3; j++)
+                {
+                    for (int i = 0; i < 3; i++)
+                    {
+                        int a = start + j * 4 + i, b = a + 1, c = a + 4, d = c + 1;
+                        triangles.Add(a); triangles.Add(b); triangles.Add(c);
+                        triangles.Add(b); triangles.Add(d); triangles.Add(c);
+                    }
+                }
+            }
+
+            Mesh mesh = new Mesh { name = $"CaixaArredondada_{key.x}x{key.y}x{key.z}" };
+            mesh.SetVertices(vertices);
+            mesh.SetNormals(normals);
+            mesh.SetUVs(0, uvs);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateBounds();
+            mesh.RecalculateTangents();
+            RoundedBoxes[key] = mesh;
+            return mesh;
+        }
 
         /// <summary>A cylinder of given radius and full length, along the parent's local Y.</summary>
         private static GameObject Rod(string name, Transform parent, Vector3 position, float radius, float length,

@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 12;
+        public const int BuildVersion = 13;
 
         private static Vector3 _thorax;
 
@@ -129,6 +129,7 @@ namespace VRSurgery.EditorTools
         {
             EditorSceneManager.OpenScene(SourceScene, OpenSceneMode.Single);
             Palette.Clear();
+            RoundedBoxes.Clear();
             _drapeCloth = null;
             _drapeStatic = null;
             _bloodPool = null;

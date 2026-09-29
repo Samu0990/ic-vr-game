@@ -142,7 +142,9 @@ no monitor do cirurgião, fazem som e vibram forte.
 
 ### Sala de cirurgia
 
-Tudo gerado pelo construtor, sem asset novo: paredes de azulejo, piso epóxi,
+Tudo gerado pelo construtor, sem asset novo. Toda caixa com mais de 1,5 cm de espessura
+tem **bordas arredondadas** com sombreamento suave (108 triângulos, malha compartilhada por
+tamanho), no estilo "gordinho" dos objetos do Job Simulator, em vez dos cubos de primitiva: paredes de azulejo, piso epóxi,
 fluxo laminar e luminárias no teto, **foco cirúrgico** de duas cúpulas (o spot de luz fica
 dentro dele), **campos cirúrgicos azuis** moldados ao corpo com janela sobre o esterno,
 campo de anestesia no pescoço, máquina de anestesia com circuito até a via aérea,
