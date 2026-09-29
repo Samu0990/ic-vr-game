@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 28;
+        public const int BuildVersion = 29;
 
         private static Vector3 _thorax;
 
@@ -143,6 +143,7 @@ namespace VRSurgery.EditorTools
             RenameRig();
             WireHands();
             BuildControllerHands();
+            MakeStandInPlace();
             ApplyGloveMaterialToHands();
 
             GameObject table = BuildTable();

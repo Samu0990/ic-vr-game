@@ -119,6 +119,59 @@ namespace VRSurgery.EditorTools
             Debug.Log($"[Transplante] {built} mão(s) de luva no lugar dos controles; pega só de perto, pela palma");
         }
 
+        /// <summary>
+        /// Nobody walks at the stand, so the template's locomotion comes off: move, turn, jump,
+        /// teleport, climb and gravity, and the body collider they push around.
+        ///
+        /// Left on, they were what made the view misbehave. A thumb resting on the stick slid or
+        /// snapped the whole room; the jump button bounced it; gravity pulled a short visitor
+        /// back down after VisitorFit had lifted them; and the body capsule, which follows the
+        /// head, hit the table and the drapes whenever the visitor leant over the patient and
+        /// pushed the view back. VisitorFit, which only sets the rig's pose, is now the one thing
+        /// that moves the visitor.
+        /// </summary>
+        private static void MakeStandInPlace()
+        {
+            GameObject rig = GameObject.Find("XR Origin");
+            if (rig == null) { return; }
+
+            List<string> off = new List<string>();
+
+            Transform locomotion = rig.transform.Find("Locomotion");
+            if (locomotion != null && locomotion.gameObject.activeSelf)
+            {
+                locomotion.gameObject.SetActive(false);
+                off.Add("locomoção (andar, girar, pular, teleporte, escalar, gravidade)");
+            }
+
+            CharacterController body = rig.GetComponent<CharacterController>();
+            if (body != null && body.enabled)
+            {
+                body.enabled = false;
+                off.Add("colisor do corpo");
+            }
+
+            if (rig.GetComponent("XRBodyTransformer") is Behaviour transformer && transformer.enabled)
+            {
+                transformer.enabled = false;
+                off.Add("XRBodyTransformer");
+            }
+
+            foreach (string side in new[] { "Left", "Right" })
+            {
+                Transform teleport = rig.transform.Find($"Camera Offset/{side} Controller/Teleport Interactor");
+                if (teleport != null && teleport.gameObject.activeSelf)
+                {
+                    teleport.gameObject.SetActive(false);
+                    off.Add($"raio de teleporte ({side})");
+                }
+            }
+
+            Debug.Log(off.Count > 0
+                ? "[Transplante] visitante parado no lugar; desligado: " + string.Join(", ", off)
+                : "[Transplante] rig já estava sem locomoção");
+        }
+
         private static string HandModelPath(bool left)
         {
             string file = left ? "LeftHand" : "RightHand";

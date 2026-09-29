@@ -153,6 +153,16 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   está com o óculos, por **4 s** encerra a vez e prepara o próximo visitante (um clique na mão
   marca cada ponto). No PC/Link: **R** recentraliza, **N** encerra a vez.
 - **Marca dos pés** verde no chão onde o visitante fica.
+- **Parado no lugar, câmera só da cabeça**: a locomoção do template (andar e girar pelo
+  analógico, pular, teleporte, escalar, gravidade) e o colisor do corpo estão desligados. Eles
+  deslizavam ou giravam a sala com o polegar no analógico, puxavam para baixo quem o
+  `VisitorFit` tinha levantado e, ao se inclinar sobre o paciente, o colisor batia no campo e
+  empurrava a visão para trás. Só o `VisitorFit` mexe no rig.
+- **Espelho do espectador só quando há onde mostrar** (`HeadsetFollowCamera`): ele desenhava no
+  mesmo Display 1 da câmera do VR e, no Editor com o simulador, ficava **por cima** dela, com
+  outro campo de visão e um quadro atrasado — era a "câmera bugada" no Unity. Agora desenha só
+  com óculos rodando num PC; no Editor sem óculos e no Quest fica desligado (no Quest isso também
+  poupa uma renderização inteira da sala por quadro). A pose é copiada logo antes de renderizar.
 - **Mãos de luva no lugar dos controles** (`ControllerHand` + `HandPoser`): a mão oficial da
   Unity que já vem no projeto (sample *HandVisualizer* do pacote XR Hands, a mesma do rastreio de
   mãos), com a luva de nitrila azul. Ela segue a **pose de empunhadura** do controle (a palma
