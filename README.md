@@ -88,6 +88,7 @@ antes, que é o que todos os testes antigos montam à mão. Com elas a rodada ga
 | Etapa | Gesto | Guia visual |
 |---|---|---|
 | Incisão | Pegar o **bisturi** na mesa de Mayo e passar a lâmina sobre a linha roxa, **encostando** na pele (até 4 mm acima conta; mais de 2,2 cm abaixo é "profunda demais") | Linha roxa de marcador cirúrgico; a pele afunda sob a lâmina, o corte abre ~4 mm atrás dela pela tensão da pele, as gotas de sangue crescem e às vezes escorrem pela lateral do tórax |
+| Cautério (opcional) | Pegar o **bisturi elétrico** no coldre sobre o campo e encostar a ponta nos 3 pontos que sangram na borda da ferida | Fumaça, chiado e vibração; o ponto para de sangrar e fica a marca de cauterização |
 | Esterno | Pegar a **serra esternal** na bandeja e apoiar a lâmina na marca dourada por 3 s | Anel dourado (só nesta etapa); zumbido e vibração forte enquanto serra; o esterno se parte em duas metades presas no afastador de Finochietto |
 | CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba |
 | Vasos | Mão firme no anel por 1,4 s; mão trêmula faz sangrar, pressão estanca | Anéis vermelho/azul (só nesta etapa); vermelho pulsante enquanto sangra |
@@ -95,6 +96,22 @@ antes, que é o que todos os testes antigos montam à mão. Com elas a rodada ga
 
 Com o tórax aberto, uma poça de sangue fica no fundo da cavidade e **sobe enquanto um vaso
 vaza** (`CavityBloodPool`), baixando devagar quando o vazamento é estancado.
+
+O **coração nativo bate** fraco e irregular (fibrilação atrial) até a cardioplegia; o doador
+volta a bater ao sair de bomba. Os dois monitores (anestesia e a **tela grande de batimentos
+na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órgão.
+
+### Física
+
+- **Campos cirúrgicos são tecido simulado** (`DrapeCloth`, Unity Cloth): presos em volta da
+  janela, cedem ~1,5 cm sob a mão ou um instrumento e balançam nas bordas que caem da mesa. Um
+  vigia volta para o campo estático se a simulação sair do lugar. Desligar: `UseDrapeCloth`.
+- **Coisas não atravessam o paciente**: colisor na superfície dos campos e no fundo da cavidade;
+  órgão ou instrumento solto para em cima deles. Instrumentos soltos voltam sozinhos para o
+  lugar (`ReturnHomeOnRelease`). As mãos rastreadas continuam atravessando (não há mãos físicas).
+
+Ao abrir o Editor com uma cena mais velha que o construtor (`BuildVersion`), o Unity pergunta se
+quer reconstruir (`TransplantSceneFreshness`).
 
 Todo gesto de "segurar" mostra um **anel de progresso flutuante** sobre o local
 (`WorkProgressIndicator`), com rótulo e porcentagem, e vibra de leve na mão enquanto avança.
@@ -206,8 +223,13 @@ conferir com o óculos:
 - Orientação do texto do **monitor de sinais vitais** e o sentido da varredura do ECG.
 - O **pós-processamento** agora liga no PC (`HeadsetPostProcessing`) e continua desligado
   no Quest standalone. Medir o frame time antes de ligar no Quest.
-- A **tolerância do bisturi** (1,4 cm da linha média, 1,8 cm acima e 3 cm abaixo da pele)
+- A **tolerância do bisturi** (1,4 cm da linha média, 4 mm acima e 3 cm abaixo da pele)
   e o raio da agulha (1,3 cm) são estimativas.
+- **Custo no Quest ainda não medido** do que mais pesa: tecido simulado (~1,6 mil vértices por
+  quadro na CPU), pele da janela recalculada enquanto o bisturi encosta, fumaça, e o foco com
+  sombra suave. Se faltar quadro: `UseDrapeCloth = false` primeiro.
+- O `Cloth` não é documentado para colliders de trigger, por isso as esferas das mãos são
+  sólidas e ignoram instrumentos e órgãos. Se algo for empurrado pela mão, é aí que olhar.
 
 Nada aqui foi jogado com o óculos. Os tempos de gesto, os raios de 2,2 cm e a
 legibilidade dos anéis a 30 cm do olho são estimativas informadas, não medições.
