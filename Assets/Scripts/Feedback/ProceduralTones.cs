@@ -61,6 +61,9 @@ namespace VRSurgery.Feedback
         /// <summary>A constant soft ventilator/room hum, meant to loop.</summary>
         public static AudioClip RoomHum => Get("room-hum", () => Hum("room-hum", 2f));
 
+        /// <summary>A lost instrument popping back into its place: a quick bright blip.</summary>
+        public static AudioClip Pop => Get("pop", () => Sweep("pop", 0.12f, 0.35f, 500f, 1400f));
+
         /// <summary>The defibrillator charging: the rising whine everyone recognises from television.</summary>
         public static AudioClip DefibCharge => Get("defib-charge", () => Sweep("defib-charge", 1.1f, 0.22f, 600f, 2400f));
 

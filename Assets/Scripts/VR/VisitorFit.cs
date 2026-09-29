@@ -1,0 +1,153 @@
+using UnityEngine;
+using UnityEngine.InputSystem;
+using VRSurgery.Session;
+
+namespace VRSurgery.VR
+{
+    /// <summary>
+    /// Brings the operating table to the visitor, instead of asking the visitor to find it.
+    ///
+    /// Nobody at the stand walks: everything is laid out within arm's reach of one spot. But each
+    /// visitor puts the headset on standing somewhere slightly different in the booth, facing
+    /// somewhere slightly different, and is a different height — at NEXT, from children to tall
+    /// adults. So at the start of each turn the rig is moved (never the room) so that the
+    /// visitor's head is exactly over the stance and facing the patient, the same thing Job
+    /// Simulator does when it recentres you at your station.
+    ///
+    /// Short mode, also after Job Simulator: a visitor whose eyes are well below the height the
+    /// room was laid out for is lifted, so the table meets their hands where it meets an adult's.
+    /// Only the virtual floor moves; nothing is on it that anyone needs to reach.
+    ///
+    /// The operator can refit at any moment with R on the PC keyboard (or by calling Fit), e.g.
+    /// after helping someone adjust the strap.
+    /// </summary>
+    public class VisitorFit : MonoBehaviour
+    {
+        [Tooltip("The XR Origin: what gets moved.")]
+        [SerializeField] private Transform rig;
+
+        [Tooltip("The headset camera, a child of the rig.")]
+        [SerializeField] private Transform head;
+
+        [Tooltip("Floor point the head should be over, facing along its +Z.")]
+        [SerializeField] private Transform stance;
+
+        [Tooltip("Refits at the start of each visitor's briefing.")]
+        [SerializeField] private EventSessionController session;
+
+        [Header("Short mode")]
+        [SerializeField] private bool shortMode = true;
+
+        [Tooltip("Eye height the room was laid out for, in metres.")]
+        [SerializeField] private float designEyeHeight = 1.6f;
+
+        [Tooltip("Visitors whose eyes are below this are lifted.")]
+        [SerializeField] private float shortBelow = 1.48f;
+
+        [Tooltip("Most the floor is ever lifted, in metres.")]
+        [SerializeField] private float maxLift = 0.4f;
+
+        [Tooltip("Seconds into the briefing for a second fit, once the headset is surely on.")]
+        [SerializeField, Min(0f)] private float settleSeconds = 3f;
+
+        private float _sinceBriefing = -1f;
+
+        /// <summary>How far the floor was lifted at the last fit, in metres.</summary>
+        public float Lift { get; private set; }
+
+        public int Fits { get; private set; }
+
+        private void OnEnable()
+        {
+            if (session != null) { session.StateChanged += HandleState; }
+        }
+
+        private void OnDisable()
+        {
+            if (session != null) { session.StateChanged -= HandleState; }
+        }
+
+        private void HandleState(SessionState state)
+        {
+            if (state != SessionState.Briefing) { return; }
+            Fit();
+            _sinceBriefing = 0f;
+        }
+
+        private void Update()
+        {
+            if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { Fit(); }
+
+            if (_sinceBriefing < 0f) { return; }
+            _sinceBriefing += Time.deltaTime;
+            if (_sinceBriefing >= settleSeconds)
+            {
+                _sinceBriefing = -1f;
+                if (session == null || session.State == SessionState.Briefing) { Fit(); }
+            }
+        }
+
+        /// <summary>Moves the rig so the head is over the stance, facing the patient, lifted if short.</summary>
+        public void Fit()
+        {
+            if (rig == null || head == null || stance == null) { return; }
+
+            // Height above the real floor, which is where the rig stands in floor tracking. A
+            // camera offset means device tracking, where the height is a guess: no lift then.
+            float eye = head.position.y - rig.position.y;
+            bool floorTracking = head.parent == null || head.parent == rig || Mathf.Abs(head.parent.localPosition.y) < 0.05f;
+            Lift = shortMode && floorTracking ? LiftFor(eye) : 0f;
+
+            Solve(head.position, head.forward, rig.position, rig.rotation, stance.position, stance.forward, Lift,
+                out Vector3 position, out Quaternion rotation);
+            rig.SetPositionAndRotation(position, rotation);
+            Fits++;
+        }
+
+        /// <summary>How far to lift a visitor whose eyes are this high above the real floor.</summary>
+        public float LiftFor(float eyeHeight)
+        {
+            if (eyeHeight <= 0.5f || eyeHeight >= shortBelow) { return 0f; }
+            return Mathf.Clamp(designEyeHeight - eyeHeight, 0f, maxLift);
+        }
+
+        /// <summary>
+        /// The rig pose that puts the head over <paramref name="stancePosition"/> looking along
+        /// <paramref name="stanceForward"/>, turning only about the vertical and keeping the
+        /// head's own height above the floor, plus <paramref name="lift"/>.
+        /// </summary>
+        public static void Solve(Vector3 headPosition, Vector3 headForward, Vector3 rigPosition, Quaternion rigRotation,
+            Vector3 stancePosition, Vector3 stanceForward, float lift, out Vector3 position, out Quaternion rotation)
+        {
+            float headYaw = Yaw(headForward);
+            float wantYaw = Yaw(stanceForward);
+            Quaternion turn = Quaternion.Euler(0f, Mathf.DeltaAngle(headYaw, wantYaw), 0f);
+
+            // Turn the rig about the vertical through the head, so the head stays put while it turns.
+            Vector3 pivot = new Vector3(headPosition.x, rigPosition.y, headPosition.z);
+            position = pivot + turn * (rigPosition - pivot);
+            rotation = turn * rigRotation;
+
+            // Then slide it so the head is over the stance, and set the floor.
+            position += new Vector3(stancePosition.x - headPosition.x, 0f, stancePosition.z - headPosition.z);
+            position.y = stancePosition.y + lift;
+        }
+
+        private static float Yaw(Vector3 forward)
+        {
+            forward.y = 0f;
+            return forward.sqrMagnitude < 1e-8f ? 0f : Mathf.Atan2(forward.x, forward.z) * Mathf.Rad2Deg;
+        }
+
+        public void Bind(Transform xrOrigin, Transform camera, Transform stancePoint, EventSessionController controller)
+        {
+            bool live = Application.isPlaying && isActiveAndEnabled;
+            if (live) { OnDisable(); }
+            rig = xrOrigin;
+            head = camera;
+            stance = stancePoint;
+            session = controller;
+            if (live) { OnEnable(); }
+        }
+    }
+}

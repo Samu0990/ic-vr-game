@@ -107,6 +107,22 @@ O **coração nativo bate** fraco e irregular (fibrilação atrial) até a cardi
 volta a bater ao sair de bomba. Os dois monitores (anestesia e a **tela grande de batimentos
 na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órgão.
 
+### Mecânica estilo Job Simulator (ninguém anda no estande)
+
+- **Tudo ao alcance de um ponto só**: instrumentos a no máximo ~0,6 m dos ombros de quem está
+  na marca dos pés (teste `TransplantErgonomicsTests` cobra 0,70 m pelos dois ombros).
+- **Soltar = cair com física** (`ReturnHomeOnRelease`, modo `DropAndRespawn`): o instrumento
+  fica onde caiu, no campo ou na bandeja de Mayo (agora sólida), e pode ser pego de novo;
+  **arremessar** também funciona. Só se ele parar **fora do alcance** (chão, outro lado da
+  mesa, atirado longe) por 0,6 s é que some e **reaparece com um "pop"** no lugar dele. A cada
+  novo visitante, tudo volta para a bandeja.
+- **A mesa vai até o visitante** (`VisitorFit` no XR Origin): no início de cada briefing (e de
+  novo 3 s depois, com o óculos já no rosto) o rig é movido para a cabeça ficar exatamente
+  sobre a marca e virada para o paciente. **Modo baixinho**: olhos abaixo de 1,48 m são
+  levantados até 40 cm, para uma criança alcançar a mesa como um adulto. Tecla **R** no PC
+  recentraliza a qualquer momento (para o operador).
+- **Marca dos pés** verde no chão onde o visitante fica.
+
 ### Física
 
 - **Campos cirúrgicos são tecido simulado** (`DrapeCloth`, Unity Cloth): presos em volta da

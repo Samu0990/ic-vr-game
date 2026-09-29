@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 11;
+        public const int BuildVersion = 12;
 
         private static Vector3 _thorax;
 
@@ -1312,6 +1312,9 @@ namespace VRSurgery.EditorTools
             // projector aimed at the physical mannequin (the operative field itself, nothing
             // drawn as text), and Display 3 is a monitor beside it carrying the clock, the risk
             // colour and the scoreboard — the reading that a torso-shaped prop cannot show.
+            // The table comes to the visitor: recentred at each briefing, lifted for short visitors.
+            WireVisitorFit(systems, session);
+
             BuildProjectionHUD(systems, session, leaderboard, vessels);
             WireUrgencyTint(systems);
             HideOperatorVisualsFromProjection();

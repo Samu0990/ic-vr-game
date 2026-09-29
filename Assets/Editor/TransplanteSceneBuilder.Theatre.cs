@@ -1894,7 +1894,9 @@ namespace VRSurgery.EditorTools
 
             Part(PrimitiveType.Cube, "Bandeja", stand.transform, new Vector3(centre.x, topY - 0.01f, centre.z),
                 new Vector3(0.42f, 0.02f, 0.28f), steel, null, true);
-            Box("CampoBandeja", stand.transform, new Vector3(centre.x, topY + 0.001f, centre.z), new Vector3(0.46f, 0.003f, 0.32f), drape);
+            // Solid: an instrument let go over the tray lands on it.
+            Box("CampoBandeja", stand.transform, new Vector3(centre.x, topY + 0.001f, centre.z), new Vector3(0.46f, 0.003f, 0.32f), drape)
+                .AddComponent<BoxCollider>();
             Box("Aba", stand.transform, new Vector3(centre.x - 0.23f, topY - 0.05f, centre.z), new Vector3(0.003f, 0.1f, 0.32f), drape);
 
             float postX = thorax.x + TableHalfWidth + 0.13f;
@@ -2126,6 +2128,76 @@ namespace VRSurgery.EditorTools
             spot.GetComponent<Renderer>().enabled = false;
 
             Debug.Log($"[Transplante] fechamento: {wires.Count / 2} fios de aço, 2 drenos até o frasco em {canister}, curativo");
+        }
+
+        /// <summary>Between the shoulders of a visitor standing at the stance: the middle of what they can reach.</summary>
+        private static Vector3 ReachCentre() => Stance(_thorax) + new Vector3(0f, 1.3f, 0f);
+
+        /// <summary>
+        /// Brings the table to each visitor (recentring and short mode) and marks where to stand:
+        /// two footprints on the floor, the way every stand-in-place VR game shows its spot.
+        /// </summary>
+        private static void WireVisitorFit(GameObject systems, EventSessionController session)
+        {
+            Vector3 stance = Stance(_thorax);
+            Vector3 toPatient = new Vector3(_thorax.x - stance.x, 0f, _thorax.z - stance.z).normalized;
+            Quaternion facing = Quaternion.LookRotation(toPatient, Vector3.up);
+
+            GameObject point = new GameObject("PosicaoCirurgiao");
+            point.transform.SetParent(systems.transform, true);
+            point.transform.SetPositionAndRotation(stance, facing);
+
+            GameObject rig = GameObject.Find("XR Origin");
+            Camera head = rig != null ? rig.GetComponentInChildren<Camera>(true) : null;
+            if (rig != null && head != null)
+            {
+                // Not ??: a missing component is a fake null in the Editor, which ?? does not see.
+                VisitorFit fit = rig.GetComponent<VisitorFit>();
+                if (fit == null) { fit = rig.AddComponent<VisitorFit>(); }
+                fit.Bind(rig.transform, head.transform, point.transform, session);
+            }
+            else
+            {
+                Debug.LogWarning("[Transplante] sem XR Origin com câmera: o ajuste ao visitante não foi ligado.");
+            }
+
+            Material mark = MakeUnlit(new Color(0.35f, 0.95f, 0.65f, 0.55f));
+            Mesh foot = FootMesh();
+            for (int side = -1; side <= 1; side += 2)
+            {
+                GameObject print = MeshPart(side < 0 ? "PeEsquerdo" : "PeDireito", point.transform, foot, mark);
+                print.transform.localPosition = new Vector3(side * 0.11f, 0.003f, -0.02f);
+                print.transform.localRotation = Quaternion.Euler(90f, side * 6f, 0f);
+            }
+
+            GameObject ring = MeshPart("AnelPosicao", point.transform, MakeRing(0.33f, 0.35f, 48), mark);
+            ring.transform.localPosition = new Vector3(0f, 0.002f, 0f);
+        }
+
+        /// <summary>A flat footprint facing +Y after the part's 90° tilt: sole and heel, toes forward (+Y in mesh space).</summary>
+        private static Mesh FootMesh()
+        {
+            List<Vector3> vertices = new List<Vector3> { new Vector3(0f, 0.12f, 0f) };
+            List<int> triangles = new List<int>();
+            const int n = 28;
+            for (int i = 0; i <= n; i++)
+            {
+                float a = i / (float)n * Mathf.PI * 2f;
+                float y = Mathf.Sin(a);
+                // Wider at the ball of the foot than at the heel.
+                float width = y > 0f ? 0.05f : 0.038f;
+                vertices.Add(new Vector3(Mathf.Cos(a) * width, 0.12f + y * 0.125f, 0f));
+                if (i == 0) { continue; }
+                // Faces -Z in mesh space, which the part's 90° tilt turns to face up.
+                triangles.Add(0); triangles.Add(i); triangles.Add(i + 1);
+            }
+
+            Mesh mesh = new Mesh { name = "Pegada" };
+            mesh.SetVertices(vertices);
+            mesh.SetTriangles(triangles, 0);
+            mesh.RecalculateNormals();
+            mesh.RecalculateBounds();
+            return mesh;
         }
 
         /// <summary>
@@ -2462,10 +2534,15 @@ namespace VRSurgery.EditorTools
             XRGrabInteractable grab = tool.AddComponent<XRGrabInteractable>();
             grab.attachTransform = grip.transform;
             grab.useDynamicAttach = false;
-            grab.throwOnDetach = false;
+
+            // Job Simulator rules: let go and it falls where it is, toss it and it flies; only if
+            // it ends up out of reach does it pop back onto the tray.
+            grab.throwOnDetach = true;
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
 
-            tool.AddComponent<ReturnHomeOnRelease>().Bind(interactable);
+            ReturnHomeOnRelease release = tool.AddComponent<ReturnHomeOnRelease>();
+            release.Bind(interactable);
+            release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f);
             return tool;
         }
 

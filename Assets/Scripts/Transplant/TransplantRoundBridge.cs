@@ -154,6 +154,13 @@ namespace VRSurgery.Transplant
 
             ReturnOrgansHome();
 
+            // Instruments the last visitor left lying on the drape go back on the tray.
+            foreach (VRSurgery.Interaction.ReturnHomeOnRelease tool in
+                     FindObjectsByType<VRSurgery.Interaction.ReturnHomeOnRelease>(FindObjectsSortMode.None))
+            {
+                tool.SendHomeNow();
+            }
+
             if (procedure != null)
             {
                 // Reset then Begin, in that order: Begin replays whatever the team did before the
