@@ -531,8 +531,11 @@ namespace VRSurgery.Transplant
 
                 vertices[r * 2] = top;
                 vertices[r * 2 + 1] = bottom;
+
+                // U is depth into the chest wall, so a shallow fresh cut shows skin and the top of
+                // the fat, and only a retracted wound shows every layer down to the muscle.
                 uvs[r * 2] = new Vector2(0f, t);
-                uvs[r * 2 + 1] = new Vector2(1f, t);
+                uvs[r * 2 + 1] = new Vector2(woundDepth > 0f ? Mathf.Clamp01(depth / woundDepth) : 1f, t);
             }
 
             int[] triangles = new int[(rows - 1) * 12];

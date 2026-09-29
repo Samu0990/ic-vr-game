@@ -1720,7 +1720,9 @@ namespace VRSurgery.EditorTools
 
             // Iodine-prepped skin, not bare skin: brownish orange, and slightly wet.
             Material prepped = Paint("prepSkin", new Color(0.78f, 0.5f, 0.34f), 0f, 0.5f);
-            Material wound = DoubleSided(Paint("woundWall", new Color(0.62f, 0.16f, 0.12f), 0f, 0.75f));
+            // The cut face shows the layers: skin, dermis, yellow fat, fascia, muscle. White base
+            // colour so the texture's own colours come through; wet, so fairly glossy.
+            Material wound = DoubleSided(Dress(Paint("woundLayers", Color.white, 0f, 0.72f), _woundLayers, new Vector2(1f, 3f), 0.8f));
 
             MeshFilter left = MeshPart("Pele_E", root.transform, null, prepped, true).GetComponent<MeshFilter>();
             MeshFilter right = MeshPart("Pele_D", root.transform, null, prepped, true).GetComponent<MeshFilter>();

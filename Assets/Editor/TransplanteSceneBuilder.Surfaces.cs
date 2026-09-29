@@ -26,7 +26,7 @@ namespace VRSurgery.EditorTools
             public Texture2D Normal;
         }
 
-        private static SurfaceSet _wallTile, _floor, _fabric, _steel, _ceiling;
+        private static SurfaceSet _wallTile, _floor, _fabric, _steel, _ceiling, _woundLayers;
 
         /// <summary>Generates (or reuses) every surface once per build.</summary>
         private static void PrepareSurfaces()
@@ -37,7 +37,8 @@ namespace VRSurgery.EditorTools
             _fabric = Surface("DrapeFabric", 256, FabricAt, 3f);
             _steel = Surface("BrushedSteel", 256, SteelAt, 1.5f);
             _ceiling = Surface("CeilingPanel", 256, CeilingAt, 3f);
-            Debug.Log("[Transplante] superfícies da sala geradas: azulejo, piso epóxi, tecido, aço escovado, forro");
+            _woundLayers = Surface("WoundLayers", 128, WoundLayersAt, 5f);
+            Debug.Log("[Transplante] superfícies da sala geradas: azulejo, piso epóxi, tecido, aço escovado, forro, camadas da ferida");
         }
 
         /// <summary>Colour and height at a texel, both tileable.</summary>
@@ -145,6 +146,61 @@ namespace VRSurgery.EditorTools
             float c = Hash(((x0 % period) + period) % period, (((y0 + 1) % period) + period) % period, seed);
             float d = Hash((((x0 + 1) % period) + period) % period, (((y0 + 1) % period) + period) % period, seed);
             return Mathf.Lerp(Mathf.Lerp(a, b, fx), Mathf.Lerp(c, d, fx), fy);
+        }
+
+        /// <summary>
+        /// The cut face of the chest wall, from the skin down (U runs 0 at the skin to 1 at the
+        /// bottom of the wound; V along the incision, tileable): iodine-stained epidermis, pale
+        /// dermis, a thick band of yellow lobulated fat with the odd capillary, white fascia, and
+        /// red muscle at the bottom. The layers are what make a cut read as a cut into a body.
+        /// </summary>
+        private static void WoundLayersAt(int x, int y, int size, out Color colour, out float height)
+        {
+            float u = x / (float)(size - 1);
+            float wobble = (Noise(y / 6f, 1.5f, Mathf.Max(1, size / 6), 21) - 0.5f) * 0.03f;
+            float d = u + wobble;
+
+            Color epidermis = new Color(0.7f, 0.43f, 0.3f);
+            Color dermis = new Color(0.93f, 0.78f, 0.72f);
+            Color fat = new Color(0.96f, 0.82f, 0.4f);
+            Color septum = new Color(0.86f, 0.62f, 0.34f);
+            Color fascia = new Color(0.93f, 0.91f, 0.86f);
+            Color muscle = new Color(0.55f, 0.11f, 0.09f);
+
+            if (d < 0.05f)
+            {
+                colour = epidermis;
+                height = 0.6f;
+            }
+            else if (d < 0.17f)
+            {
+                colour = Color.Lerp(dermis, new Color(0.9f, 0.6f, 0.55f), (d - 0.05f) / 0.12f);
+                height = 0.55f;
+            }
+            else if (d < 0.78f)
+            {
+                // Lobules: bright cushions of fat separated by darker fibrous septa.
+                float cell = Noise(x / 7f, y / 7f, Mathf.Max(1, size / 7), 22);
+                float fine = Noise(x / 2.5f, y / 2.5f, Mathf.Max(1, Mathf.RoundToInt(size / 2.5f)), 23);
+                float lobule = Mathf.SmoothStep(0.25f, 0.75f, cell * 0.75f + fine * 0.25f);
+                colour = Color.Lerp(septum, fat, lobule);
+                height = 0.3f + lobule * 0.6f;
+
+                // A few capillaries, red, where the blade crossed them.
+                if (Hash(x / 3, y / 3, 24) > 0.985f) { colour = new Color(0.7f, 0.1f, 0.1f); height = 0.35f; }
+            }
+            else if (d < 0.86f)
+            {
+                colour = fascia;
+                height = 0.65f;
+            }
+            else
+            {
+                // Muscle fibres run along the incision.
+                float fibre = 0.5f + 0.5f * Mathf.Sin(y / (float)size * Mathf.PI * 2f * 24f + Noise(x / 3f, y / 9f, Mathf.Max(1, size / 3), 25) * 3f);
+                colour = Color.Lerp(muscle, new Color(0.68f, 0.18f, 0.14f), fibre * 0.6f);
+                height = 0.35f + fibre * 0.25f;
+            }
         }
 
         /// <summary>4 x 4 glazed tiles with sunken, bevelled grout.</summary>
