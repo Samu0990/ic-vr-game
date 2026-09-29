@@ -237,6 +237,11 @@ de cada etapa**, erros por gravidade, vazamentos nas anastomoses, choques, **not
 (passadas, desvio em mm, arranhões, se precisou da ajuda da lâmina), **nota da sutura** (mm do
 alvo, furos), quantas ajudas adaptativas recebeu, altura dos olhos e o levantamento do modo
 baixinho. **Anônimo por construção**: o nome digitado para o placar nunca é lido.
+Para ver os dados: abra `Tools/painel/painel-ic.html` no navegador (funciona offline) e arraste
+o `sessoes.jsonl` — tempo médio por etapa contra o orçamento da ajuda, onde quem não concluiu
+parou, distribuição de estrelas, histograma do tempo total e a tabela das vezes; "Copiar como
+CSV" leva tudo para uma planilha. O arquivo nunca sai do computador.
+
 Mesmo anônima, coleta com pessoas em evento pode precisar de aprovação do comitê de ética:
 confirme com o orientador antes de usar os dados num trabalho.
 

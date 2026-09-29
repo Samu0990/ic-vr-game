@@ -1,0 +1,480 @@
+<title>Painel do Transplante VR</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@500;600;700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: one column of operating-room "charts" — a header strip like a patient label, a
+   file bay, the vitals row, then the charts, then the raw log. Surgical teal is the only accent. */
+:root {
+  --bg: #f3f6f6;
+  --surface: #ffffff;
+  --ink: #0e1a1b;
+  --ink-2: #485a5c;
+  --ink-3: #6f8083;
+  --line: #dbe3e3;
+  --grid: #e8eeee;
+  --accent: #0f6e74;
+  --accent-ink: #ffffff;
+  --accent-wash: #e3f1f1;
+  --s1: #2a78d6;
+  --s2: #eb6834;
+  --o1: #86b6ef;
+  --o2: #3987e5;
+  --o3: #184f95;
+  --warn-bg: #fff4dc;
+  --warn-ink: #6a4a00;
+  --display: "Barlow Condensed", "Arial Narrow", "Roboto Condensed", sans-serif;
+  --body: "IBM Plex Sans", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --mono: "IBM Plex Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0d1415; --surface: #141c1d; --ink: #eef4f4; --ink-2: #b4c3c4; --ink-3: #8a9b9c;
+    --line: #26332f; --grid: #1f2a2b; --accent: #4fb7bd; --accent-ink: #062a2c; --accent-wash: #173537;
+    --s1: #3987e5; --s2: #d95926; --o1: #86b6ef; --o2: #3987e5; --o3: #184f95;
+    --warn-bg: #3a2e10; --warn-ink: #f3d99a; color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0d1415; --surface: #141c1d; --ink: #eef4f4; --ink-2: #b4c3c4; --ink-3: #8a9b9c;
+  --line: #26332f; --grid: #1f2a2b; --accent: #4fb7bd; --accent-ink: #062a2c; --accent-wash: #173537;
+  --s1: #3987e5; --s2: #d95926; --o1: #86b6ef; --o2: #3987e5; --o3: #184f95;
+  --warn-bg: #3a2e10; --warn-ink: #f3d99a; color-scheme: dark;
+}
+* { box-sizing: border-box; }
+body { background: var(--bg); color: var(--ink); font-family: var(--body); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 1080px; margin: 0 auto; padding-inline: 16px; padding-block: 24px 56px; display: grid; gap: 20px; }
+h1, h2 { font-family: var(--display); font-weight: 600; letter-spacing: 0.01em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.05; }
+h2 { font-size: 22px; }
+p { margin: 0; max-width: 68ch; }
+.eyebrow { font-family: var(--display); text-transform: uppercase; letter-spacing: 0.12em; font-size: 13px; color: var(--accent); font-weight: 600; }
+.muted { color: var(--ink-2); }
+.small { font-size: 13px; color: var(--ink-3); }
+code, .mono { font-family: var(--mono); font-size: 0.9em; }
+
+header.label { display: grid; gap: 8px; border-left: 4px solid var(--accent); padding-left: 16px; }
+
+.bay { background: var(--surface); border: 1px dashed var(--line); border-radius: 10px; padding: 16px; display: flex; flex-wrap: wrap; gap: 12px 20px; align-items: center; justify-content: space-between; }
+.bay.drag { border-color: var(--accent); background: var(--accent-wash); }
+.bay .text { display: grid; gap: 4px; min-width: 0; flex: 1 1 320px; }
+.bay code { word-break: break-all; }
+.actions { display: flex; flex-wrap: wrap; gap: 8px; }
+button, .filebtn { font: 500 14px var(--body); border-radius: 8px; padding: 9px 14px; cursor: pointer; border: 1px solid var(--line); background: var(--surface); color: var(--ink); }
+button.primary, .filebtn { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button:focus-visible, .filebtn:focus-within { outline: 2px solid var(--accent); outline-offset: 2px; }
+.filebtn input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.filebtn { position: relative; display: inline-flex; align-items: center; }
+
+.banner { background: var(--warn-bg); color: var(--warn-ink); border-radius: 8px; padding: 10px 14px; font-size: 14px; }
+
+.vitals { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; }
+.tile { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; display: grid; gap: 2px; min-width: 0; }
+.tile .k { font-size: 13px; color: var(--ink-2); }
+.tile .v { font: 600 28px var(--body); }
+.tile .d { font-size: 12.5px; color: var(--ink-3); }
+.tile.hero { grid-column: span 2; }
+.tile.hero .v { font-size: 52px; line-height: 1; }
+@media (max-width: 520px) { .tile.hero { grid-column: span 1; } }
+
+.card { background: var(--surface); border: 1px solid var(--line); border-radius: 10px; padding: 18px; display: grid; gap: 12px; min-width: 0; }
+.card header { display: grid; gap: 4px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; }
+.legend { display: flex; flex-wrap: wrap; gap: 6px 16px; font-size: 13px; color: var(--ink-2); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { width: 12px; height: 12px; border-radius: 3px; display: inline-block; }
+.tk { width: 3px; height: 14px; background: var(--ink); display: inline-block; border-radius: 1px; }
+svg { display: block; width: 100%; height: auto; overflow: visible; }
+svg text { font-family: var(--body); fill: var(--ink-2); font-size: 12px; }
+svg .val { fill: var(--ink); font-weight: 600; font-variant-numeric: tabular-nums; }
+svg .axis { stroke: var(--grid); stroke-width: 1; }
+svg .hit { fill: transparent; cursor: default; }
+svg .hit:focus-visible { outline: none; stroke: var(--accent); stroke-width: 2; }
+.empty { color: var(--ink-3); font-size: 14px; padding: 16px 0; }
+
+.tip { position: fixed; pointer-events: none; background: var(--ink); color: var(--surface); border-radius: 8px; padding: 8px 10px; font-size: 13px; line-height: 1.35; max-width: 260px; z-index: 5; box-shadow: 0 6px 20px rgba(0,0,0,0.18); }
+.tip b { font-size: 15px; font-variant-numeric: tabular-nums; }
+
+.tablewrap { overflow-x: auto; }
+table { border-collapse: collapse; width: 100%; font-size: 13.5px; min-width: 640px; }
+th, td { text-align: left; padding: 7px 10px; border-bottom: 1px solid var(--line); white-space: nowrap; }
+th { font-family: var(--display); font-weight: 600; font-size: 14px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--ink-2); }
+td.n { text-align: right; font-variant-numeric: tabular-nums; }
+.pill { font-size: 12px; padding: 2px 8px; border-radius: 99px; background: var(--accent-wash); color: var(--ink); display: inline-flex; gap: 4px; align-items: center; }
+.pill.no { background: var(--warn-bg); color: var(--warn-ink); }
+.foot { display: grid; gap: 6px; }
+@media (prefers-reduced-motion: reduce) { * { transition: none !important; } }
+</style>
+
+<div class="wrap">
+  <header class="label">
+    <div class="eyebrow">IC · Transplante cardíaco em VR · estande NEXT FIAP</div>
+    <h1>Onde os visitantes travam na cirurgia</h1>
+    <p class="muted">Cada linha do <code>sessoes.jsonl</code> é a vez de um visitante: tempo de cada etapa, onde parou, as notas da incisão e da sutura e quanta ajuda o jogo precisou dar. Tudo é processado aqui no navegador; o arquivo não é enviado a lugar nenhum.</p>
+  </header>
+
+  <section class="bay" id="bay" aria-label="Carregar dados">
+    <div class="text">
+      <strong>Arraste o <code>sessoes.jsonl</code> para cá, ou escolha o arquivo</strong>
+      <span class="small">Tirado do Quest com <code>adb pull /sdcard/Android/data/com.DefaultCompany.VRTemplate/files/pesquisa/sessoes.jsonl</code></span>
+    </div>
+    <div class="actions">
+      <label class="filebtn" for="file">Escolher arquivo<input id="file" type="file" accept=".jsonl,.json,.txt"></label>
+      <button id="sample" type="button">Ver exemplo</button>
+      <button id="copy" type="button">Copiar como CSV</button>
+    </div>
+  </section>
+
+  <div class="banner" id="banner" role="status"></div>
+
+  <section class="vitals" id="vitals" aria-label="Resumo"></section>
+
+  <section class="card">
+    <header>
+      <h2>Tempo médio em cada etapa</h2>
+      <p class="small">Barra: média de quem passou pela etapa. Traço: o orçamento da ajuda adaptativa para a etapa (acima dele, o jogo começa a ajudar). A etapa mais cara é a primeira candidata a encurtar.</p>
+    </header>
+    <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Média real</span><span><i class="tk"></i>Orçamento</span></div>
+    <div id="stages"></div>
+  </section>
+
+  <div class="grid2">
+    <section class="card">
+      <header>
+        <h2>Onde a vez terminou sem concluir</h2>
+        <p class="small">Etapa em que estavam quando o tempo acabou ou desistiram.</p>
+      </header>
+      <div id="dropouts"></div>
+    </section>
+    <section class="card">
+      <header>
+        <h2>Notas das etapas graduadas</h2>
+        <p class="small">Parcela de visitantes com 1, 2 ou 3 estrelas.</p>
+      </header>
+      <div class="legend"><span><i class="sw" style="background:var(--o1)"></i>1 estrela</span><span><i class="sw" style="background:var(--o2)"></i>2 estrelas</span><span><i class="sw" style="background:var(--o3)"></i>3 estrelas</span></div>
+      <div id="grades"></div>
+    </section>
+  </div>
+
+  <section class="card">
+    <header>
+      <h2>Tempo total por visitante</h2>
+      <p class="small">Quantos visitantes em cada faixa de 30 s, separando quem concluiu o transplante.</p>
+    </header>
+    <div class="legend"><span><i class="sw" style="background:var(--s1)"></i>Concluiu</span><span><i class="sw" style="background:var(--s2)"></i>Não concluiu</span></div>
+    <div id="hist"></div>
+  </section>
+
+  <section class="card">
+    <header>
+      <h2>Registro das vezes</h2>
+      <p class="small">As 30 mais recentes. Sem nomes: o registro é anônimo.</p>
+    </header>
+    <div class="tablewrap"><table id="table"></table></div>
+  </section>
+
+  <footer class="foot small">
+    <span>Gerado pelo <code>ResearchLog</code> do projeto ic-vr-game. Coleta com pessoas em evento pode precisar de aprovação do comitê de ética; confirme com o orientador antes de publicar resultados.</span>
+  </footer>
+</div>
+<div class="tip" id="tip" hidden></div>
+
+<script>
+(() => {
+  const STAGES = [
+    ["SkinIncision", "Incisão", 20], ["OpenChest", "Esterno", 25], ["OpenPericardium", "Pericárdio", 12],
+    ["GoOnBypass", "Entrar em bomba", 15], ["RemoveNativeHeart", "Retirar coração", 12],
+    ["PlaceDonorHeart", "Coração doador", 12], ["ConnectVessels", "Vasos", 45], ["Restart", "Sair de bomba", 35],
+    ["CloseSkin", "Sutura da pele", 30],
+  ];
+  const NAME = Object.fromEntries(STAGES.map(s => [s[0], s[1]]));
+  NAME.Complete = "Concluído"; NAME.Idle = "Antes de começar";
+  const BUDGET_FRACTION = 0.85;
+  const $ = id => document.getElementById(id);
+  const tip = $("tip");
+
+  // ---------------------------------------------------------------- sample data (fictitious)
+  function sample() {
+    let seed = 7;
+    const rnd = () => (seed = (seed * 16807) % 2147483647) / 2147483647;
+    const gauss = () => (rnd() + rnd() + rnd() - 1.5) / 1.5;
+    const rows = [];
+    for (let v = 1; v <= 46; v++) {
+      const skill = gauss();
+      const stages = []; let t = 0, reached = "Complete", assists = 0;
+      for (const [id, , base] of STAGES) {
+        const slow = id === "ConnectVessels" ? 1.35 : id === "Restart" ? 1.15 : 1;
+        const s = Math.max(4, base * slow * 0.78 * (1 - 0.3 * skill) * (0.75 + rnd() * 0.55));
+        if (t + s > 217) { stages.push({ stage: id, seconds: +(217 - t).toFixed(1) }); reached = id; t = 217; break; }
+        stages.push({ stage: id, seconds: +s.toFixed(1) }); t += s;
+      }
+      const done = reached === "Complete";
+      if (skill < -0.35) assists = skill < -0.7 ? 2 : 1;
+      const star = x => (x > 0.35 ? 3 : x > -0.35 ? 2 : 1);
+      rows.push({
+        when: `2026-10-${String(14 + Math.floor(v / 16)).padStart(2, "0")}T${String(10 + (v % 8)).padStart(2, "0")}:${String((v * 7) % 60).padStart(2, "0")}:00`,
+        visitor: v, completed: done, aborted: !done && rnd() < 0.2, seconds: +t.toFixed(1), roundSeconds: 217,
+        score: done ? Math.round((217 - t) * 100) : 0, reachedStage: reached, stages,
+        minorErrors: Math.max(0, Math.round(2 - skill * 2 + rnd() * 2)), warnings: Math.round(rnd() * 3), majorErrors: 0,
+        incisionStars: star(skill + gauss() * 0.4), incisionStrokes: 1 + Math.round(Math.max(0, -skill * 2 + rnd())),
+        incisionDeviationMm: +(3 + Math.max(0, -skill * 3) + rnd() * 2).toFixed(1), incisionScratches: rnd() < 0.2 ? 1 : 0,
+        bladeHelp: skill < -0.6, sutureStars: done ? star(skill + gauss() * 0.5) : 0, sutureAccuracyMm: done ? +(2 + rnd() * 5).toFixed(1) : 0,
+        sutureMisses: done ? Math.round(rnd() * 1.5) : 0, shocks: reached === "Complete" || ["CloseSkin"].includes(reached) ? 1 + (rnd() < 0.4 ? 1 : 0) : 0,
+        leaks: Math.round(Math.max(0, -skill * 1.5 + rnd())), assists, eyeHeight: +(1.45 + rnd() * 0.3).toFixed(2), shortModeLift: 0,
+      });
+    }
+    return rows;
+  }
+
+  // ---------------------------------------------------------------- parsing
+  function parse(text) {
+    const rows = [], bad = [];
+    text.split(/\r?\n/).forEach((line, i) => {
+      if (!line.trim()) return;
+      try { rows.push(JSON.parse(line)); } catch { bad.push(i + 1); }
+    });
+    return { rows, bad };
+  }
+
+  // ---------------------------------------------------------------- helpers
+  const mean = a => (a.length ? a.reduce((x, y) => x + y, 0) / a.length : NaN);
+  const median = a => { if (!a.length) return NaN; const s = [...a].sort((x, y) => x - y); const m = s.length >> 1; return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2; };
+  const mmss = s => (isFinite(s) ? `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, "0")}` : "—");
+  const pct = (a, b) => (b ? Math.round((a / b) * 100) : 0);
+  const svgNS = "http://www.w3.org/2000/svg";
+  const el = (name, attrs = {}, parent) => { const n = document.createElementNS(svgNS, name); for (const k in attrs) n.setAttribute(k, attrs[k]); if (parent) parent.appendChild(n); return n; };
+  const text = (parent, x, y, str, attrs = {}) => { const t = el("text", { x, y, ...attrs }, parent); t.textContent = str; return t; };
+  // A bar with a 4px rounded data-end and a square base, growing right from x0.
+  function hbar(x0, y, w, h, r = 4) { if (w <= 0) return ""; r = Math.min(r, w, h / 2); return `M${x0},${y}H${x0 + w - r}Q${x0 + w},${y} ${x0 + w},${y + r}V${y + h - r}Q${x0 + w},${y + h} ${x0 + w - r},${y + h}H${x0}Z`; }
+  function vbar(x, yBase, w, h, round) { if (h <= 0) return ""; const r = round ? Math.min(4, w / 2, h) : 0; const t = yBase - h; return `M${x},${yBase}V${t + r}Q${x},${t} ${x + r},${t}H${x + w - r}Q${x + w},${t} ${x + w},${t + r}V${yBase}Z`; }
+
+  function hover(node, html, mark) {
+    const lift = on => { if (mark) mark.style.opacity = on ? "0.78" : ""; };
+    node.addEventListener("pointerenter", () => lift(true));
+    node.addEventListener("pointerleave", () => lift(false));
+    node.addEventListener("focus", () => lift(true));
+    node.addEventListener("blur", () => lift(false));
+    const show = e => {
+      tip.replaceChildren(...html());
+      tip.hidden = false;
+      const x = (e.clientX ?? node.getBoundingClientRect().right), y = (e.clientY ?? node.getBoundingClientRect().top);
+      const w = tip.offsetWidth, h = tip.offsetHeight;
+      tip.style.left = Math.min(window.innerWidth - w - 8, x + 14) + "px";
+      tip.style.top = Math.max(8, y - h - 12) + "px";
+    };
+    node.addEventListener("pointermove", show);
+    node.addEventListener("focus", show);
+    node.addEventListener("pointerleave", () => (tip.hidden = true));
+    node.addEventListener("blur", () => (tip.hidden = true));
+    node.setAttribute("tabindex", "0");
+  }
+  const line = (strong, rest) => { const d = document.createElement("div"); if (strong) { const b = document.createElement("b"); b.textContent = strong; d.appendChild(b); d.appendChild(document.createTextNode(" ")); } d.appendChild(document.createTextNode(rest)); return d; };
+
+  // Charts are drawn at the width they are shown at, so text stays 12 px on a phone.
+  const widthOf = node => Math.max(280, Math.round(node.getBoundingClientRect().width || 700));
+
+  // ---------------------------------------------------------------- render
+  let current = [], currentLabel = "", currentSample = true;
+  function render(rows, label, isSample) {
+    current = rows; currentLabel = label; currentSample = isSample;
+    $("banner").textContent = isSample
+      ? "Exemplo com dados fictícios, gerados só para mostrar o painel. Carregue o sessoes.jsonl do Quest para ver os seus."
+      : label;
+    $("banner").hidden = !label && !isSample;
+    vitals(rows); stages(rows); dropouts(rows); grades(rows); hist(rows); table(rows);
+  }
+
+  function vitals(rows) {
+    const n = rows.length, done = rows.filter(r => r.completed);
+    const helped = rows.filter(r => (r.assists || 0) > 0 || r.bladeHelp).length;
+    const inc = rows.filter(r => r.incisionStars > 0).map(r => r.incisionStars);
+    const sut = rows.filter(r => r.sutureStars > 0).map(r => r.sutureStars);
+    const tiles = [
+      ["hero", "Concluíram o transplante", `${pct(done.length, n)}%`, `${done.length} de ${n} visitantes`],
+      ["", "Tempo mediano de quem concluiu", mmss(median(done.map(r => r.seconds))), `rodada de ${mmss(median(rows.map(r => r.roundSeconds || 0)))}`],
+      ["", "Receberam ajuda do jogo", `${pct(helped, n)}%`, "ritmo ou regra da lâmina"],
+      ["", "Incisão, média", isFinite(mean(inc)) ? `${mean(inc).toFixed(1)} ★` : "—", `${inc.length} graduadas`],
+      ["", "Sutura, média", isFinite(mean(sut)) ? `${mean(sut).toFixed(1)} ★` : "—", `${sut.length} graduadas`],
+    ];
+    $("vitals").replaceChildren(...tiles.map(([cls, k, v, d]) => {
+      const t = document.createElement("div"); t.className = "tile " + cls;
+      for (const [c, s] of [["k", k], ["v", v], ["d", d]]) { const e = document.createElement("div"); e.className = c; e.textContent = s; t.appendChild(e); }
+      return t;
+    }));
+  }
+
+  function stages(rows) {
+    const round = median(rows.map(r => r.roundSeconds || 0)) || 217;
+    const present = STAGES.filter(([id]) => rows.some(r => (r.stages || []).some(s => s.stage === id)));
+    const total = present.reduce((a, s) => a + s[2], 0) || 1;
+    const data = present.map(([id, name, base]) => {
+      const secs = rows.flatMap(r => (r.stages || []).filter(s => s.stage === id).map(s => s.seconds));
+      return { id, name, mean: mean(secs), median: median(secs), n: secs.length, budget: base * round * BUDGET_FRACTION / total };
+    });
+    const box = $("stages");
+    if (!data.length) { box.replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: "Nenhuma etapa registrada ainda." })); return; }
+    const W = widthOf(box), L = W < 420 ? 104 : 128, R = 48, row = 30, H = data.length * row + 24;
+    const max = Math.max(...data.map(d => Math.max(d.mean, d.budget))) * 1.05;
+    const sx = v => (v / max) * (W - L - R);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Tempo médio por etapa" });
+    const step = max > 90 ? 30 : max > 40 ? 10 : 5;
+    for (let v = 0; v <= max; v += step) {
+      el("line", { x1: L + sx(v), x2: L + sx(v), y1: 0, y2: H - 18, class: "axis" }, svg);
+      text(svg, L + sx(v), H - 4, `${v} s`, { "text-anchor": "middle" });
+    }
+    const worst = data.reduce((a, b) => (b.mean - b.budget > a.mean - a.budget ? b : a));
+    data.forEach((d, i) => {
+      const y = i * row + 6, h = 16;
+      text(svg, L - 10, y + 12, d.name, { "text-anchor": "end", ...(d === worst ? { class: "val" } : {}) });
+      const bar = el("path", { d: hbar(L, y, sx(d.mean), h), fill: "var(--s1)", class: "mark" }, svg);
+      el("rect", { x: L + sx(d.budget) - 1.5, y: y - 3, width: 3, height: h + 6, rx: 1, fill: "var(--ink)" }, svg);
+      text(svg, L + sx(Math.max(d.mean, d.budget)) + 8, y + 12, `${Math.round(d.mean)} s`, { class: "val" });
+      const hit = el("rect", { x: 0, y: y - 6, width: W, height: row, class: "hit" }, svg);
+      hover(hit, () => [line(`${Math.round(d.mean)} s`, `média em ${d.name}`), line("", `mediana ${Math.round(d.median)} s · orçamento ${Math.round(d.budget)} s`), line("", `${d.n} visitante(s)`)], bar);
+    });
+    box.replaceChildren(svg);
+  }
+
+  function dropouts(rows) {
+    const out = rows.filter(r => !r.completed);
+    const box = $("dropouts");
+    if (!out.length) { box.replaceChildren(Object.assign(document.createElement("p"), { className: "empty", textContent: "Todo mundo concluiu. Nenhuma etapa segurou alguém." })); return; }
+    const counts = STAGES.map(([id, name]) => ({ id, name, n: out.filter(r => r.reachedStage === id).length })).filter(d => d.n > 0);
+    const W = widthOf(box), L = W < 420 ? 104 : 128, R = 36, row = 30, H = counts.length * row + 4;
+    const max = Math.max(...counts.map(d => d.n));
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Onde a vez terminou sem concluir" });
+    counts.forEach((d, i) => {
+      const y = i * row + 6, h = 16, w = (d.n / max) * (W - L - R);
+      text(svg, L - 10, y + 12, d.name, { "text-anchor": "end" });
+      const bar = el("path", { d: hbar(L, y, w, h), fill: "var(--s2)", class: "mark" }, svg);
+      text(svg, L + w + 8, y + 12, String(d.n), { class: "val" });
+      const hit = el("rect", { x: 0, y: y - 6, width: W, height: row, class: "hit" }, svg);
+      hover(hit, () => [line(String(d.n), `pararam em ${d.name}`), line("", `${pct(d.n, out.length)}% de quem não concluiu`)], bar);
+    });
+    box.replaceChildren(svg);
+  }
+
+  function grades(rows) {
+    const sets = [["Incisão", rows.map(r => r.incisionStars).filter(s => s > 0)], ["Sutura", rows.map(r => r.sutureStars).filter(s => s > 0)]];
+    const W = widthOf($("grades")), L = 72, R = 8, row = 44, H = sets.length * row;
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Distribuição de estrelas" });
+    const fills = ["var(--o1)", "var(--o2)", "var(--o3)"], inks = ["#0e1a1b", "#ffffff", "#ffffff"];
+    sets.forEach(([name, stars], i) => {
+      const y = i * row + 8, h = 22, span = W - L - R;
+      text(svg, L - 10, y + 15, name, { "text-anchor": "end" });
+      if (!stars.length) { text(svg, L, y + 15, "sem dados ainda"); return; }
+      let x = L;
+      const lastK = Math.max(...stars);
+      [1, 2, 3].forEach((k, j) => {
+        const n = stars.filter(s => s === k).length; if (!n) return;
+        const w = (n / stars.length) * span, gap = x > L ? 2 : 0;
+        const seg = el("path", { d: hbar(x + gap, y, Math.max(0, w - gap), h, k === lastK ? 4 : 0), fill: fills[j], class: "mark" }, svg);
+        const label = `${pct(n, stars.length)}%`;
+        if (w - gap > 44) text(svg, x + gap + (w - gap) / 2, y + 15, label, { "text-anchor": "middle", style: `fill:${inks[j]};font-weight:600` });
+        const hit = el("rect", { x: x, y: y - 4, width: w, height: h + 8, class: "hit" }, svg);
+        hover(hit, () => [line(label, `${name}: ${k} estrela${k > 1 ? "s" : ""}`), line("", `${n} de ${stars.length} visitantes`)], seg);
+        x += w;
+      });
+    });
+    $("grades").replaceChildren(svg);
+  }
+
+  function hist(rows) {
+    const box = $("hist");
+    if (!rows.length) { box.replaceChildren(); return; }
+    const bin = 30, top = Math.ceil(Math.max(...rows.map(r => r.seconds)) / bin) * bin;
+    const first = Math.floor(Math.min(...rows.map(r => r.seconds)) / bin) * bin;
+    const bins = [];
+    for (let b = first; b < top; b += bin) bins.push({ from: b, done: rows.filter(r => r.completed && r.seconds >= b && r.seconds < b + bin).length, not: rows.filter(r => !r.completed && r.seconds >= b && (r.seconds < b + bin || (b + bin === top && r.seconds === top))).length });
+    const W = widthOf(box), L = 36, B = 26, T = 10, H = 220;
+    const max = Math.max(1, ...bins.map(b => b.done + b.not));
+    const sy = v => (v / max) * (H - B - T);
+    const band = (W - L) / bins.length, bw = Math.min(24, band * 0.6);
+    const svg = el("svg", { viewBox: `0 0 ${W} ${H}`, role: "img", "aria-label": "Histograma do tempo total" });
+    const tickStep = max > 10 ? 5 : max > 4 ? 2 : 1;
+    for (let v = 0; v <= max; v += tickStep) {
+      el("line", { x1: L, x2: W, y1: H - B - sy(v), y2: H - B - sy(v), class: "axis" }, svg);
+      text(svg, L - 8, H - B - sy(v) + 4, String(v), { "text-anchor": "end" });
+    }
+    bins.forEach((b, i) => {
+      const x = L + i * band + (band - bw) / 2, base = H - B;
+      const hd = sy(b.done), hn = sy(b.not);
+      if (hd > 0) el("path", { d: vbar(x, base, bw, hd, hn === 0), fill: "var(--s1)", class: "mark" }, svg);
+      if (hn > 0) el("path", { d: vbar(x, base - hd - (hd > 0 ? 2 : 0), bw, hn - (hd > 0 ? 0 : 0), true), fill: "var(--s2)", class: "mark" }, svg);
+      if (i % Math.ceil(bins.length / Math.max(2, Math.floor(W / 90))) === 0) text(svg, L + i * band + band / 2, H - 8, mmss(b.from), { "text-anchor": "middle" });
+      const hit = el("rect", { x: L + i * band, y: T, width: band, height: H - B - T, class: "hit" }, svg);
+      hover(hit, () => [line(String(b.done + b.not), `visitantes entre ${mmss(b.from)} e ${mmss(b.from + bin)}`), line("", `${b.done} concluíram · ${b.not} não`)]);
+    });
+    box.replaceChildren(svg);
+  }
+
+  function table(rows) {
+    const head = ["#", "Quando", "Resultado", "Tempo", "Parou em", "Incisão", "Sutura", "Erros", "Vazamentos", "Choques", "Ajudas"];
+    const t = $("table");
+    const thead = document.createElement("thead"), tr = document.createElement("tr");
+    head.forEach(h => { const th = document.createElement("th"); th.textContent = h; tr.appendChild(th); });
+    thead.appendChild(tr);
+    const tbody = document.createElement("tbody");
+    [...rows].slice(-30).reverse().forEach(r => {
+      const row = document.createElement("tr");
+      const cells = [
+        [String(r.visitor ?? ""), "n"], [(r.when || "").replace("T", " ").slice(0, 16), ""], [null, ""], [mmss(r.seconds), "n"],
+        [r.completed ? "—" : (NAME[r.reachedStage] || r.reachedStage || ""), ""], [r.incisionStars ? "★".repeat(r.incisionStars) : "—", ""],
+        [r.sutureStars ? "★".repeat(r.sutureStars) : "—", ""], [String((r.minorErrors || 0) + (r.majorErrors || 0)), "n"],
+        [String(r.leaks || 0), "n"], [String(r.shocks || 0), "n"], [String(r.assists || 0), "n"],
+      ];
+      cells.forEach(([v, cls], i) => {
+        const td = document.createElement("td"); if (cls) td.className = cls;
+        if (i === 2) { const p = document.createElement("span"); p.className = "pill" + (r.completed ? "" : " no"); p.textContent = r.completed ? "✓ concluiu" : r.aborted ? "desistiu" : "tempo acabou"; td.appendChild(p); }
+        else td.textContent = v;
+        row.appendChild(td);
+      });
+      tbody.appendChild(row);
+    });
+    t.replaceChildren(thead, tbody);
+  }
+
+  function csv(rows) {
+    const ids = STAGES.map(s => s[0]);
+    const cols = ["visitor", "when", "completed", "aborted", "seconds", "roundSeconds", "score", "reachedStage", ...ids.map(i => "t_" + i), "minorErrors", "majorErrors", "warnings", "leaks", "shocks", "assists", "incisionStars", "incisionStrokes", "incisionDeviationMm", "incisionScratches", "bladeHelp", "sutureStars", "sutureAccuracyMm", "sutureMisses", "eyeHeight", "shortModeLift"];
+    const lines = [cols.join(",")];
+    rows.forEach(r => lines.push(cols.map(c => {
+      let v = c.startsWith("t_") ? ((r.stages || []).find(s => s.stage === c.slice(2)) || {}).seconds : r[c];
+      if (v === undefined || v === null) v = "";
+      v = String(v);
+      return /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+    }).join(",")));
+    return lines.join("\n");
+  }
+
+  // ---------------------------------------------------------------- wiring
+  function loadText(textData, name) {
+    const { rows, bad } = parse(textData);
+    if (!rows.length) { $("banner").hidden = false; $("banner").textContent = `Nenhuma linha válida em ${name}. O arquivo precisa ter um objeto JSON por linha (o sessoes.jsonl do Quest).`; return; }
+    render(rows, `${rows.length} visitante(s) de ${name}` + (bad.length ? ` · ${bad.length} linha(s) ilegível(is) ignorada(s): ${bad.slice(0, 5).join(", ")}` : ""), false);
+  }
+  function readFile(f) { if (!f) return; const r = new FileReader(); r.onload = () => loadText(String(r.result), f.name); r.readAsText(f); }
+  $("file").addEventListener("change", e => readFile(e.target.files[0]));
+  const bay = $("bay");
+  ["dragenter", "dragover"].forEach(ev => bay.addEventListener(ev, e => { e.preventDefault(); bay.classList.add("drag"); }));
+  ["dragleave", "drop"].forEach(ev => bay.addEventListener(ev, e => { e.preventDefault(); bay.classList.remove("drag"); }));
+  bay.addEventListener("drop", e => readFile(e.dataTransfer.files[0]));
+  document.addEventListener("dragover", e => e.preventDefault());
+  document.addEventListener("drop", e => { e.preventDefault(); if (!bay.contains(e.target)) readFile(e.dataTransfer.files[0]); });
+  $("sample").addEventListener("click", () => render(sample(), "", true));
+  $("copy").addEventListener("click", async () => {
+    const data = csv(current), btn = $("copy");
+    try { await navigator.clipboard.writeText(data); btn.textContent = "CSV copiado"; }
+    catch { const ta = document.createElement("textarea"); ta.value = data; document.body.appendChild(ta); ta.select(); try { document.execCommand("copy"); btn.textContent = "CSV copiado"; } catch { btn.textContent = "Selecione e copie"; } ta.remove(); }
+    setTimeout(() => (btn.textContent = "Copiar como CSV"), 2200);
+  });
+
+  let resizeTimer = 0;
+  window.addEventListener("resize", () => {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(() => render(current, currentLabel, currentSample), 150);
+  });
+
+  render(sample(), "", true);
+})();
+</script>
