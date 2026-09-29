@@ -214,6 +214,30 @@ namespace VRSurgery.EditorTools
             if (Palette.TryGetValue(key, out Material existing) && existing != null) { return existing; }
             Material m = MakeMaterial(colour, metallic, smoothness);
             m.name = "OR_" + key;
+
+            // Materials that are a real surface get its texture and relief, tinted by the colour
+            // asked for. Everything else stays a clean painted finish, which is what equipment is.
+            switch (key)
+            {
+                case "steel":
+                case "steelBright":
+                case "cabinet":
+                case "plate":
+                    Dress(m, _steel, new Vector2(2f, 2f), 0.4f);
+                    break;
+                case "drapeBlue":
+                    m.color = Color.white;
+                    Dress(m, _fabric, new Vector2(3f, 3f), 0.6f);
+                    break;
+                case "floor":
+                    m.color = Color.white;
+                    Dress(m, _floor, Vector2.one, 0.5f);
+                    break;
+                case "ceiling":
+                    Dress(m, _ceiling, new Vector2(8f, 8f), 0.5f);
+                    break;
+            }
+
             Palette[key] = m;
             return m;
         }
@@ -384,32 +408,6 @@ namespace VRSurgery.EditorTools
             return texture;
         }
 
-        private static Texture2D TileTexture()
-        {
-            const int size = 256;
-            const int tile = 64;
-            Texture2D texture = new Texture2D(size, size, TextureFormat.RGBA32, true) { name = "OR_WallTile" };
-            System.Random random = new System.Random(3);
-
-            for (int y = 0; y < size; y++)
-            {
-                for (int x = 0; x < size; x++)
-                {
-                    bool grout = x % tile < 3 || y % tile < 3;
-                    float shade = 0.97f + 0.03f * (float)random.NextDouble();
-                    int tx = x / tile, ty = y / tile;
-                    float perTile = 0.96f + 0.04f * Mathf.PerlinNoise(tx * 3.1f, ty * 1.7f);
-                    Color c = grout ? new Color(0.78f, 0.80f, 0.80f) : new Color(1f, 1f, 1f) * shade * perTile;
-                    c.a = 1f;
-                    texture.SetPixel(x, y, c);
-                }
-            }
-
-            texture.Apply(true);
-            texture.wrapMode = TextureWrapMode.Repeat;
-            return SaveTexture(texture, "OR_WallTile");
-        }
-
         private static Texture2D XrayTexture()
         {
             const int w = 256, h = 320;
@@ -466,6 +464,7 @@ namespace VRSurgery.EditorTools
             BuildBackTable(r, thorax);
             BuildIvPole(r, thorax);
             BuildSmallFurniture(r, thorax);
+            BuildTheatreEquipment(r, thorax);
 
             AudioSource hum = room.AddComponent<AudioSource>();
             hum.playOnAwake = false;
@@ -508,20 +507,20 @@ namespace VRSurgery.EditorTools
             // Floor: seamless epoxy, the one surface in the room that is not tiled. It keeps its
             // collider so a dropped heart lands on it instead of falling out of the world.
             Material floor = Paint("floor", new Color(0.34f, 0.43f, 0.42f), 0f, 0.55f);
+            // One texture repeat per metre and a half of floor.
+            floor.mainTextureScale = new Vector2(width / 1.5f, depth / 1.5f);
             GameObject slab = Part(PrimitiveType.Cube, "Floor", r, centre + new Vector3(0f, -0.05f, 0f),
                 new Vector3(width, 0.1f, depth), floor, null, true, false);
             slab.GetComponent<MeshRenderer>().receiveShadows = true;
 
-            Texture2D tiles = TileTexture();
-            Color wallTint = new Color(0.74f, 0.86f, 0.86f);
+            // Glazed tile, 15 cm, with sunken grout: four tiles per texture repeat.
+            Color wallTint = new Color(0.86f, 0.95f, 0.95f);
 
             Material WallMat(string key, float w, float h)
             {
-                Material m = MakeMaterial(wallTint, 0f, 0.45f);
+                Material m = MakeMaterial(wallTint, 0f, 0.7f);
                 m.name = "OR_Wall_" + key;
-                m.SetTexture("_BaseMap", tiles);
-                m.mainTextureScale = new Vector2(w / 0.6f, h / 0.6f);
-                return m;
+                return Dress(m, _wallTile, new Vector2(w / 0.6f, h / 0.6f), 0.8f);
             }
 
             const float t = 0.1f;
@@ -665,7 +664,7 @@ namespace VRSurgery.EditorTools
             // Clock on the far wall, straight in the surgeon's line of sight.
             GameObject clock = new GameObject("WallClock");
             clock.transform.SetParent(r, false);
-            clock.transform.position = new Vector3(wall + 0.03f, 2.35f, 0.4f);
+            clock.transform.position = new Vector3(wall + 0.03f, 2.35f, -0.1f);
             clock.transform.rotation = facingIn;
 
             Material rim = Paint("clockRim", new Color(0.15f, 0.15f, 0.17f), 0.3f, 0.5f);
@@ -1883,6 +1882,170 @@ namespace VRSurgery.EditorTools
             }
 
             return rings;
+        }
+
+        /// <summary>
+        /// The kit every cardiac theatre has around the table that the visitor does not use but
+        /// would miss: diathermy generator, suction, crash cart with defibrillator, and the ceiling
+        /// pendants that carry gases and power down to the team.
+        /// </summary>
+        private static void BuildTheatreEquipment(Transform r, Vector3 thorax)
+        {
+            Material casing = Paint("casing", new Color(0.9f, 0.91f, 0.92f), 0.1f, 0.45f);
+            Material dark = Paint("dark", new Color(0.12f, 0.13f, 0.15f), 0.2f, 0.4f);
+            Material steel = Paint("steel", new Color(0.78f, 0.8f, 0.82f), 0.9f, 0.7f);
+            Material glass = Glass(new Color(0.85f, 0.92f, 0.95f, 0.35f));
+            Material blood = Paint("bloodVenous", new Color(0.32f, 0.03f, 0.07f), 0f, 0.85f);
+            Material red = Paint("crashRed", new Color(0.72f, 0.08f, 0.08f), 0.1f, 0.5f);
+
+            // Diathermy generator on a small cart across the table, toward the head.
+            GameObject esu = new GameObject("BisturiEletrico");
+            esu.transform.SetParent(r, false);
+            esu.transform.position = new Vector3(-0.95f, 0f, thorax.z + 0.95f);
+            esu.transform.rotation = Quaternion.LookRotation(new Vector3(1f, 0f, -0.4f).normalized);
+            Box("Carrinho", esu.transform, new Vector3(0f, 0.45f, 0f), new Vector3(0.45f, 0.9f, 0.4f), casing);
+            Box("Gerador", esu.transform, new Vector3(0f, 0.98f, 0f), new Vector3(0.38f, 0.14f, 0.34f), casing);
+            Box("PainelCorte", esu.transform, new Vector3(-0.08f, 0.99f, 0.171f), new Vector3(0.12f, 0.06f, 0.002f),
+                Glow(new Color(1f, 0.85f, 0.2f)), null, false);
+            Box("PainelCoag", esu.transform, new Vector3(0.08f, 0.99f, 0.171f), new Vector3(0.12f, 0.06f, 0.002f),
+                Glow(new Color(0.25f, 0.55f, 1f)), null, false);
+            TextMesh esuText = BuildScreenText(esu.transform, "Leitura", new Vector3(0f, 1.075f, 0.172f), 0.022f);
+            esuText.text = "CORTE 30W   COAG 40W";
+            esuText.color = new Color(0.1f, 0.1f, 0.1f);
+
+            // Suction: two canisters on a rolling stand behind the surgeon's left, half full.
+            GameObject suction = new GameObject("Aspirador");
+            suction.transform.SetParent(r, false);
+            suction.transform.position = new Vector3(0.95f, 0f, thorax.z - 1.05f);
+            Rod("Haste", suction.transform, new Vector3(0f, 0.55f, 0f), 0.015f, 1.1f, steel);
+            for (int i = 0; i < 5; i++)
+            {
+                Box("Pe_" + i, suction.transform, new Vector3(0f, 0.04f, 0f), new Vector3(0.4f, 0.02f, 0.03f), steel, Quaternion.Euler(0f, i * 72f, 0f));
+            }
+
+            for (int i = 0; i < 2; i++)
+            {
+                Vector3 at = new Vector3(i == 0 ? -0.09f : 0.09f, 0.95f, 0f);
+                Rod("Frasco_" + i, suction.transform, at, 0.07f, 0.24f, glass, null, false);
+                Rod("Conteudo_" + i, suction.transform, at - new Vector3(0f, 0.05f + i * 0.02f, 0f), 0.064f, 0.12f - i * 0.04f, blood, null, false);
+                Rod("Tampa_" + i, suction.transform, at + new Vector3(0f, 0.125f, 0f), 0.072f, 0.02f, dark, null, false);
+            }
+
+            Tube("MangueiraAspiracao", suction.transform, new[]
+            {
+                suction.transform.position + new Vector3(0.09f, 1.09f, 0f),
+                suction.transform.position + new Vector3(-0.2f, 1.3f, 0.3f),
+                new Vector3(TableHalfWidth + 0.02f, TableTopY + 0.2f, _window.Center.z - 0.25f),
+                new Vector3(_window.Center.x + _window.HalfWidth + 0.04f, SkinTopAt(_window.Center.x + 0.1f, _window.Center.z - 0.12f) + 0.025f, _window.Center.z - 0.12f),
+            }, 0.005f, Glass(new Color(0.9f, 0.95f, 1f, 0.6f)));
+
+            // Crash cart: red drawers and a defibrillator on top, against the far wall.
+            GameObject crash = new GameObject("CarrinhoDeParada");
+            crash.transform.SetParent(r, false);
+            crash.transform.position = new Vector3(RoomMinX + 0.35f, 0f, -1.65f);
+            crash.transform.rotation = Quaternion.LookRotation(Vector3.right);
+            Box("Gaveteiro", crash.transform, new Vector3(0f, 0.5f, 0f), new Vector3(0.7f, 1.0f, 0.5f), red);
+            for (int d = 0; d < 5; d++)
+            {
+                Box("Puxador_" + d, crash.transform, new Vector3(0f, 0.15f + d * 0.18f, 0.255f), new Vector3(0.3f, 0.02f, 0.02f), steel);
+            }
+
+            Box("Desfibrilador", crash.transform, new Vector3(0f, 1.1f, 0f), new Vector3(0.36f, 0.2f, 0.28f), Paint("defib", new Color(0.95f, 0.8f, 0.1f), 0f, 0.5f));
+            Box("TelaDesfib", crash.transform, new Vector3(-0.06f, 1.13f, 0.141f), new Vector3(0.15f, 0.1f, 0.002f), Glow(new Color(0.1f, 0.3f, 0.2f)), null, false);
+            for (int p = 0; p < 2; p++)
+            {
+                Box("Pa_" + p, crash.transform, new Vector3(0.1f + p * 0.06f, 1.22f, 0.05f), new Vector3(0.05f, 0.04f, 0.1f), dark);
+            }
+
+            // Ceiling pendants either side of the head of the table: columns of gas outlets and
+            // sockets brought down to working height, as in every modern theatre.
+            Color[] gases = { new Color(0.1f, 0.6f, 0.25f), new Color(0.95f, 0.8f, 0.1f), new Color(0.55f, 0.55f, 0.58f) };
+            foreach (float side in new[] { -1f, 1f })
+            {
+                GameObject pendant = new GameObject(side < 0 ? "Pendente_Anestesia" : "Pendente_Cirurgia");
+                pendant.transform.SetParent(r, false);
+                pendant.transform.position = new Vector3(side * 1.35f, 0f, thorax.z + 1.25f);
+
+                Rod("Braco", pendant.transform, new Vector3(0f, RoomHeight - 0.25f, 0f), 0.05f, 0.5f, casing);
+                Box("Coluna", pendant.transform, new Vector3(0f, 1.9f, 0f), new Vector3(0.22f, 1.0f, 0.22f), casing);
+                for (int g = 0; g < 3; g++)
+                {
+                    Part(PrimitiveType.Cylinder, "Saida_" + g, pendant.transform, new Vector3(-side * 0.111f, 1.65f + g * 0.1f, 0f),
+                        new Vector3(0.05f, 0.006f, 0.05f), Paint("gas" + g, gases[g], 0.2f, 0.5f), Quaternion.Euler(0f, 0f, 90f), false, false);
+                }
+
+                for (int s = 0; s < 4; s++)
+                {
+                    Box("Tomada_" + s, pendant.transform, new Vector3(-side * 0.111f, 2.0f + s * 0.08f, 0f), new Vector3(0.004f, 0.05f, 0.07f), dark, null, false);
+                }
+            }
+        }
+
+        /// <summary>
+        /// A second vitals display, large, on the far wall in the surgeon's line of sight: the
+        /// heartbeat screen the whole room — and the queue — can read.
+        /// </summary>
+        private static void MountVitalsOnWall(VitalSignsMonitor vitals, Vector3 thorax)
+        {
+            Transform t = vitals.transform;
+            t.name = "TelaBatimentos_Parede";
+            // Straight ahead of the surgeon, above the instruction monitor, clear of the clock
+            // (to its left) and the supply cabinet (to its right).
+            t.position = new Vector3(RoomMinX + 0.08f, 2.05f, thorax.z + 0.28f);
+
+            // Front (+Z) toward the room.
+            t.rotation = Quaternion.LookRotation(Vector3.right, Vector3.up);
+            t.localScale = Vector3.one * 2.4f;
+
+            Transform arm = t.Find("Braco");
+            if (arm != null) { Object.DestroyImmediate(arm.gameObject); }
+
+            // One beep in the room is enough; the anaesthesia monitor carries it.
+            AudioSource source = t.GetComponent<AudioSource>();
+            if (source != null) { source.mute = true; }
+        }
+
+        /// <summary>
+        /// Bakes one reflection probe filling the room, so steel and wet tissue reflect the theatre
+        /// rather than the template's sky. Baked, not realtime: free at runtime on a Quest.
+        /// </summary>
+        private static void BakeRoomReflections(Vector3 thorax)
+        {
+            ReflectionProbe probe = null;
+            GameObject existing = GameObject.Find("Reflection Probe");
+            if (existing != null) { probe = existing.GetComponent<ReflectionProbe>(); }
+            if (probe == null)
+            {
+                probe = new GameObject("Reflection Probe").AddComponent<ReflectionProbe>();
+            }
+
+            Vector3 roomCentre = new Vector3((RoomMinX + RoomMaxX) * 0.5f, RoomHeight * 0.5f, (RoomMinZ + RoomMaxZ) * 0.5f);
+            probe.transform.position = new Vector3(0f, 1.5f, thorax.z);
+            probe.center = roomCentre - probe.transform.position;
+            probe.size = new Vector3(RoomMaxX - RoomMinX, RoomHeight, RoomMaxZ - RoomMinZ);
+            probe.boxProjection = true;
+            probe.resolution = 128;
+            probe.mode = UnityEngine.Rendering.ReflectionProbeMode.Custom;
+
+            const string path = GeneratedTextureFolder + "/OR_Reflection.exr";
+            try
+            {
+                EnsureAssetFolder(GeneratedTextureFolder);
+                if (Lightmapping.BakeReflectionProbe(probe, path))
+                {
+                    AssetDatabase.ImportAsset(path);
+                    probe.customBakedTexture = AssetDatabase.LoadAssetAtPath<Texture>(path);
+                    Debug.Log($"[Transplante] reflexos da sala assados em {path}");
+                }
+                else
+                {
+                    Debug.LogWarning("[Transplante] não foi possível assar os reflexos; o aço reflete o céu padrão.");
+                }
+            }
+            catch (System.Exception e)
+            {
+                Debug.LogWarning("[Transplante] falha ao assar reflexos: " + e.Message);
+            }
         }
 
         private static VitalSignsMonitor BuildVitalsMonitor(Vector3 thorax, TransplantProcedure procedure, Heartbeat donor,

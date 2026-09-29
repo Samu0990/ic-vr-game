@@ -117,6 +117,7 @@ namespace VRSurgery.EditorTools
         {
             EditorSceneManager.OpenScene(SourceScene, OpenSceneMode.Single);
             Palette.Clear();
+            PrepareSurfaces();
 
             GameObject area = GameObject.Find("Teleport Area");
             if (area != null) { Object.DestroyImmediate(area); }
@@ -152,6 +153,7 @@ namespace VRSurgery.EditorTools
             BuildTheatre(thorax);
             WireHeadsetPostProcessing();
             ApplyStaticAndShadowFlags();
+            BakeRoomReflections(thorax);
 
             ReportFit(ribcage, heart);
 
@@ -405,8 +407,11 @@ namespace VRSurgery.EditorTools
 
             DressAsGrabbable(root, model);
 
+            // The failing heart beats too, weakly and irregularly, until the pump arrests it.
+            root.AddComponent<Heartbeat>().Bind(model.transform);
+
             Bounds bounds = WorldBounds(model);
-            Debug.Log($"[Transplante] coração: {bounds.size.x * 100f:F1} x {bounds.size.y * 100f:F1} x " +
+            Debug.Log($"[Transplante] coração:{bounds.size.x * 100f:F1} x {bounds.size.y * 100f:F1} x " +
                       $"{bounds.size.z * 100f:F1} cm em {root.transform.position}");
             return root;
         }
@@ -1206,7 +1211,15 @@ namespace VRSurgery.EditorTools
             opening.BindInstrument(saw, sawBlade);
             feedback.BindSaw(opening, saw);
 
-            BuildVitalsMonitor(_thorax, procedure, beat, sewing);
+            Heartbeat nativeBeat = heart.GetComponent<Heartbeat>();
+            systems.AddComponent<NativeHeartRhythm>().Bind(procedure, nativeBeat);
+
+            VitalSignsMonitor anaesthesiaMonitor = BuildVitalsMonitor(_thorax, procedure, beat, sewing);
+            anaesthesiaMonitor.BindNativeHeart(nativeBeat);
+
+            VitalSignsMonitor wallMonitor = BuildVitalsMonitor(_thorax, procedure, beat, sewing);
+            wallMonitor.BindNativeHeart(nativeBeat);
+            MountVitalsOnWall(wallMonitor, _thorax);
 
             // A leaking join fills the open chest; the pool reads the same joins the monitor does.
             if (_bloodPool != null) { _bloodPool.BindVessels(sewing); }

@@ -397,6 +397,45 @@ namespace VRSurgery.Tests
             }
         }
 
+        // ------------------------------------------------------------------ hearts
+
+        [Test]
+        public void TheNativeHeartBeatsUntilCardioplegiaArrestsIt()
+        {
+            TransplantProcedure procedure = Spawn("Procedure").AddComponent<TransplantProcedure>();
+            procedure.Begin();
+
+            Heartbeat heart = Spawn("NativeHeart").AddComponent<Heartbeat>();
+            NativeHeartRhythm rhythm = Spawn("Rhythm").AddComponent<NativeHeartRhythm>();
+            rhythm.Bind(procedure, heart);
+
+            rhythm.Tick();
+            Assert.IsTrue(heart.IsBeating, "The sick heart is still beating when the chest is opened.");
+
+            procedure.CompleteStage(TransplantStage.OpenChest);
+            procedure.Bypass.Attempt(BypassStep.Cannulate);
+            procedure.Bypass.Attempt(BypassStep.ClampAorta);
+            procedure.Bypass.Attempt(BypassStep.Cardioplegia);
+            rhythm.Tick();
+
+            Assert.IsFalse(heart.IsBeating, "Cardioplegia is what stops it.");
+        }
+
+        [Test]
+        public void AnIrregularHeartStillBeatsAtRoughlyItsRate()
+        {
+            Heartbeat heart = Spawn("Heart").AddComponent<Heartbeat>();
+            heart.Configure(90f, 0.04f, 0.2f);
+            heart.StartBeating();
+
+            int beats = 0;
+            heart.Beat += () => beats++;
+            for (int i = 0; i < 60 * 20; i++) { heart.Tick(Step); }
+
+            // 90 bpm for 20 s is 30 beats; a 20% wander either way averages out.
+            Assert.That(beats, Is.InRange(24, 36));
+        }
+
         // ------------------------------------------------------------------ sternal saw
 
         [Test]

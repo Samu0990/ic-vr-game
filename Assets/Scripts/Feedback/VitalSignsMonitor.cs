@@ -18,6 +18,7 @@ namespace VRSurgery.Feedback
         [Header("Sources")]
         [SerializeField] private TransplantProcedure procedure;
         [SerializeField] private Heartbeat donorHeart;
+        [SerializeField] private Heartbeat nativeHeart;
         [SerializeField] private AnastomosisWorker anastomosis;
 
         [Header("Screen")]
@@ -47,6 +48,7 @@ namespace VRSurgery.Feedback
         private int _cursor;
         private float _textClock = 1f;
         private float _noiseSeed;
+        private bool _widthScaled;
 
         /// <summary>The rhythm currently shown. Exposed for tests.</summary>
         public VitalsState State { get; private set; } = VitalsState.FailingHeart;
@@ -66,6 +68,16 @@ namespace VRSurgery.Feedback
 
             if (ecg != null) { ecg.positionCount = samples; ecg.useWorldSpace = false; }
             if (pleth != null) { pleth.positionCount = samples; pleth.useWorldSpace = false; }
+
+            // Line width is in world units and ignores the transform's scale; a monitor enlarged
+            // for the wall would otherwise draw its trace hair-thin.
+            if (!_widthScaled)
+            {
+                _widthScaled = true;
+                float scale = Mathf.Abs(transform.lossyScale.y);
+                if (ecg != null) { ecg.widthMultiplier *= scale; }
+                if (pleth != null) { pleth.widthMultiplier *= scale; }
+            }
         }
 
         private void Update() => Tick(Time.deltaTime);
@@ -78,6 +90,15 @@ namespace VRSurgery.Feedback
             State = Resolve();
             SetTargets(State);
 
+            // The heart in the chest sets the pace when it can be seen: the trace, the number and
+            // the beep follow the organ the visitor is looking at, beat for beat.
+            Heartbeat visible = VisibleHeart();
+            if (visible != null && State != VitalsState.Bleeding)
+            {
+                HeartRate = Mathf.RoundToInt(visible.BeatsPerMinute);
+            }
+
+            float frameStart = _beatPhase;
             float beatsPerSecond = HeartRate / 60f;
             float step = sweepSeconds / samples;
             _sampleClock += deltaTime;
@@ -86,15 +107,7 @@ namespace VRSurgery.Feedback
             {
                 _sampleClock -= step;
 
-                float before = _beatPhase;
                 _beatPhase += beatsPerSecond * step;
-
-                if (State != VitalsState.OnBypass && before < 0.12f && _beatPhase >= 0.12f)
-                {
-                    // R wave: the beep lands on it, as on a real monitor.
-                    Beep();
-                }
-
                 if (_beatPhase >= 1f) { _beatPhase -= 1f; }
 
                 _ecgValues[_cursor] = State == VitalsState.OnBypass
@@ -108,6 +121,15 @@ namespace VRSurgery.Feedback
                 _cursor = (_cursor + 1) % samples;
             }
 
+            if (visible != null && State != VitalsState.OnBypass)
+            {
+                // Electrical just ahead of mechanical: the R wave leads the squeeze slightly.
+                _beatPhase = Mathf.Repeat(visible.Phase01 + 0.1f, 1f);
+            }
+
+            // R wave: the beep lands on it, as on a real monitor.
+            if (State != VitalsState.OnBypass && Crossed(frameStart, _beatPhase, 0.12f)) { Beep(); }
+
             Draw(ecg, _ecgValues, 0.5f);
             Draw(pleth, _plethValues, 0.8f);
 
@@ -118,6 +140,24 @@ namespace VRSurgery.Feedback
                 WriteNumbers();
             }
         }
+
+        /// <summary>The beating heart the visitor can actually see, if any: the new one first.</summary>
+        private Heartbeat VisibleHeart()
+        {
+            if (donorHeart != null && donorHeart.IsBeating && donorHeart.isActiveAndEnabled) { return donorHeart; }
+            if (nativeHeart != null && nativeHeart.IsBeating && nativeHeart.isActiveAndEnabled) { return nativeHeart; }
+            return null;
+        }
+
+        /// <summary>True if going from <paramref name="from"/> to <paramref name="to"/> passed <paramref name="mark"/>, wrapping at 1.</summary>
+        private static bool Crossed(float from, float to, float mark)
+        {
+            if (Mathf.Approximately(from, to)) { return false; }
+            return to >= from ? from < mark && to >= mark : from < mark || to >= mark;
+        }
+
+        /// <summary>The patient's own heart, so the trace follows it until it is arrested.</summary>
+        public void BindNativeHeart(Heartbeat heart) => nativeHeart = heart;
 
         private VitalsState Resolve()
         {
