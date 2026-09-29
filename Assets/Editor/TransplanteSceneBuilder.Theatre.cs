@@ -2312,8 +2312,9 @@ namespace VRSurgery.EditorTools
         /// Brings the table to each visitor (recentring and short mode) and marks where to stand:
         /// two footprints on the floor, the way every stand-in-place VR game shows its spot.
         /// </summary>
-        private static void WireVisitorFit(GameObject systems, EventSessionController session)
+        private static VisitorFit WireVisitorFit(GameObject systems, EventSessionController session, out Transform headTransform)
         {
+            headTransform = null;
             Vector3 stance = Stance(_thorax);
             Vector3 toPatient = new Vector3(_thorax.x - stance.x, 0f, _thorax.z - stance.z).normalized;
             Quaternion facing = Quaternion.LookRotation(toPatient, Vector3.up);
@@ -2331,6 +2332,7 @@ namespace VRSurgery.EditorTools
                 fit = rig.GetComponent<VisitorFit>();
                 if (fit == null) { fit = rig.AddComponent<VisitorFit>(); }
                 fit.Bind(rig.transform, head.transform, point.transform, session);
+                headTransform = head.transform;
             }
             else
             {
@@ -2351,6 +2353,7 @@ namespace VRSurgery.EditorTools
 
             GameObject ring = MeshPart("AnelPosicao", point.transform, MakeRing(0.33f, 0.35f, 48), mark);
             ring.transform.localPosition = new Vector3(0f, 0.002f, 0f);
+            return fit;
         }
 
         /// <summary>A flat footprint facing +Y after the part's 90° tilt: sole and heel, toes forward (+Y in mesh space).</summary>

@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 20;
+        public const int BuildVersion = 21;
 
         private static Vector3 _thorax;
 
@@ -1319,7 +1319,11 @@ namespace VRSurgery.EditorTools
             // drawn as text), and Display 3 is a monitor beside it carrying the clock, the risk
             // colour and the scoreboard — the reading that a torso-shaped prop cannot show.
             // The table comes to the visitor: recentred at each briefing, lifted for short visitors.
-            WireVisitorFit(systems, session);
+            VisitorFit fit = WireVisitorFit(systems, session, out Transform headTransform);
+
+            // One anonymous line per visitor on the headset, for the research.
+            systems.AddComponent<ResearchLog>().Bind(session, procedure, incision, suture, _defibrillation, vessels,
+                fit, headTransform);
 
             BuildProjectionHUD(systems, session, leaderboard, vessels);
             WireUrgencyTint(systems);
