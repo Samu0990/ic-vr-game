@@ -165,6 +165,14 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
 - **Campos cirúrgicos são tecido simulado** (`DrapeCloth`, Unity Cloth): presos em volta da
   janela, cedem ~1,5 cm sob a mão ou um instrumento e balançam nas bordas que caem da mesa. Um
   vigia volta para o campo estático se a simulação sair do lugar. Desligar: `UseDrapeCloth`.
+- **O pano parece pano**: algodão de trama simples em duas escalas — de longe, rugas de pano
+  deitado sobre o corpo, um vinco de lavanderia em cada sentido e o tom desigual de tecido
+  lavado (`DrapeFolds`); de perto, os fios passando por cima e por baixo, torcidos, com
+  engrossamentos (`DrapeWeave`, camada de detalhe do URP/Lit, ~1,5 mm por fio). Nas laterais e
+  nos pés o pano **cai em pé** logo depois da borda da mesa (antes era uma rampa que virava uma
+  "prateleira" azul na altura do joelho do visitante), com dobras verticais que aprofundam
+  perto da barra e textura sem esticar na queda. Em volta da janela, um **painel absorvente**
+  de trama mais fechada e tom mais escuro, como nos campos fenestrados de verdade.
 - **Coisas não atravessam o paciente**: colisor na superfície dos campos e no fundo da cavidade;
   órgão ou instrumento solto para em cima deles. Instrumentos soltos voltam sozinhos para o
   lugar (`ReturnHomeOnRelease`). As mãos rastreadas continuam atravessando (não há mãos físicas).
@@ -331,8 +339,9 @@ conferir com o óculos:
   óculos a lâmina aparecer de cabeça para baixo, é só estética; se o corte recusar com o
   bisturi bem segurado, desligar `requireEdge` no `SkinIncisionWorker`. Os ~3 s até a ajuda
   adaptativa (`edgeHelpSeconds`) e os ~50° de tolerância são chutes a calibrar com visitantes.
-- **Custo no Quest ainda não medido** do que mais pesa: tecido simulado (~1,6 mil vértices por
-  quadro na CPU), pele da janela recalculada enquanto o bisturi encosta, fumaça, e o foco com
+- **Custo no Quest ainda não medido** do que mais pesa: tecido simulado (~1,7 mil vértices por
+  quadro na CPU; o pano ainda lê 3 texturas a mais por pixel com a camada de detalhe — se a GPU
+  apertar, tirar a linha `DressDetail` do "drapeBlue"), pele da janela recalculada enquanto o bisturi encosta, fumaça, e o foco com
   sombra suave. Se faltar quadro: `UseDrapeCloth = false` primeiro.
 - O `Cloth` não é documentado para colliders de trigger, por isso as esferas das mãos são
   sólidas e ignoram instrumentos e órgãos. Se algo for empurrado pela mão, é aí que olhar.

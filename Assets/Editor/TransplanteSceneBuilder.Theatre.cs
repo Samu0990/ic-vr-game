@@ -226,8 +226,12 @@ namespace VRSurgery.EditorTools
                     Dress(m, _steel, new Vector2(2f, 2f), 0.4f);
                     break;
                 case "drapeBlue":
-                    m.color = Color.white;
-                    Dress(m, _fabric, new Vector2(3f, 3f), 0.6f);
+                case "drapePanel":
+                    // Real cloth at two scales: pressed creases and wrinkles across the drape,
+                    // and the woven yarn itself as a detail layer, tiled fine (about a millimetre
+                    // and a half a thread). The absorbent panel is a denser weave.
+                    Dress(m, _drapeFolds, new Vector2(0.35f, 0.35f), 0.7f);
+                    DressDetail(m, _drapeWeave, key == "drapePanel" ? new Vector2(14f, 14f) : new Vector2(8f, 8f), 0.6f);
                     break;
                 case "floor":
                     m.color = Color.white;
@@ -1459,11 +1463,16 @@ namespace VRSurgery.EditorTools
             float wx = _window.HalfWidth, wz = _window.HalfLength;
             float tableX = 0f;
 
-            // 4 cm grid: coarse enough for cloth simulation on a Quest (about 1.6k vertices), fine
+            // 4 cm grid: coarse enough for cloth simulation on a Quest (about 1.7k vertices), fine
             // enough that the drape still reads as fabric over a body.
             float step = UseDrapeCloth ? 0.04f : 0.03f;
+            float footEdge = _bodyBounds.min.z - 0.05f;
             List<float> xs = Axis(-0.68f, 0.68f, step, cx - wx, cx + wx);
-            List<float> zs = Axis(_bodyBounds.min.z - 0.18f, _window.NeckZ, step, cz - wz, cz + wz);
+            List<float> zs = Axis(footEdge - 0.13f, _window.NeckZ, step, cz - wz, cz + wz);
+
+            // The foot end falls as far as the sides do. A hanging sheet is straight down its
+            // fall, so these rows can be twice as far apart as the ones that follow the body.
+            for (float extra = zs[0] - step * 2f; extra >= footEdge - 0.4f; extra -= step * 2f) { zs.Insert(0, extra); }
 
             int nx = xs.Count, nz = zs.Count;
             float[] h = new float[nx * nz];
@@ -1475,14 +1484,21 @@ namespace VRSurgery.EditorTools
                 {
                     float x = xs[i], z = zs[j];
                     float top = _surface != null ? _surface.Top(x, z, 2) : float.NegativeInfinity;
-                    bool overTable = Mathf.Abs(x - tableX) <= TableHalfWidth && z >= _bodyBounds.min.z - 0.05f;
+                    float side = Mathf.Max(0f, Mathf.Abs(x - tableX) - TableHalfWidth);
+                    float foot = Mathf.Max(0f, footEdge - z);
 
-                    float rest = overTable ? Mathf.Max(TableTopY, top) : TableTopY;
-                    float over = Mathf.Max(Mathf.Abs(x - tableX) - TableHalfWidth, (_bodyBounds.min.z - 0.05f) - z, 0f);
-                    float height = over > 0f ? Mathf.Max(0.45f, TableTopY - over * 3.2f) : rest;
-
-                    h[j * nx + i] = height + 0.016f;
-                    floorOf[j * nx + i] = overTable && !float.IsNegativeInfinity(top) ? top + 0.01f : float.NegativeInfinity;
+                    if (side <= 0f && foot <= 0f)
+                    {
+                        // On the table: over the body where there is body, and never through the tabletop.
+                        h[j * nx + i] = Mathf.Max(TableTopY, top) + 0.016f;
+                        floorOf[j * nx + i] = Mathf.Max(TableTopY + 0.006f, float.IsNegativeInfinity(top) ? float.NegativeInfinity : top + 0.01f);
+                    }
+                    else
+                    {
+                        // Past the edge the cloth falls: the grid distance past the edge is the fall.
+                        h[j * nx + i] = TableTopY + 0.016f - HangFall(side, foot);
+                        floorOf[j * nx + i] = float.NegativeInfinity;
+                    }
                 }
             }
 
@@ -1513,12 +1529,22 @@ namespace VRSurgery.EditorTools
             {
                 for (int i = 0; i < nx; i++)
                 {
-                    vertices.Add(new Vector3(xs[i], h[j * nx + i], zs[j]));
-                    uvs.Add(new Vector2(xs[i] * 3f, zs[j] * 3f));
+                    Vector3 position = new Vector3(xs[i], h[j * nx + i], zs[j]);
+                    Vector2 uv = new Vector2(xs[i] * 3f, zs[j] * 3f);
+                    float side = Mathf.Max(0f, Mathf.Abs(xs[i] - tableX) - TableHalfWidth);
+                    float foot = Mathf.Max(0f, footEdge - zs[j]);
+                    if (side > 0f || foot > 0f) { Hang(tableX, footEdge, side, foot, ref position, ref uv); }
+
+                    vertices.Add(position);
+                    uvs.Add(uv);
                 }
             }
 
+            // Two pieces of cloth: the drape, and the thicker absorbent panel sewn round the
+            // window, where a real fenestrated drape soaks up what runs off the wound.
+            const float panel = 0.1f;
             List<int> triangles = new List<int>();
+            List<int> reinforced = new List<int>();
             for (int j = 0; j < nz - 1; j++)
             {
                 for (int i = 0; i < nx - 1; i++)
@@ -1526,22 +1552,34 @@ namespace VRSurgery.EditorTools
                     float mx = (xs[i] + xs[i + 1]) * 0.5f, mz = (zs[j] + zs[j + 1]) * 0.5f;
                     if (Mathf.Abs(mx - cx) < wx && Mathf.Abs(mz - cz) < wz) { continue; }
 
+                    // The corners are where the side sheets and the foot sheet overlap, each
+                    // hanging in its own plane; filling the square between them would fold the
+                    // cloth through itself.
+                    if (Mathf.Abs(mx - tableX) - TableHalfWidth > 0.001f && footEdge - mz > 0.001f) { continue; }
+
+                    bool onPanel = Mathf.Abs(mx - cx) < wx + panel && Mathf.Abs(mz - cz) < wz + panel;
+                    List<int> into = onPanel ? reinforced : triangles;
                     int a = j * nx + i, b = a + 1, c = a + nx, d = c + 1;
-                    triangles.Add(a); triangles.Add(c); triangles.Add(b);
-                    triangles.Add(b); triangles.Add(c); triangles.Add(d);
+                    into.Add(a); into.Add(c); into.Add(b);
+                    into.Add(b); into.Add(c); into.Add(d);
                 }
             }
 
-            Mesh mesh = new Mesh { name = "Drapes" };
+            Mesh mesh = new Mesh { name = "Drapes", subMeshCount = 2 };
             mesh.SetVertices(vertices);
             mesh.SetUVs(0, uvs);
             mesh.SetTriangles(triangles, 0);
+            mesh.SetTriangles(reinforced, 1);
             mesh.RecalculateNormals();
             mesh.RecalculateBounds();
 
             Material cloth = DoubleSided(Paint("drapeBlue", new Color(0.16f, 0.38f, 0.58f), 0f, 0.12f));
+            Material absorbent = DoubleSided(Paint("drapePanel", new Color(0.12f, 0.3f, 0.47f), 0f, 0.06f));
+            Material[] drapeMaterials = { cloth, absorbent };
             GameObject drape = MeshPart("CampoEstatico", root.transform, mesh, cloth, true);
-            drape.GetComponent<MeshRenderer>().receiveShadows = true;
+            MeshRenderer drapeRenderer = drape.GetComponent<MeshRenderer>();
+            drapeRenderer.sharedMaterials = drapeMaterials;
+            drapeRenderer.receiveShadows = true;
 
             // Solid underneath: a released heart or instrument comes to rest on the drapes instead
             // of falling through the patient onto the floor. A collider of its own, on the draped
@@ -1550,7 +1588,7 @@ namespace VRSurgery.EditorTools
             solid.transform.SetParent(root.transform, false);
             solid.AddComponent<MeshCollider>().sharedMesh = mesh;
 
-            if (UseDrapeCloth) { MakeDrapeCloth(root.transform, mesh, drape.GetComponent<MeshRenderer>(), cloth, xs, zs); }
+            if (UseDrapeCloth) { MakeDrapeCloth(root.transform, mesh, drapeRenderer, drapeMaterials, xs, zs); }
 
             // Iodine-coloured adhesive film framing the window, where drape meets skin.
             Material film = Paint("ioban", new Color(0.62f, 0.38f, 0.2f), 0f, 0.7f);
@@ -1586,6 +1624,41 @@ namespace VRSurgery.EditorTools
             Debug.Log($"[Transplante] campos: {vertices.Count} vértices, janela {wx * 200f:F0}x{wz * 200f:F0} cm");
         }
 
+        /// <summary>Fall of the cloth below the table edge for a grid point this far past it.</summary>
+        private static float HangFall(float side, float foot) => Mathf.Max(side, foot) * 1.15f;
+
+        /// <summary>
+        /// Where a drape point past the table edge hangs. The grid is laid flat, so the distance
+        /// past the edge is turned into distance down: the sheet falls just off the edge,
+        /// flaring out a little, and sways into the soft vertical folds of heavy cotton, deeper
+        /// toward the hem. The texture follows the cloth down the fall rather than being
+        /// stretched over it, so the weave is the same size hanging as lying.
+        /// </summary>
+        private static void Hang(float tableX, float footEdge, float side, float foot, ref Vector3 position, ref Vector2 uv)
+        {
+            float fall = HangFall(side, foot);
+            float flare = 0.012f + 0.07f * fall;
+            float depth = 0.028f * Mathf.SmoothStep(0f, 1f, fall / 0.25f);
+
+            if (side >= foot)
+            {
+                float sign = position.x >= tableX ? 1f : -1f;
+                float wave = FoldWave(position.z + (sign > 0f ? 0f : 0.13f));
+                position.x = tableX + sign * (TableHalfWidth + flare + depth * wave);
+                uv.x = (tableX + sign * (TableHalfWidth + fall)) * 3f;
+            }
+            else
+            {
+                float wave = FoldWave(position.x + 0.37f);
+                position.z = footEdge - flare - depth * wave;
+                uv.y = (footEdge - fall) * 3f;
+            }
+        }
+
+        /// <summary>Two overlapping swells, so the folds are uneven the way real ones are.</summary>
+        private static float FoldWave(float t) =>
+            0.6f * Mathf.Sin(t * Mathf.PI * 2f / 0.21f + 0.7f) + 0.4f * Mathf.Sin(t * Mathf.PI * 2f / 0.37f + 2.1f);
+
         /// <summary>
         /// Simulated drapes. Switch off here if a Quest build cannot afford the cloth solver; the
         /// static drape and its collider stay either way.
@@ -1602,7 +1675,7 @@ namespace VRSurgery.EditorTools
         /// film holds it to the skin round the window, a centimetre and a half of give where it
         /// rests on the body, and free to swing where it hangs off the table.
         /// </summary>
-        private static void MakeDrapeCloth(Transform parent, Mesh mesh, MeshRenderer staticDrape, Material material,
+        private static void MakeDrapeCloth(Transform parent, Mesh mesh, MeshRenderer staticDrape, Material[] materials,
             List<float> xs, List<float> zs)
         {
             GameObject go = new GameObject("Campo");
@@ -1610,7 +1683,7 @@ namespace VRSurgery.EditorTools
 
             SkinnedMeshRenderer skinned = go.AddComponent<SkinnedMeshRenderer>();
             skinned.sharedMesh = mesh;
-            skinned.sharedMaterial = material;
+            skinned.sharedMaterials = materials;
             skinned.receiveShadows = true;
             skinned.updateWhenOffscreen = false;
 
@@ -1639,12 +1712,13 @@ namespace VRSurgery.EditorTools
                 float oz = Mathf.Max(0f, Mathf.Abs(v.z - cz) - wz);
                 float fromWindow = Mathf.Sqrt(ox * ox + oz * oz);
 
-                float overhang = Mathf.Max(Mathf.Abs(v.x) - TableHalfWidth, (_bodyBounds.min.z - 0.05f) - v.z, 0f);
+                // How far below the tabletop: everything on the table sits above it.
+                float fall = Mathf.Max(0f, TableTopY - v.y);
 
                 float limit;
                 if (fromWindow < 0.03f) { limit = 0f; }
-                else if (overhang <= 0f) { limit = 0.015f; }
-                else { limit = Mathf.Min(0.12f, 0.02f + overhang * 0.35f); }
+                else if (fall <= 0f) { limit = 0.015f; }
+                else { limit = Mathf.Min(0.12f, 0.02f + fall * 0.35f); }
 
                 limits[i].maxDistance = limit;
                 limits[i].collisionSphereDistance = 0f;
