@@ -28,6 +28,7 @@ namespace VRSurgery.Feedback
         [Header("Sources")]
         [SerializeField] private SkinIncisionWorker incision;
         [SerializeField] private DefibrillationWorker defibrillation;
+        [SerializeField] private SutureWorker suture;
 
         [Tooltip("Where the card appears when a source is graded: above the middle of the chest.")]
         [SerializeField] private Transform anchor;
@@ -49,6 +50,7 @@ namespace VRSurgery.Feedback
         private Camera _camera;
         private SkinIncisionWorker _subscribed;
         private DefibrillationWorker _subscribedDefib;
+        private SutureWorker _subscribedSuture;
 
         public bool IsShowing => _elapsed < showSeconds;
         public string ShownTitle { get; private set; } = string.Empty;
@@ -80,6 +82,12 @@ namespace VRSurgery.Feedback
                 _subscribedDefib = defibrillation;
                 _subscribedDefib.Converted += HandleConverted;
             }
+
+            if (suture != null && _subscribedSuture == null)
+            {
+                _subscribedSuture = suture;
+                _subscribedSuture.Graded += HandleSutureGraded;
+            }
         }
 
         private void Unsubscribe()
@@ -95,6 +103,18 @@ namespace VRSurgery.Feedback
                 _subscribedDefib.Converted -= HandleConverted;
                 _subscribedDefib = null;
             }
+
+            if (_subscribedSuture != null)
+            {
+                _subscribedSuture.Graded -= HandleSutureGraded;
+                _subscribedSuture = null;
+            }
+        }
+
+        private void HandleSutureGraded(SutureGrade grade)
+        {
+            Vector3 at = anchor != null ? anchor.position : transform.position;
+            Show(grade.Title, grade.Detail, grade.Stars, at);
         }
 
         /// <summary>No stars for a shock: whether it converts is the heart's doing, not the visitor's.</summary>
@@ -199,6 +219,15 @@ namespace VRSurgery.Feedback
         {
             GameObject target = body != null ? body.gameObject : null;
             if (target != null && target.activeSelf != visible) { target.SetActive(visible); }
+        }
+
+        /// <summary>Adds the skin closure: a graded card when the last stitch is tied.</summary>
+        public void BindSuture(SutureWorker worker)
+        {
+            bool live = Application.isPlaying && isActiveAndEnabled;
+            if (live) { Unsubscribe(); }
+            suture = worker;
+            if (live) { Subscribe(); }
         }
 
         /// <summary>Adds the defibrillation: a card when the new heart is back in rhythm.</summary>

@@ -3136,6 +3136,17 @@ namespace VRSurgery.EditorTools
 
             suture.Bind(needle, needleHolder, patch, procedure, stitches, marks, knots);
 
+            // The thread from the bite in to the needle while a stitch is being made.
+            GameObject threadObject = new GameObject("FioSutura");
+            threadObject.transform.SetParent(field.transform, false);
+            LineRenderer threadLine = threadObject.AddComponent<LineRenderer>();
+            threadLine.widthMultiplier = 0.0012f;
+            threadLine.numCapVertices = 2;
+            threadLine.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            threadLine.sharedMaterial = MakeUnlit(new Color(0.08f, 0.1f, 0.3f, 1f));
+            suture.BindThread(threadLine);
+            popup.BindSuture(suture);
+
             // The chest closes itself once the heart beats, then waits for the stitches.
             systems.AddComponent<ChestClosure>().Bind(procedure, sternotomy, patch);
             procedure.SetSkinStages(true);

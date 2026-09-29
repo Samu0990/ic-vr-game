@@ -6,6 +6,53 @@ using VRSurgery.Interaction;
 
 namespace VRSurgery.Transplant
 {
+    /// <summary>How the skin closure went, for the result card: on target, clean, and not slow.</summary>
+    [Serializable]
+    public struct SutureGrade
+    {
+        public int Score;
+        public int Stars;
+        public int Stitches;
+        public float AccuracyMm;
+        public int Misses;
+        public float Seconds;
+
+        public string Title => Stars >= 3 ? "SUTURA PERFEITA" : Stars == 2 ? "BOA SUTURA" : "SUTURA IRREGULAR";
+
+        public string Detail
+        {
+            get
+            {
+                string text = $"{Stitches} pontos · {AccuracyMm:F0} mm do alvo · {Seconds:F0} s";
+                if (Misses > 0) { text += $" · {Misses} furo{(Misses == 1 ? "" : "s")} fora"; }
+                return text;
+            }
+        }
+
+        /// <summary>
+        /// Bites placed where they were marked, no needle pushed through skin anywhere else, and a
+        /// pace that would not keep a patient on the table: what a preceptor looks at in a closure.
+        /// </summary>
+        public static SutureGrade From(int stitches, float accuracyMm, int misses, float seconds)
+        {
+            float score = 100f;
+            score -= Mathf.Clamp((accuracyMm - 3f) * 4f, 0f, 30f);
+            score -= Mathf.Min(30f, 10f * misses);
+            score -= Mathf.Clamp(seconds - 30f, 0f, 25f);
+
+            int rounded = Mathf.Clamp(Mathf.RoundToInt(score), 0, 100);
+            return new SutureGrade
+            {
+                Score = rounded,
+                Stars = rounded >= 85 ? 3 : rounded >= 60 ? 2 : 1,
+                Stitches = stitches,
+                AccuracyMm = accuracyMm,
+                Misses = misses,
+                Seconds = seconds,
+            };
+        }
+    }
+
     /// <summary>
     /// Closing the skin with interrupted stitches: for each stitch the needle goes in on one
     /// side of the incision and comes out on the other, and a knotted loop is left behind.
@@ -50,6 +97,9 @@ namespace VRSurgery.Transplant
         [Tooltip("One tied stitch per stitch, hidden until it is made.")]
         [SerializeField] private List<GameObject> knots = new List<GameObject>();
 
+        [Tooltip("The thread running from the last bite to the needle while a stitch is being made.")]
+        [SerializeField] private LineRenderer thread;
+
         [SerializeField] private Color markColor = new Color(0.2f, 0.55f, 1f, 0.95f);
         [SerializeField, Min(0.1f)] private float pulseHz = 1.8f;
 
@@ -57,6 +107,13 @@ namespace VRSurgery.Transplant
         private int _phase;
         private float _held;
         private float _clock;
+
+        private float _started = -1f;
+        private float _accuracySum;
+        private int _passes;
+        private int _misses;
+        private bool _poking;
+        private readonly Vector3[] _threadPoints = new Vector3[8];
 
         public bool IsWorking { get; private set; }
         public bool IsComplete { get; private set; }
@@ -78,6 +135,15 @@ namespace VRSurgery.Transplant
         public event Action<int> Tied;
 
         public event Action Completed;
+
+        /// <summary>Raised once, as the last stitch is tied, with how the closure went.</summary>
+        public event Action<SutureGrade> Graded;
+
+        /// <summary>The finished closure's grade. Only meaningful once <see cref="IsComplete"/>.</summary>
+        public SutureGrade Grade { get; private set; }
+
+        /// <summary>Times the needle went through skin away from the mark being aimed at.</summary>
+        public int Misses => _misses;
 
         private void Update() => Tick(Time.deltaTime);
 
@@ -110,15 +176,27 @@ namespace VRSurgery.Transplant
                           patch.IsClosed;
 
             UpdateMarks(active);
+            UpdateThread(active);
 
             if (!active || deltaTime <= 0f || needleTip == null) { return; }
-            if (needleHolder != null && !needleHolder.IsHeld) { _held = 0f; return; }
+            if (needleHolder != null && !needleHolder.IsHeld) { _held = 0f; _poking = false; return; }
 
-            if (Vector3.Distance(needleTip.position, CurrentTarget()) > radius)
+            float distance = Vector3.Distance(needleTip.position, CurrentTarget());
+            bool inSkin = patch.SurfaceHeightUnder(needleTip.position) - needleTip.position.y > 0.001f;
+
+            if (distance > radius)
             {
+                // A needle pushed into the skin somewhere other than the entry mark is a hole
+                // where none was wanted. Only while looking for the entry: between the bite in
+                // and the bite out the needle is meant to be under the skin. And only a fresh
+                // push: the needle still in the skin from the last bite has to come out first.
+                if (_phase == 0 && inSkin && !_poking && NearWound(needleTip.position)) { _misses++; }
+                _poking = inSkin;
                 _held = Mathf.Max(0f, _held - deltaTime);
                 return;
             }
+
+            if (_started < 0f) { _started = _clock; }
 
             IsWorking = true;
             _held += deltaTime;
@@ -131,6 +209,9 @@ namespace VRSurgery.Transplant
             if (_held < holdSeconds) { return; }
 
             _held = 0f;
+            _accuracySum += distance;
+            _passes++;
+            _poking = true;
             NeedlePassed?.Invoke();
 
             if (_phase == 0)
@@ -151,7 +232,12 @@ namespace VRSurgery.Transplant
             {
                 IsComplete = true;
                 UpdateMarks(false);
+                UpdateThread(false);
+                Grade = SutureGrade.From(stitches, _passes > 0 ? _accuracySum / _passes * 1000f : 0f, _misses,
+                    _started < 0f ? 0f : _clock - _started);
+                Debug.Log($"[Transplante] sutura: {Grade.Title} ({Grade.Score}/100) — {Grade.Detail}");
                 Completed?.Invoke();
+                Graded?.Invoke(Grade);
                 if (procedure != null) { procedure.CompleteStage(TransplantStage.CloseSkin); }
             }
         }
@@ -181,11 +267,50 @@ namespace VRSurgery.Transplant
             }
         }
 
+        /// <summary>On the skin around the incision, where a stray needle would leave a mark that matters.</summary>
+        private bool NearWound(Vector3 point)
+        {
+            float along = patch.AlongIncision(patch.LongitudinalOf(point));
+            return Mathf.Abs(patch.LateralOf(point)) < 0.05f && along > -0.15f && along < 1.15f;
+        }
+
+        /// <summary>
+        /// Between the bite in and the bite out, the thread runs from where the needle went in to
+        /// the needle, sagging a little: the stitch being made is visibly one piece of thread.
+        /// </summary>
+        private void UpdateThread(bool active)
+        {
+            if (thread == null) { return; }
+
+            bool show = active && _phase == 1 && needleTip != null;
+            if (thread.enabled != show) { thread.enabled = show; }
+            if (!show) { return; }
+
+            Vector3 from = MarkPosition(Mathf.Min(_stitch, stitches - 1), 0);
+            Vector3 to = needleTip.position;
+            float sag = Mathf.Min(0.02f, Vector3.Distance(from, to) * 0.25f);
+            for (int i = 0; i < _threadPoints.Length; i++)
+            {
+                float t = i / (float)(_threadPoints.Length - 1);
+                _threadPoints[i] = Vector3.Lerp(from, to, t) + Vector3.down * (sag * 4f * t * (1f - t));
+            }
+
+            if (thread.positionCount != _threadPoints.Length) { thread.positionCount = _threadPoints.Length; }
+            thread.SetPositions(_threadPoints);
+        }
+
         public void ResetSuture()
         {
             _stitch = 0;
             _phase = 0;
             _held = 0f;
+            _started = -1f;
+            _accuracySum = 0f;
+            _passes = 0;
+            _misses = 0;
+            _poking = false;
+            Grade = default;
+            if (thread != null) { thread.enabled = false; }
             IsComplete = false;
             IsWorking = false;
 
@@ -212,5 +337,16 @@ namespace VRSurgery.Transplant
 
         /// <summary>Distance of the marks from the incision. The builder places marks and knots from it.</summary>
         public float BiteDistance => bite;
+
+        /// <summary>The thread shown while a stitch is being made. Optional.</summary>
+        public void BindThread(LineRenderer line)
+        {
+            thread = line;
+            if (thread != null)
+            {
+                thread.useWorldSpace = true;
+                thread.enabled = false;
+            }
+        }
     }
 }

@@ -97,7 +97,7 @@ a fibrilação.
 | CEC | Mão no ponto por alguns segundos | Anel âmbar pulsando **só no próximo passo** da bomba. Cada passo **aparece no tórax**: cânula na aorta e nas duas cavas (Y até a linha venosa) ao canular, **clampe aórtico** enquanto a aorta está clampeada, linha de cardioplegia/vent na raiz da aorta |
 | Desfibrilação | Ao retirar o clampe, o coração novo **fibrila** (acontece de 10% a 80% das vezes na vida real; aqui, sempre, para ensinar). Pegar as **pás internas** sobre o campo e segurar o coração entre as colheres ~1 s: carrega e dispara. 1º choque 10 J (reverte ~60%), 2º 20 J (sempre reverte, para a rodada não depender de sorte). A bomba **recusa desarejar/sair** com o coração fibrilando | Coração tremendo; monitor com traçado de FV, "FC FV", alarme; anel vermelho "CARREGANDO 10 J", zumbido de carga, pancada e espículo no ECG a cada choque; cartão "CORAÇÃO BATENDO!" ao reverter |
 | Vasos | Mão firme no anel por 1,4 s; mão trêmula faz sangrar, pressão estanca | Anéis vermelho/azul (só nesta etapa); vermelho pulsante enquanto sangra |
-| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; a pele afunda sob a agulha; cada nó fica na pele e fecha a abertura do corte no seu trecho. Ao fechar, **fios de aço** aparecem no esterno enquanto o osso se junta e **dois drenos mediastinais** saem abaixo da ferida até o frasco de drenagem na grade da mesa |
+| Sutura | **Porta-agulha**: ponta da agulha no ponto azul de entrada, depois no de saída; 5 pontos | Pontos azuis do ponto atual; a pele afunda sob a agulha; cada nó fica na pele e fecha a abertura do corte no seu trecho; entre a entrada e a saída o **fio** aparece indo do ponto de entrada até a agulha. No último nó, **cartão com estrelas** da sutura (mm do alvo, furos fora do ponto, tempo); passar a agulha por baixo da pele da entrada até a saída não conta como furo. Ao fechar, **fios de aço** aparecem no esterno enquanto o osso se junta e **dois drenos mediastinais** saem abaixo da ferida até o frasco de drenagem na grade da mesa |
 | Fim | — | **Curativo** (filme e compressa com uma mancha) sobre a sutura enquanto o placar é mostrado |
 
 Com o tórax aberto, uma poça de sangue fica no fundo da cavidade e **sobe enquanto um vaso
@@ -246,7 +246,7 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
   -projectPath . -runTests -testPlatform PlayMode -testResults /tmp/res.xml
 ```
 
-**121 testes passando na última execução registrada neste README**, antes dos testes do PR do orientador (`AnastomosisTests`, `NameEntryTests`, `VesselAnastomosisVisualTests`) e dos 40 de `SkinStagesTests` (incisão, técnica do bisturi, nota, sutura, pele, etapas novas, correções do PR). Esses ainda precisam ser rodados no Editor. O que os testes cobrem e por quê:
+**121 testes passando na última execução registrada neste README**, antes dos testes do PR do orientador (`AnastomosisTests`, `NameEntryTests`, `VesselAnastomosisVisualTests`) e dos 43 de `SkinStagesTests` (incisão, técnica do bisturi, nota, sutura, pele, etapas novas, correções do PR). Esses ainda precisam ser rodados no Editor. O que os testes cobrem e por quê:
 
 - **A volta do estande**: a rodada começa no primeiro corte, o transplante concluído vence a
   rodada, e o visitante seguinte recebe tórax fechado e coração doente de volta. Essas regras

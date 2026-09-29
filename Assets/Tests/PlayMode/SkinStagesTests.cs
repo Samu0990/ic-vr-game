@@ -792,6 +792,65 @@ namespace VRSurgery.Tests
         }
 
         [Test]
+        public void AClosureOnTheMarksIsGradedPerfect()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            SutureWorker worker = Suture(patch, out Transform needle, out _);
+
+            SutureGrade? graded = null;
+            worker.Graded += g => graded = g;
+
+            for (int k = 0; k < 5; k++)
+            {
+                Hold(worker, needle, worker.MarkPosition(k, 0), 0.5f);
+                Hold(worker, needle, worker.MarkPosition(k, 1), 0.5f);
+            }
+
+            Assert.IsTrue(graded.HasValue, "Tying the last stitch grades the closure.");
+            Assert.AreEqual(0, graded.Value.Misses);
+            Assert.AreEqual(3, graded.Value.Stars);
+        }
+
+        [Test]
+        public void ANeedlePushedThroughSkinAwayFromTheMarkIsAHole()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            SutureWorker worker = Suture(patch, out Transform needle, out _);
+
+            Hold(worker, needle, patch.IncisionPoint(0.4f, 0.03f, -0.004f), 0.2f);
+            Assert.AreEqual(1, worker.Misses, "Three centimetres from the mark, into the skin: one stray hole,");
+
+            Hold(worker, needle, patch.IncisionPoint(0.4f, 0.03f, -0.006f), 0.2f);
+            Assert.AreEqual(1, worker.Misses, "not one per frame while it stays in;");
+
+            Hold(worker, needle, patch.IncisionPoint(0.4f, 0.03f, 0.02f), 0.1f);
+            Hold(worker, needle, patch.IncisionPoint(0.3f, 0.03f, -0.004f), 0.2f);
+            Assert.AreEqual(2, worker.Misses, "out and in again is another.");
+        }
+
+        [Test]
+        public void TheNeedleRunningUnderTheSkinFromEntryToExitIsTheStitch()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            SutureWorker worker = Suture(patch, out Transform needle, out _);
+
+            Hold(worker, needle, worker.MarkPosition(0, 0), 0.5f);
+
+            // Under the skin across the wound to the exit mark, the way a curved needle goes.
+            Vector3 entry = worker.MarkPosition(0, 0), exit = worker.MarkPosition(0, 1);
+            for (int i = 0; i <= 20; i++)
+            {
+                needle.position = Vector3.Lerp(entry, exit, i / 20f) + Vector3.down * 0.006f;
+                worker.Tick(Step);
+            }
+
+            Hold(worker, needle, exit, 0.5f);
+
+            Assert.AreEqual(1, worker.StitchesTied);
+            Assert.AreEqual(0, worker.Misses, "That is the stitch, not a stray hole.");
+        }
+
+        [Test]
         public void EachStitchIsInOnOneSideAndOutOnTheOther()
         {
             ChestSkinPatch patch = FlatPatch(out _);
