@@ -68,6 +68,12 @@ namespace VRSurgery.Transplant
         /// <summary>0 until started, 1 when joined. What the audience's readout should follow.</summary>
         public float Progress01 { get; private set; }
 
+        /// <summary>
+        /// How fast holding counts, 1 normally. Raised by the pace assist for a visitor running
+        /// out of time, so they still sew every vessel themselves, just quicker.
+        /// </summary>
+        public float SpeedMultiplier { get; set; } = 1f;
+
         public bool IsJoined { get; private set; }
 
         /// <summary>True while a badly-held join is leaking and waiting for pressure.</summary>
@@ -130,7 +136,7 @@ namespace VRSurgery.Transplant
                 _unstableHeld += deltaTime;
             }
 
-            _held += deltaTime;
+            _held += deltaTime * Mathf.Max(0.1f, SpeedMultiplier);
             Progress01 = Mathf.Clamp01(_held / secondsToJoin);
 
             if (_held >= secondsToJoin)
@@ -158,7 +164,7 @@ namespace VRSurgery.Transplant
                 return;
             }
 
-            _pressureHeld += deltaTime;
+            _pressureHeld += deltaTime * Mathf.Max(0.1f, SpeedMultiplier);
             BleedingControl01 = Mathf.Clamp01(_pressureHeld / secondsToControlBleeding);
 
             if (_pressureHeld >= secondsToControlBleeding)

@@ -76,6 +76,9 @@ namespace VRSurgery.Transplant
         /// <summary>Every site this worker can drive, in build order. Read by the markers and the progress ring.</summary>
         public IReadOnlyList<BypassSite> Sites => sites;
 
+        /// <summary>How fast holding counts, 1 normally. Raised by the pace assist.</summary>
+        public float SpeedMultiplier { get; set; } = 1f;
+
         public event Action<BypassStep> StepPerformed;
         public event Action<string> StepRefused;
 
@@ -150,7 +153,7 @@ namespace VRSurgery.Transplant
                 }
             }
 
-            best.Held += deltaTime;
+            best.Held += deltaTime * Mathf.Max(0.1f, SpeedMultiplier);
             if (best.Held < best.Seconds) { return; }
 
             // A gesture may carry several steps on the easier levels. They still go through

@@ -107,6 +107,18 @@ O **coração nativo bate** fraco e irregular (fibrilação atrial) até a cardi
 volta a bater ao sair de bomba. Os dois monitores (anestesia e a **tela grande de batimentos
 na parede**) seguem o coração visível: FC, ECG e bipe batem junto com o órgão.
 
+### Ajuda adaptativa (nível único)
+
+Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem precisa:
+
+- **Ritmo** (`PaceAssist`): cada etapa tem um orçamento de tempo (escalado para caber em 85% da
+  rodada). Quem passa **15 s** atrás do orçamento tem os gestos de segurar (CEC e vasos)
+  contando **1,6×** mais rápido; **35 s** atrás, **2,5×**. O visitante continua fazendo tudo,
+  é avisado no monitor, e cada ajuda vai para o registro da pesquisa. Não diminui durante a vez;
+  zera para o próximo visitante.
+- **Lâmina**: depois de ~3 s tentando cortar com a lâmina errada, a regra do fio cai.
+- **Seta** sobre o instrumento da etapa e **brilho** ao aproximar a mão.
+
 ### Mecânica estilo Job Simulator (ninguém anda no estande)
 
 - **Tudo ao alcance de um ponto só**: instrumentos a no máximo ~0,6 m dos ombros de quem está

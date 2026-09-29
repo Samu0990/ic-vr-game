@@ -121,7 +121,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 21;
+        public const int BuildVersion = 22;
 
         private static Vector3 _thorax;
 
@@ -1322,8 +1322,11 @@ namespace VRSurgery.EditorTools
             VisitorFit fit = WireVisitorFit(systems, session, out Transform headTransform);
 
             // One anonymous line per visitor on the headset, for the research.
-            systems.AddComponent<ResearchLog>().Bind(session, procedure, incision, suture, _defibrillation, vessels,
-                fit, headTransform);
+            ResearchLog researchLog = systems.AddComponent<ResearchLog>();
+            researchLog.Bind(session, procedure, incision, suture, _defibrillation, vessels, fit, headTransform);
+
+            // Adaptive help: a visitor falling behind gets the hand-held steps counting faster.
+            systems.AddComponent<PaceAssist>().Bind(session, procedure, worker, vessels, researchLog);
 
             BuildProjectionHUD(systems, session, leaderboard, vessels);
             WireUrgencyTint(systems);
