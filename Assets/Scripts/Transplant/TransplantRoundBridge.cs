@@ -34,6 +34,7 @@ namespace VRSurgery.Transplant
         [SerializeField] private SkinIncisionWorker incision;
         [SerializeField] private ChestSkinPatch skinPatch;
         [SerializeField] private SutureWorker suture;
+        [SerializeField] private CauteryWorker cautery;
 
         [Header("Booth loop")]
         [Tooltip("How long the attract screen holds before the stand offers the next turn. Zero " +
@@ -145,6 +146,7 @@ namespace VRSurgery.Transplant
             if (incision != null) { incision.ResetIncision(); }
             if (skinPatch != null) { skinPatch.ResetClosed(); }
             if (suture != null) { suture.ResetSuture(); }
+            if (cautery != null) { cautery.ResetCautery(); }
 
             ReturnOrgansHome();
 
@@ -173,6 +175,9 @@ namespace VRSurgery.Transplant
 
             if (live) { Subscribe(); }
         }
+
+        /// <summary>The next visitor gets bleeders that are still bleeding.</summary>
+        public void BindCautery(CauteryWorker cauteryWorker) => cautery = cauteryWorker;
 
         private void CaptureOrganHomePoses()
         {

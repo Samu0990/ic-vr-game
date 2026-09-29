@@ -1041,8 +1041,11 @@ namespace VRSurgery.EditorTools
             float wx = _window.HalfWidth, wz = _window.HalfLength;
             float tableX = 0f;
 
-            List<float> xs = Axis(-0.68f, 0.68f, 0.03f, cx - wx, cx + wx);
-            List<float> zs = Axis(_bodyBounds.min.z - 0.18f, _window.NeckZ, 0.03f, cz - wz, cz + wz);
+            // 4 cm grid: coarse enough for cloth simulation on a Quest (about 1.6k vertices), fine
+            // enough that the drape still reads as fabric over a body.
+            float step = UseDrapeCloth ? 0.04f : 0.03f;
+            List<float> xs = Axis(-0.68f, 0.68f, step, cx - wx, cx + wx);
+            List<float> zs = Axis(_bodyBounds.min.z - 0.18f, _window.NeckZ, step, cz - wz, cz + wz);
 
             int nx = xs.Count, nz = zs.Count;
             float[] h = new float[nx * nz];
@@ -1119,8 +1122,17 @@ namespace VRSurgery.EditorTools
             mesh.RecalculateBounds();
 
             Material cloth = DoubleSided(Paint("drapeBlue", new Color(0.16f, 0.38f, 0.58f), 0f, 0.12f));
-            GameObject drape = MeshPart("Campo", root.transform, mesh, cloth, true);
+            GameObject drape = MeshPart("CampoEstatico", root.transform, mesh, cloth, true);
             drape.GetComponent<MeshRenderer>().receiveShadows = true;
+
+            // Solid underneath: a released heart or instrument comes to rest on the drapes instead
+            // of falling through the patient onto the floor. A collider of its own, on the draped
+            // rest shape, because Unity's cloth cannot carry a mesh collider.
+            GameObject solid = new GameObject("CampoColisor");
+            solid.transform.SetParent(root.transform, false);
+            solid.AddComponent<MeshCollider>().sharedMesh = mesh;
+
+            if (UseDrapeCloth) { MakeDrapeCloth(root.transform, mesh, drape.GetComponent<MeshRenderer>(), cloth, xs, zs); }
 
             // Iodine-coloured adhesive film framing the window, where drape meets skin.
             Material film = Paint("ioban", new Color(0.62f, 0.38f, 0.2f), 0f, 0.7f);
@@ -1154,6 +1166,134 @@ namespace VRSurgery.EditorTools
                 new Vector3(0.95f, 0.5f, 0.008f), cloth);
 
             Debug.Log($"[Transplante] campos: {vertices.Count} vértices, janela {wx * 200f:F0}x{wz * 200f:F0} cm");
+        }
+
+        /// <summary>
+        /// Simulated drapes. Switch off here if a Quest build cannot afford the cloth solver; the
+        /// static drape and its collider stay either way.
+        /// </summary>
+        private const bool UseDrapeCloth = true;
+
+        private static Cloth _drapeCloth;
+        private static Renderer _drapeStatic;
+        private static int[] _drapeWatch = new int[0];
+        private static Vector3[] _drapeWatchRest = new Vector3[0];
+
+        /// <summary>
+        /// Turns the drape into Unity cloth held near its draped shape: pinned where the adhesive
+        /// film holds it to the skin round the window, a centimetre and a half of give where it
+        /// rests on the body, and free to swing where it hangs off the table.
+        /// </summary>
+        private static void MakeDrapeCloth(Transform parent, Mesh mesh, MeshRenderer staticDrape, Material material,
+            List<float> xs, List<float> zs)
+        {
+            GameObject go = new GameObject("Campo");
+            go.transform.SetParent(parent, false);
+
+            SkinnedMeshRenderer skinned = go.AddComponent<SkinnedMeshRenderer>();
+            skinned.sharedMesh = mesh;
+            skinned.sharedMaterial = material;
+            skinned.receiveShadows = true;
+            skinned.updateWhenOffscreen = false;
+
+            Cloth cloth = go.AddComponent<Cloth>();
+            ClothSkinningCoefficient[] limits = cloth.coefficients;
+            Vector3[] vertices = mesh.vertices;
+
+            if (limits == null || limits.Length != vertices.Length)
+            {
+                Debug.LogWarning($"[Transplante] tecido não configurado ({(limits == null ? 0 : limits.Length)} coeficientes " +
+                                 $"para {vertices.Length} vértices); campos ficam estáticos.");
+                Object.DestroyImmediate(cloth);
+                Object.DestroyImmediate(go);
+                return;
+            }
+
+            float cx = _window.Center.x, cz = _window.Center.z;
+            float wx = _window.HalfWidth, wz = _window.HalfLength;
+
+            for (int i = 0; i < vertices.Length; i++)
+            {
+                Vector3 v = vertices[i];
+
+                // Distance outside the window rectangle, 0 on its edge.
+                float ox = Mathf.Max(0f, Mathf.Abs(v.x - cx) - wx);
+                float oz = Mathf.Max(0f, Mathf.Abs(v.z - cz) - wz);
+                float fromWindow = Mathf.Sqrt(ox * ox + oz * oz);
+
+                float overhang = Mathf.Max(Mathf.Abs(v.x) - TableHalfWidth, (_bodyBounds.min.z - 0.05f) - v.z, 0f);
+
+                float limit;
+                if (fromWindow < 0.03f) { limit = 0f; }
+                else if (overhang <= 0f) { limit = 0.015f; }
+                else { limit = Mathf.Min(0.12f, 0.02f + overhang * 0.35f); }
+
+                limits[i].maxDistance = limit;
+                limits[i].collisionSphereDistance = 0f;
+            }
+
+            cloth.coefficients = limits;
+            cloth.useGravity = true;
+            cloth.damping = 0.25f;
+            cloth.stretchingStiffness = 0.95f;
+            cloth.bendingStiffness = 0.5f;
+            cloth.friction = 0.6f;
+            cloth.worldVelocityScale = 0f;
+            cloth.worldAccelerationScale = 0f;
+            cloth.clothSolverFrequency = 60f;
+
+            // The static drape stays in the scene, off, as the fallback.
+            staticDrape.enabled = false;
+
+            // A spread of vertices for the watchdog to check against their rest positions.
+            List<int> watch = new List<int>();
+            for (int i = 0; i < vertices.Length; i += Mathf.Max(1, vertices.Length / 24)) { watch.Add(i); }
+            _drapeWatch = watch.ToArray();
+            _drapeWatchRest = new Vector3[_drapeWatch.Length];
+            for (int i = 0; i < _drapeWatch.Length; i++) { _drapeWatchRest[i] = vertices[_drapeWatch[i]]; }
+
+            _drapeCloth = cloth;
+            _drapeStatic = staticDrape;
+
+            Debug.Log($"[Transplante] campos simulados como tecido: {vertices.Length} vértices, grade {xs.Count}x{zs.Count}");
+        }
+
+        /// <summary>
+        /// Hands the cloth its colliders: a sphere on each fingertip and one on each instrument's
+        /// working end. Called once the instruments exist.
+        /// </summary>
+        private static void WireDrapeCloth(params Transform[] toolTips)
+        {
+            if (_drapeCloth == null) { return; }
+
+            List<SphereCollider> hands = new List<SphereCollider>();
+            foreach (Transform hand in FindHands())
+            {
+                GameObject touch = new GameObject("ToqueTecido");
+                touch.transform.SetParent(hand, false);
+                SphereCollider sphere = touch.AddComponent<SphereCollider>();
+                sphere.radius = 0.02f;
+
+                // Kinematic: moved by the hand, never pushed by anything.
+                Rigidbody body = touch.AddComponent<Rigidbody>();
+                body.isKinematic = true;
+                body.useGravity = false;
+                hands.Add(sphere);
+            }
+
+            List<SphereCollider> tips = new List<SphereCollider>();
+            foreach (Transform tip in toolTips)
+            {
+                if (tip == null) { continue; }
+                SphereCollider sphere = tip.gameObject.AddComponent<SphereCollider>();
+                sphere.radius = 0.006f;
+                tips.Add(sphere);
+            }
+
+            DrapeCloth driver = _drapeCloth.gameObject.AddComponent<DrapeCloth>();
+            driver.Bind(_drapeCloth, _drapeStatic, hands, tips, _drapeWatch, _drapeWatchRest);
+
+            Debug.Log($"[Transplante] tecido responde a {hands.Count} mão(s) e {tips.Count} instrumento(s)");
         }
 
         /// <summary>Evenly spaced coordinates that also land exactly on the given edges.</summary>
@@ -1333,6 +1473,15 @@ namespace VRSurgery.EditorTools
             _bloodPool = pool.AddComponent<CavityBloodPool>();
             _bloodPool.Bind(null, rx, rz, depth);
 
+            // A solid floor to the open chest: a heart set down in it rests there instead of
+            // dropping through the patient. Flat and low, so it never overlaps the heart already
+            // in its seat, which a collider on the curved walls would.
+            GameObject floor = new GameObject("FundoCavidade");
+            floor.transform.SetParent(cavity.transform, false);
+            floor.transform.localPosition = new Vector3(0f, -depth * 0.97f, 0f);
+            BoxCollider floorBox = floor.AddComponent<BoxCollider>();
+            floorBox.size = new Vector3(rx * 1.6f, 0.01f, rz * 1.6f);
+
             cavity.SetActive(false);
             return cavity;
         }
@@ -1452,6 +1601,172 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[Transplante] mesa de Mayo sobre o abdome, bandeja em {trayTop}");
             return stand.transform;
+        }
+
+        /// <summary>
+        /// The electrocautery pen in its holster on the drape beside the window, the bleeders on
+        /// the wound edges it seals, their scorch marks, and the smoke from its tip.
+        /// </summary>
+        private static CauteryWorker BuildCautery(GameObject systems, ChestSkinPatch patch,
+            out SurgicalInteractable pen, out Transform penTip)
+        {
+            // Holster on the drape, surgeon's side of the window, pen lying tip toward the feet.
+            float x = _window.Center.x + _window.HalfWidth + 0.06f;
+            float z = _window.Center.z - 0.02f;
+            float y = SkinTopAt(x, z) + 0.035f;
+            Quaternion lying = Quaternion.LookRotation(Vector3.back, Vector3.up);
+
+            GameObject tool = GrabbableTool("BisturiEletricoCaneta", "cautery-pen", "Bisturi elétrico", ToolType.Cautery,
+                ToolCapability.Cauterize, new Vector3(x, y, z), lying, new Vector3(0f, 0f, -0.02f),
+                new Vector3(0f, 0f, 0f), new Vector3(0.022f, 0.022f, 0.16f), out pen);
+            Transform t = tool.transform;
+
+            Material body = Paint("penBody", new Color(0.95f, 0.95f, 0.92f), 0f, 0.45f);
+            Material cutButton = Paint("penCut", new Color(0.95f, 0.8f, 0.1f), 0f, 0.4f);
+            Material coagButton = Paint("penCoag", new Color(0.2f, 0.45f, 0.9f), 0f, 0.4f);
+            Material steel = Paint("steelBright", new Color(0.82f, 0.84f, 0.86f), 0.95f, 0.8f);
+
+            Rod("Corpo", t, new Vector3(0f, 0f, -0.01f), 0.0055f, 0.13f, body, Quaternion.Euler(90f, 0f, 0f));
+            Box("BotaoCorte", t, new Vector3(0f, 0.006f, 0.01f), new Vector3(0.005f, 0.003f, 0.01f), cutButton);
+            Box("BotaoCoag", t, new Vector3(0f, 0.006f, -0.005f), new Vector3(0.005f, 0.003f, 0.01f), coagButton);
+            Box("Ponteira", t, new Vector3(0f, 0f, 0.064f), new Vector3(0.0012f, 0.003f, 0.018f), steel);
+
+            GameObject tip = new GameObject("PenTip");
+            tip.transform.SetParent(t, false);
+            tip.transform.localPosition = new Vector3(0f, 0f, 0.073f);
+            penTip = tip.transform;
+
+            // A short length of cable trailing from the back of the pen.
+            GameObject cable = MeshPart("Cabo", t, TubeMesh(new[]
+            {
+                t.TransformPoint(new Vector3(0f, 0f, -0.075f)),
+                t.TransformPoint(new Vector3(0.01f, -0.005f, -0.11f)),
+                t.TransformPoint(new Vector3(0.03f, -0.012f, -0.15f)),
+            }, 0.0022f, 6, 6), Paint("penCable", new Color(0.85f, 0.85f, 0.82f), 0f, 0.3f));
+            cable.transform.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
+            cable.transform.SetParent(null, true);
+            cable.transform.SetParent(t, true);
+
+            // The holster: a blue plastic sleeve on the drape the pen rests in.
+            Box("Coldre", null, new Vector3(x, y - 0.012f, z - 0.01f), new Vector3(0.03f, 0.012f, 0.14f),
+                Paint("holster", new Color(0.25f, 0.5f, 0.8f), 0f, 0.4f));
+
+            // Bleeders on the retracted wound edges, alternating sides, and a scorch for each.
+            GameObject field = GameObject.Find("CampoOperatorio");
+            Transform parent = field != null ? field.transform : null;
+            Material blood = Paint("bloodBead", new Color(0.45f, 0.02f, 0.03f), 0f, 0.95f);
+            Material char_ = Paint("scorch", new Color(0.18f, 0.09f, 0.05f), 0f, 0.2f);
+
+            List<Transform> bleeders = new List<Transform>();
+            List<GameObject> scorches = new List<GameObject>();
+            (float along, float side)[] spots = { (0.3f, -1f), (0.52f, 1f), (0.74f, -1f) };
+
+            foreach ((float along, float side) in spots)
+            {
+                // Where the edge sits once retracted: the patch's own retraction at that point.
+                float profile = Mathf.Pow(Mathf.Sin(along * Mathf.PI), 0.65f);
+                Vector3 at = patch.IncisionPoint(along, side * 0.055f * profile, -0.008f);
+
+                GameObject bleeder = Ball("Sangramento", parent, Vector3.zero, Vector3.one * 0.006f, blood);
+                bleeder.transform.position = at;
+                Ball("Jato", bleeder.transform, new Vector3(0f, -1.2f, 0f), new Vector3(0.5f, 2.2f, 0.5f), blood);
+                bleeder.SetActive(false);
+                bleeders.Add(bleeder.transform);
+
+                GameObject scorch = Ball("Cauterizado", parent, Vector3.zero, new Vector3(0.007f, 0.0015f, 0.007f), char_);
+                scorch.transform.position = at;
+                scorch.SetActive(false);
+                scorches.Add(scorch);
+            }
+
+            ParticleSystem smoke = BuildSmoke(parent);
+
+            CauteryWorker worker = systems.AddComponent<CauteryWorker>();
+            worker.Bind(penTip, pen, patch, bleeders, scorches, smoke);
+
+            Debug.Log($"[Transplante] bisturi elétrico no coldre em {tool.transform.position}, {bleeders.Count} sangramento(s) na borda da ferida");
+            return worker;
+        }
+
+        /// <summary>Soft grey smoke that rises and thins, fed by the cautery in puffs.</summary>
+        private static ParticleSystem BuildSmoke(Transform parent)
+        {
+            GameObject go = new GameObject("FumacaCauterio");
+            go.transform.SetParent(parent, false);
+            ParticleSystem ps = go.AddComponent<ParticleSystem>();
+            ps.Stop(true, ParticleSystemStopBehavior.StopEmittingAndClear);
+
+            ParticleSystem.MainModule main = ps.main;
+            main.playOnAwake = false;
+            main.loop = false;
+            main.duration = 1f;
+            main.startLifetime = new ParticleSystem.MinMaxCurve(0.8f, 1.6f);
+            main.startSpeed = new ParticleSystem.MinMaxCurve(0.015f, 0.05f);
+            main.startSize = new ParticleSystem.MinMaxCurve(0.008f, 0.02f);
+            main.startColor = new Color(0.86f, 0.86f, 0.84f, 0.4f);
+            main.gravityModifier = -0.03f;
+            main.simulationSpace = ParticleSystemSimulationSpace.World;
+            main.maxParticles = 80;
+
+            ParticleSystem.EmissionModule emission = ps.emission;
+            emission.rateOverTime = 0f;
+
+            ParticleSystem.ShapeModule shape = ps.shape;
+            shape.shapeType = ParticleSystemShapeType.Sphere;
+            shape.radius = 0.003f;
+
+            ParticleSystem.ColorOverLifetimeModule colour = ps.colorOverLifetime;
+            colour.enabled = true;
+            Gradient fade = new Gradient();
+            fade.SetKeys(
+                new[] { new GradientColorKey(Color.white, 0f), new GradientColorKey(new Color(0.8f, 0.8f, 0.8f), 1f) },
+                new[] { new GradientAlphaKey(0.5f, 0f), new GradientAlphaKey(0.3f, 0.4f), new GradientAlphaKey(0f, 1f) });
+            colour.color = fade;
+
+            ParticleSystem.SizeOverLifetimeModule size = ps.sizeOverLifetime;
+            size.enabled = true;
+            size.size = new ParticleSystem.MinMaxCurve(1f, AnimationCurve.Linear(0f, 0.6f, 1f, 2.2f));
+
+            ParticleSystem.NoiseModule noise = ps.noise;
+            noise.enabled = true;
+            noise.strength = 0.015f;
+            noise.frequency = 1.2f;
+
+            Material smokeMaterial = new Material(Shader.Find("Universal Render Pipeline/Particles/Unlit")) { name = "OR_Smoke" };
+            smokeMaterial.SetTexture("_BaseMap", SoftDot());
+            smokeMaterial.SetFloat("_Surface", 1f);
+            smokeMaterial.SetFloat("_Blend", 0f);
+            smokeMaterial.SetOverrideTag("RenderType", "Transparent");
+            smokeMaterial.SetInt("_SrcBlend", (int)UnityEngine.Rendering.BlendMode.SrcAlpha);
+            smokeMaterial.SetInt("_DstBlend", (int)UnityEngine.Rendering.BlendMode.OneMinusSrcAlpha);
+            smokeMaterial.SetInt("_ZWrite", 0);
+            smokeMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
+            smokeMaterial.renderQueue = 3000;
+
+            ParticleSystemRenderer renderer = go.GetComponent<ParticleSystemRenderer>();
+            renderer.sharedMaterial = smokeMaterial;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+            return ps;
+        }
+
+        /// <summary>A round, soft-edged dot for smoke particles.</summary>
+        private static Texture2D SoftDot()
+        {
+            const int size = 64;
+            Color[] pixels = new Color[size * size];
+            for (int y = 0; y < size; y++)
+            {
+                for (int x = 0; x < size; x++)
+                {
+                    float dx = (x + 0.5f) / size * 2f - 1f, dy = (y + 0.5f) / size * 2f - 1f;
+                    float a = Mathf.Clamp01(1f - Mathf.Sqrt(dx * dx + dy * dy));
+                    pixels[y * size + x] = new Color(1f, 1f, 1f, a * a);
+                }
+            }
+
+            EnsureAssetFolder(SurfaceFolder);
+            return WritePng(SurfaceFolder + "/SoftDot.png", size, pixels, false);
         }
 
         /// <summary>Top of the Mayo tray for this build, for instruments placed after it.</summary>

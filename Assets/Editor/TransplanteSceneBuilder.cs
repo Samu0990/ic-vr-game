@@ -111,12 +111,21 @@ namespace VRSurgery.EditorTools
         /// </summary>
         private const float SkinStageSeconds = 45f;
 
+        /// <summary>
+        /// Bumped whenever the builder changes what it builds. A machine whose last build is older
+        /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
+        /// </summary>
+        public const int BuildVersion = 5;
+
         private static Vector3 _thorax;
 
         public static void Build()
         {
             EditorSceneManager.OpenScene(SourceScene, OpenSceneMode.Single);
             Palette.Clear();
+            _drapeCloth = null;
+            _drapeStatic = null;
+            _bloodPool = null;
             PrepareSurfaces();
 
             GameObject area = GameObject.Find("Teleport Area");
@@ -159,6 +168,7 @@ namespace VRSurgery.EditorTools
 
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), TargetScene, true);
             RegisterSceneInBuildSettings();
+            TransplantSceneFreshness.MarkBuilt();
             Debug.Log("[Transplante] salvo em " + TargetScene);
         }
 
@@ -1210,6 +1220,15 @@ namespace VRSurgery.EditorTools
                 out Transform sawBlade, out SurgicalInteractable saw);
             opening.BindInstrument(saw, sawBlade);
             feedback.BindSaw(opening, saw);
+
+            // Electrocautery for the bleeders on the wound edges, in its holster on the drape.
+            CauteryWorker cautery = BuildCautery(systems, skinPatch, out SurgicalInteractable cauteryPen, out Transform penTip);
+            indicator.AddSource(cautery);
+            feedback.BindCautery(cautery, cauteryPen);
+            bridge.BindCautery(cautery);
+
+            // The drapes answer the fingertips and every instrument's working end.
+            WireDrapeCloth(scalpel.transform.Find("BladeTip"), needleHolder.transform.Find("NeedleTip"), sawBlade, penTip);
 
             Heartbeat nativeBeat = heart.GetComponent<Heartbeat>();
             systems.AddComponent<NativeHeartRhythm>().Bind(procedure, nativeBeat);

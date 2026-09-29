@@ -267,7 +267,7 @@ namespace VRSurgery.Transplant
             TransplantStage.SkinIncision => "Pegue o bisturi e corte a pele sobre a linha roxa",
             // The scene that adds the scalpel and the needle also puts a sternal saw on the tray.
             TransplantStage.OpenChest => includeSkinStages
-                ? "Pegue a serra esternal e apoie-a na marca dourada"
+                ? "Cauterize os pontos que sangram e abra o esterno com a serra na marca dourada"
                 : "Abra o esterno: pressione a mão sobre a marca dourada",
             TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
             TransplantStage.RemoveNativeHeart => "Retire o coração doente",

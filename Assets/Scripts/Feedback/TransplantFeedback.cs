@@ -158,6 +158,7 @@ namespace VRSurgery.Feedback
             if (deltaTime <= 0f) { return; }
 
             _sinceSlice += deltaTime;
+            _sinceSizzle += deltaTime;
             TickSaw(deltaTime);
 
             bool leaking = anastomosis != null && anastomosis.BleedingSite != null;
@@ -364,6 +365,57 @@ namespace VRSurgery.Feedback
             }
 
             return best;
+        }
+
+        private CauteryWorker _cautery;
+        private SurgicalInteractable _cauteryPen;
+        private float _sinceSizzle = float.PositiveInfinity;
+
+        /// <summary>Adds the cautery pen: sizzle and a buzz in the hand while it burns, a firm pulse when a bleeder seals.</summary>
+        public void BindCautery(CauteryWorker cautery, SurgicalInteractable pen)
+        {
+            if (_cautery != null)
+            {
+                _cautery.Burning -= HandleBurning;
+                _cautery.Sealed -= HandleSealed;
+            }
+
+            _cautery = cautery;
+            _cauteryPen = pen;
+
+            // Subscribed here rather than in OnEnable: the builder binds this in edit mode, and a
+            // live component binds it again at runtime through the serialized fields below.
+            if (Application.isPlaying && _cautery != null)
+            {
+                _cautery.Burning += HandleBurning;
+                _cautery.Sealed += HandleSealed;
+            }
+
+            cauteryWorker = cautery;
+            cauteryPen = pen;
+        }
+
+        [Header("Cautery (optional)")]
+        [SerializeField] private CauteryWorker cauteryWorker;
+        [SerializeField] private SurgicalInteractable cauteryPen;
+
+        private void Start()
+        {
+            if (cauteryWorker != null && _cautery == null) { BindCautery(cauteryWorker, cauteryPen); }
+        }
+
+        private void HandleBurning()
+        {
+            if (_sinceSizzle < 0.3f) { return; }
+            _sinceSizzle = 0f;
+            Play(ProceduralTones.Sizzle, 0.6f);
+            PulseHolder(_cauteryPen, _tick);
+        }
+
+        private void HandleSealed(int bleeder)
+        {
+            Play(ProceduralTones.SoftConfirm, 0.5f);
+            PulseHolder(_cauteryPen, _confirm);
         }
 
         /// <summary>Adds the sternal saw: its sound and its vibration while it cuts.</summary>

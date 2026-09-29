@@ -397,6 +397,71 @@ namespace VRSurgery.Tests
             }
         }
 
+        // ------------------------------------------------------------------ cautery
+
+        private CauteryWorker Cautery(ChestSkinPatch patch, out Transform tip, out VRSurgery.Interaction.SurgicalInteractable pen,
+            out List<Transform> bleeders)
+        {
+            tip = Spawn("PenTip").transform;
+            pen = Spawn("Pen").AddComponent<VRSurgery.Interaction.SurgicalInteractable>();
+            bleeders = new List<Transform>();
+            List<GameObject> scorches = new List<GameObject>();
+            for (int i = 0; i < 3; i++)
+            {
+                Transform b = Spawn("Bleeder" + i).transform;
+                b.position = patch.IncisionPoint(0.3f + 0.2f * i, i % 2 == 0 ? -0.04f : 0.04f, -0.008f);
+                bleeders.Add(b);
+                scorches.Add(Spawn("Scorch" + i));
+            }
+
+            CauteryWorker worker = Spawn("Cautery").AddComponent<CauteryWorker>();
+            worker.Bind(tip, pen, patch, bleeders, scorches, null);
+            return worker;
+        }
+
+        [Test]
+        public void BleedersOnlyShowOnceTheWoundIsOpen()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            CauteryWorker worker = Cautery(patch, out _, out _, out List<Transform> bleeders);
+
+            worker.Tick(Step);
+            Assert.AreEqual(0, worker.OpenBleeders);
+            Assert.IsFalse(bleeders[0].gameObject.activeSelf);
+
+            patch.Open();
+            for (int i = 0; i < 120; i++) { patch.Tick(Step); }
+            worker.Tick(Step);
+
+            Assert.AreEqual(3, worker.OpenBleeders);
+            Assert.IsTrue(bleeders[0].gameObject.activeSelf);
+        }
+
+        [Test]
+        public void ThePenSealsABleederItRestsOnButOnlyInTheHand()
+        {
+            ChestSkinPatch patch = FlatPatch(out _);
+            patch.Open();
+            for (int i = 0; i < 120; i++) { patch.Tick(Step); }
+
+            CauteryWorker worker = Cautery(patch, out Transform tip, out VRSurgery.Interaction.SurgicalInteractable pen,
+                out List<Transform> bleeders);
+
+            int sealedCount = 0;
+            worker.Sealed += _ => sealedCount++;
+
+            tip.position = bleeders[1].position;
+            for (int i = 0; i < 60; i++) { worker.Tick(Step); }
+            Assert.AreEqual(0, sealedCount, "A pen lying in its holster seals nothing.");
+
+            pen.OnGrabbed(null);
+            for (int i = 0; i < 60; i++) { worker.Tick(Step); }
+
+            Assert.AreEqual(1, sealedCount);
+            Assert.AreEqual(2, worker.OpenBleeders);
+            Assert.IsFalse(bleeders[1].gameObject.activeSelf, "The sealed bleeder stops bleeding.");
+        }
+
         // ------------------------------------------------------------------ hearts
 
         [Test]

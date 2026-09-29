@@ -44,6 +44,9 @@ namespace VRSurgery.Feedback
         /// <summary>Needle through skin: a tiny click.</summary>
         public static AudioClip Stitch => Get("stitch", () => Tone("stitch", 0.05f, 0.4f, 1760f, 2637f));
 
+        /// <summary>Electrocautery on tissue: a crackling sizzle.</summary>
+        public static AudioClip Sizzle => Get("sizzle", () => Crackle("sizzle", 0.35f));
+
         /// <summary>The sternal saw: an oscillating blade's rasp, meant to loop while it cuts.</summary>
         public static AudioClip SawBuzz => Get("saw-buzz", () => Saw("saw-buzz", 0.5f));
 
@@ -137,6 +140,30 @@ namespace VRSurgery.Feedback
                 // 50 and 100 Hz: whole cycles in the loop length, so the loop point never clicks.
                 float mains = 0.5f * Mathf.Sin(2f * Mathf.PI * 50f * t) + 0.25f * Mathf.Sin(2f * Mathf.PI * 100f * t);
                 data[i] = (mains * 0.05f + smoothed * 0.35f) * 0.5f;
+            }
+
+            return Build(name, data);
+        }
+
+        /// <summary>Bright hiss broken by random pops: fat and water boiling at the tip.</summary>
+        private static AudioClip Crackle(string name, float seconds)
+        {
+            int length = Mathf.Max(1, Mathf.RoundToInt(seconds * SampleRate));
+            float[] data = new float[length];
+            System.Random random = new System.Random(29);
+            float previous = 0f;
+
+            for (int i = 0; i < length; i++)
+            {
+                float t = i / (float)SampleRate;
+                float white = (float)(random.NextDouble() * 2.0 - 1.0);
+
+                // High-passed noise: the difference of neighbouring samples keeps only the hiss.
+                float hiss = (white - previous) * 0.5f;
+                previous = white;
+
+                float pop = random.NextDouble() < 0.004 ? (float)(random.NextDouble() * 2.0 - 1.0) : 0f;
+                data[i] = (hiss * 0.25f + pop * 0.8f) * Envelope(t, seconds);
             }
 
             return Build(name, data);
