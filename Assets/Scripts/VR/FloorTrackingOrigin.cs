@@ -1,6 +1,7 @@
 using Unity.XR.CoreUtils;
 using UnityEngine;
 using UnityEngine.XR;
+using UnityEngine.XR.Management;
 
 namespace VRSurgery.VR
 {
@@ -61,7 +62,7 @@ namespace VRSurgery.VR
             if (_logTimer >= LogEverySeconds)
             {
                 _logTimer = 0f;
-                Debug.Log($"[FloorTrackingOrigin] worn={worn} eye={eye:F2} m mode={_origin.CurrentTrackingOriginMode} fallback={_fellBack}");
+                Debug.Log($"[FloorTrackingOrigin] worn={worn} eye={eye:F2} m mode={_origin.CurrentTrackingOriginMode} fallback={_fellBack} " + Probe(cam));
             }
 
             if (_fellBack || !worn || eye >= MinEyeHeight)
@@ -77,6 +78,25 @@ namespace VRSurgery.VR
             _origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Device;
             _origin.CameraYOffset = FallbackEyeHeight;
             Debug.LogWarning($"[FloorTrackingOrigin] Floor not honoured (eye {eye:F2} m). Using Device tracking with a {FallbackEyeHeight:F1} m camera offset.");
+        }
+
+        /// <summary>Raw device state, to tell "tracking never arrives" apart from "tracking arrives at the wrong height".</summary>
+        private static string Probe(Camera cam)
+        {
+            XRManagerSettings manager = XRGeneralSettings.Instance != null ? XRGeneralSettings.Instance.Manager : null;
+            string loader = manager != null && manager.activeLoader != null ? manager.activeLoader.name : "none";
+
+            UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
+            string device = "head=invalid";
+            if (head.isValid)
+            {
+                head.TryGetFeatureValue(CommonUsages.isTracked, out bool tracked);
+                head.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 pos);
+                head.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion rot);
+                device = $"head.tracked={tracked} head.pos={pos.ToString("F2")} head.yaw={rot.eulerAngles.y:F0}";
+            }
+
+            return $"loader={loader} {device} cam.yaw={cam.transform.eulerAngles.y:F0}";
         }
 
         /// <summary>Whether someone is wearing the headset. True when the device does not say.</summary>
