@@ -124,9 +124,9 @@ namespace VRSurgery.VR
             string device = "head=invalid";
             if (head.isValid)
             {
-                head.TryGetFeatureValue(CommonUsages.isTracked, out bool tracked);
-                head.TryGetFeatureValue(CommonUsages.devicePosition, out Vector3 pos);
-                head.TryGetFeatureValue(CommonUsages.deviceRotation, out Quaternion rot);
+                head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.isTracked, out bool tracked);
+                head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out Vector3 pos);
+                head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out Quaternion rot);
                 device = $"head.tracked={tracked} head.pos={pos.ToString("F2")} head.yaw={rot.eulerAngles.y:F0}";
             }
 
@@ -138,7 +138,7 @@ namespace VRSurgery.VR
         {
             UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
             if (!head.isValid) { return false; }
-            return !head.TryGetFeatureValue(CommonUsages.userPresence, out bool present) || present;
+            return !head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.userPresence, out bool present) || present;
         }
     }
 }
