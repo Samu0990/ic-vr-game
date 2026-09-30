@@ -8,30 +8,28 @@ using UnityEngine.XR.Management;
 namespace VRSurgery.VR
 {
     /// <summary>
-    /// Keeps the camera at a sensible height above the floor on Quest.
+    /// Makes sure the headset camera follows the head on Quest.
     ///
-    /// The template rig ships with TrackingOriginMode "Not Specified", which on Quest (OpenXR)
-    /// resolves to an eye-level local space: the headset starts at Y = 0 relative to the rig and
-    /// the camera sits on the floor of the scene. This asks for Floor tracking instead, which
-    /// reports the real head height above the play-area floor.
-    ///
-    /// If the runtime does not honour Floor (the head still reads below MinEyeHeight a moment
-    /// after the headset is put on), it falls back to Device tracking with a fixed camera
-    /// offset. That is the case VisitorFit already treats as "height is a guess, no lift".
+    /// 1. Asks for Floor tracking, so the head reports its real height above the play area.
+    /// 2. Enables the head's input actions. The head TrackedPoseDriver reads InputActionReferences
+    ///    that only receive data while something enables them, normally an InputActionManager in
+    ///    the scene. The Transplante scene has none (the hands use inline actions that their
+    ///    driver enables itself), so the head never moved.
+    /// 3. If the camera still does not follow a tracked headset, copies the pose from the XR
+    ///    device onto the camera itself.
     ///
     /// Creates itself after the scene loads, so no scene or prefab edit is needed.
     /// </summary>
     public class FloorTrackingOrigin : MonoBehaviour
     {
-        private const float MinEyeHeight = 0.5f;
-        private const float LowSecondsBeforeFallback = 1.5f;
-        private const float FallbackEyeHeight = 1.6f;
+        private const float MismatchDegrees = 3f;
+        private const float MismatchSecondsBeforeManual = 1f;
         private const float LogEverySeconds = 2f;
 
         private XROrigin _origin;
-        private float _lowSeconds;
+        private float _mismatchSeconds;
         private float _logTimer;
-        private bool _fellBack;
+        private bool _manual;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Create()
@@ -41,6 +39,10 @@ namespace VRSurgery.VR
             go.AddComponent<FloorTrackingOrigin>();
         }
 
+        private void OnEnable() => Application.onBeforeRender += DriveCamera;
+
+        private void OnDisable() => Application.onBeforeRender -= DriveCamera;
+
         private void Update()
         {
             if (_origin == null)
@@ -49,53 +51,63 @@ namespace VRSurgery.VR
                 if (_origin == null) { return; }
 
                 _origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
-                _fellBack = false;
-                _lowSeconds = 0f;
+                _manual = false;
+                _mismatchSeconds = 0f;
                 Debug.Log("[FloorTrackingOrigin] Requested Floor tracking origin on " + _origin.name);
             }
-
-            // Every frame and cheap: the actions can be disabled again by a scene reload.
-            EnableHeadActions(_origin.Camera);
 
             Camera cam = _origin.Camera;
             if (cam == null) { return; }
 
-            float eye = cam.transform.position.y - _origin.transform.position.y;
-            bool worn = HeadsetWorn();
+            // Every frame and cheap: a scene reload can leave the actions disabled again.
+            EnableHeadActions(cam);
+
+            bool tracked = TryReadHead(out Vector3 pos, out Quaternion rot);
+            if (tracked && !_manual)
+            {
+                float off = Quaternion.Angle(rot, cam.transform.localRotation);
+                _mismatchSeconds = off > MismatchDegrees ? _mismatchSeconds + Time.unscaledDeltaTime : 0f;
+                if (_mismatchSeconds >= MismatchSecondsBeforeManual)
+                {
+                    _manual = true;
+                    Debug.LogWarning($"[FloorTrackingOrigin] Camera not following the tracked head (off by {off:F0} deg). Driving it from the XR device.");
+                }
+            }
 
             _logTimer += Time.unscaledDeltaTime;
             if (_logTimer >= LogEverySeconds)
             {
                 _logTimer = 0f;
-                Debug.Log($"[FloorTrackingOrigin] worn={worn} eye={eye:F2} m mode={_origin.CurrentTrackingOriginMode} fallback={_fellBack} " + Probe(cam));
+                float eye = cam.transform.position.y - _origin.transform.position.y;
+                Debug.Log($"[FloorTrackingOrigin] eye={eye:F2} m mode={_origin.CurrentTrackingOriginMode} manual={_manual} " + Probe(cam));
             }
-
-            if (_fellBack || !worn || eye >= MinEyeHeight)
-            {
-                _lowSeconds = 0f;
-                return;
-            }
-
-            _lowSeconds += Time.unscaledDeltaTime;
-            if (_lowSeconds < LowSecondsBeforeFallback) { return; }
-
-            _fellBack = true;
-            _origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Device;
-            _origin.CameraYOffset = FallbackEyeHeight;
-            Debug.LogWarning($"[FloorTrackingOrigin] Floor not honoured (eye {eye:F2} m). Using Device tracking with a {FallbackEyeHeight:F1} m camera offset.");
         }
 
-        /// <summary>
-        /// The head's TrackedPoseDriver reads InputActionReferences into the XRI default action
-        /// asset. Those only receive data while something enables them, normally an
-        /// InputActionManager in the scene. The Transplante scene has none (the hands use their own
-        /// inline actions, which the driver enables itself), so the head never moved. Enabling the
-        /// actions here is harmless when a manager already did it.
-        /// </summary>
+        private void LateUpdate() => DriveCamera();
+
+        private void DriveCamera()
+        {
+            if (!_manual || _origin == null || _origin.Camera == null) { return; }
+            if (!TryReadHead(out Vector3 pos, out Quaternion rot)) { return; }
+
+            _origin.Camera.transform.SetLocalPositionAndRotation(pos, rot);
+        }
+
+        private static bool TryReadHead(out Vector3 pos, out Quaternion rot)
+        {
+            pos = Vector3.zero;
+            rot = Quaternion.identity;
+
+            UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
+            if (!head.isValid) { return false; }
+            if (!head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.isTracked, out bool tracked) || !tracked) { return false; }
+
+            return head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out pos)
+                && head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rot);
+        }
+
         private static void EnableHeadActions(Camera cam)
         {
-            if (cam == null) { return; }
-
             TrackedPoseDriver driver = cam.GetComponent<TrackedPoseDriver>();
             if (driver == null) { return; }
 
@@ -119,9 +131,10 @@ namespace VRSurgery.VR
         {
             XRManagerSettings manager = XRGeneralSettings.Instance != null ? XRGeneralSettings.Instance.Manager : null;
             string loader = manager != null && manager.activeLoader != null ? manager.activeLoader.name : "none";
+            bool driver = cam.GetComponent<TrackedPoseDriver>() != null;
 
-            UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
             string device = "head=invalid";
+            UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
             if (head.isValid)
             {
                 head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.isTracked, out bool tracked);
@@ -130,15 +143,7 @@ namespace VRSurgery.VR
                 device = $"head.tracked={tracked} head.pos={pos.ToString("F2")} head.yaw={rot.eulerAngles.y:F0}";
             }
 
-            return $"loader={loader} {device} cam.yaw={cam.transform.eulerAngles.y:F0}";
-        }
-
-        /// <summary>Whether someone is wearing the headset. True when the device does not say.</summary>
-        private static bool HeadsetWorn()
-        {
-            UnityEngine.XR.InputDevice head = InputDevices.GetDeviceAtXRNode(XRNode.Head);
-            if (!head.isValid) { return false; }
-            return !head.TryGetFeatureValue(UnityEngine.XR.CommonUsages.userPresence, out bool present) || present;
+            return $"loader={loader} tpd={driver} {device} cam.yaw={cam.transform.eulerAngles.y:F0}";
         }
     }
 }

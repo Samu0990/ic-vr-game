@@ -60,6 +60,8 @@ namespace VRSurgery.VR
         [Tooltip("Seconds after the headset's presence sensor says someone put it on before fitting.")]
         [SerializeField, Min(0f)] private float putOnSettleSeconds = 1.2f;
 
+        private const float MeasurableEye = 0.5f;
+        private bool _eyeUnmeasured;
         private float _sinceBriefing = -1f;
         private float _sincePutOn = -1f;
         private bool _present = true;
@@ -107,6 +109,13 @@ namespace VRSurgery.VR
         {
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { Fit(); }
 
+            // The head became measurable after the last fit (tracking arrived late): fit again.
+            if (lockEyeHeight && _eyeUnmeasured && MayFit && head != null && rig != null
+                && head.position.y - rig.position.y >= MeasurableEye)
+            {
+                Fit();
+            }
+
             // Someone just put the headset on: fit them once it has settled on their face.
             bool present = HeadsetOn();
             if (present && !_present) { _sincePutOn = 0f; }
@@ -140,10 +149,13 @@ namespace VRSurgery.VR
             // camera offset means device tracking, where the height is a guess: no lift then.
             float eye = head.position.y - rig.position.y;
             bool floorTracking = head.parent == null || head.parent == rig || Mathf.Abs(head.parent.localPosition.y) < 0.05f;
+            _eyeUnmeasured = eye < MeasurableEye;
             if (lockEyeHeight)
             {
                 // Whatever height the runtime reports, end with the camera at the locked height.
-                Lift = lockedEyeHeight - eye;
+                // A head not yet tracked reads near 0: lifting by a guess would add to the real
+                // height once tracking arrives and put the camera in the ceiling. Wait instead.
+                Lift = _eyeUnmeasured ? 0f : lockedEyeHeight - eye;
             }
             else
             {
