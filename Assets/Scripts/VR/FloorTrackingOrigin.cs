@@ -1,5 +1,7 @@
 using Unity.XR.CoreUtils;
 using UnityEngine;
+using UnityEngine.InputSystem;
+using UnityEngine.InputSystem.XR;
 using UnityEngine.XR;
 using UnityEngine.XR.Management;
 
@@ -52,6 +54,9 @@ namespace VRSurgery.VR
                 Debug.Log("[FloorTrackingOrigin] Requested Floor tracking origin on " + _origin.name);
             }
 
+            // Every frame and cheap: the actions can be disabled again by a scene reload.
+            EnableHeadActions(_origin.Camera);
+
             Camera cam = _origin.Camera;
             if (cam == null) { return; }
 
@@ -78,6 +83,35 @@ namespace VRSurgery.VR
             _origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Device;
             _origin.CameraYOffset = FallbackEyeHeight;
             Debug.LogWarning($"[FloorTrackingOrigin] Floor not honoured (eye {eye:F2} m). Using Device tracking with a {FallbackEyeHeight:F1} m camera offset.");
+        }
+
+        /// <summary>
+        /// The head's TrackedPoseDriver reads InputActionReferences into the XRI default action
+        /// asset. Those only receive data while something enables them, normally an
+        /// InputActionManager in the scene. The Transplante scene has none (the hands use their own
+        /// inline actions, which the driver enables itself), so the head never moved. Enabling the
+        /// actions here is harmless when a manager already did it.
+        /// </summary>
+        private static void EnableHeadActions(Camera cam)
+        {
+            if (cam == null) { return; }
+
+            TrackedPoseDriver driver = cam.GetComponent<TrackedPoseDriver>();
+            if (driver == null) { return; }
+
+            Enable(driver.positionInput);
+            Enable(driver.rotationInput);
+            Enable(driver.trackingStateInput);
+        }
+
+        private static void Enable(InputActionProperty property)
+        {
+            InputAction action = property.action;
+            if (action != null && !action.enabled)
+            {
+                action.Enable();
+                Debug.Log("[FloorTrackingOrigin] Enabled head input action " + action.name);
+            }
         }
 
         /// <summary>Raw device state, to tell "tracking never arrives" apart from "tracking arrives at the wrong height".</summary>
