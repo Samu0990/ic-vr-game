@@ -35,7 +35,26 @@ namespace VRSurgery.EditorTools
         private const string BodyGlb = "Assets/Models/Patient/PATIENT_BodySkin.glb";
         private const string RibcageGlb = "Assets/Models/Patient/PATIENT_Ribcage.glb";
         private const string SternumGlb = "Assets/Models/Patient/PATIENT_Sternum.glb";
-        private const string HeartGlb = "Assets/Models/Patient/PATIENT_Heart.glb";
+        /// <summary>
+        /// O coração. Modelo do Education Resource Fund, CC-BY-4.0 (ver Assets/Models/CREDITOS.md).
+        ///
+        /// Substituiu o gerado por IA porque vem separado por estrutura anatômica — ventrículos,
+        /// átrio esquerdo, átrio direito, aorta, artéria e veias, cada um com seu material. O
+        /// anterior era casca única, e é por isso que os cinco pontos de anastomose até hoje são
+        /// offsets digitados à mão em vez de derivados da boca de cada vaso.
+        /// </summary>
+        private const string HeartGlb = "Assets/Models/Patient/PATIENT_Heart_Anatomico.glb";
+
+        /// <summary>
+        /// Maior eixo do coração depois de escalado, em metros.
+        ///
+        /// O modelo do Sketchfab vem em unidades arbitrárias. Escalar para este valor é o que
+        /// mantém válido tudo que foi ajustado em volta do coração antigo: os offsets das
+        /// anastomoses, o assento pericárdico e a folga dentro do gradil, que o ReportFit confere.
+        ///
+        /// É o tamanho do modelo que estava aqui, não uma medida anatômica verificada.
+        /// </summary>
+        private const float HeartLongestAxis = 0.176f;
 
         private const float TableTopY = 0.95f;
 
@@ -421,6 +440,7 @@ namespace VRSurgery.EditorTools
             GameObject model = Instantiate(HeartGlb, root.transform);
             model.name = "HeartModel";
             ConvertGltfMaterials(model);
+            NormaliseHeartScale(model);
 
             // Left of the midline and slightly toward the feet, with the apex pointing down-left
             // and forward — where a heart sits, not centred in the chest like a textbook diagram.
@@ -552,6 +572,7 @@ namespace VRSurgery.EditorTools
             GameObject model = Instantiate(HeartGlb, organ.transform);
             model.name = "DonorHeartModel";
             ConvertGltfMaterials(model);
+            NormaliseHeartScale(model);
 
             DressAsGrabbable(organ, model);
             organ.AddComponent<Heartbeat>().Bind(model.transform);
@@ -1169,6 +1190,11 @@ namespace VRSurgery.EditorTools
             BypassWorker worker = systems.AddComponent<BypassWorker>();
             worker.Bind(tipObject.transform, bypass, procedure);
             SetPrivateField(worker, "requireHeldInstrument", false);
+
+            // Farol físico: um LED no ESP32 que fica vermelho quando o tempo acaba ou quando o
+            // visitante erra um passo. Sai por UDP porque o Quest roda sozinho, sem serial e sem
+            // PC. Se o aparelho não estiver ligado, o componente avisa uma vez e o jogo segue.
+            systems.AddComponent<LedBeacon>().Bind(session, worker);
 
             // The vessels had no worker at all, so the five joins could never be sewn and the
             // operation dead-ended at its longest stage.
@@ -2001,22 +2027,76 @@ namespace VRSurgery.EditorTools
             return bounds;
         }
 
+        /// <summary>
+        /// Caixa de um modelo no espaço de <paramref name="space"/>, medida vértice a vértice.
+        ///
+        /// Percorre MeshFilter E SkinnedMeshRenderer. Só olhava MeshFilter, e isso passou
+        /// despercebido enquanto todos os modelos eram malha estática — até o coração anatômico
+        /// entrar. Ele traz animação, então o glTFast o importa como skinned, e a função devolvia
+        /// caixa de tamanho zero sem reclamar: a normalização não escalava nada e o coração
+        /// entrava com um terço do tamanho, e o colisor de agarre saía com lado zero, ou seja, um
+        /// órgão que não dava para pegar, sem erro nenhum no console.
+        /// </summary>
         private static Bounds LocalBounds(GameObject go, Transform space)
         {
             bool any = false;
             Bounds bounds = new Bounds();
-            foreach (MeshFilter f in go.GetComponentsInChildren<MeshFilter>())
+
+            void Swallow(Mesh mesh, Transform owner)
             {
-                if (f.sharedMesh == null) { continue; }
-                foreach (Vector3 v in f.sharedMesh.vertices)
+                if (mesh == null) { return; }
+                foreach (Vector3 v in mesh.vertices)
                 {
-                    Vector3 p = space.InverseTransformPoint(f.transform.TransformPoint(v));
+                    Vector3 p = space.InverseTransformPoint(owner.TransformPoint(v));
                     if (!any) { bounds = new Bounds(p, Vector3.zero); any = true; }
                     else { bounds.Encapsulate(p); }
                 }
             }
 
+            foreach (MeshFilter f in go.GetComponentsInChildren<MeshFilter>(true))
+            {
+                Swallow(f.sharedMesh, f.transform);
+            }
+
+            foreach (SkinnedMeshRenderer s in go.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                Swallow(s.sharedMesh, s.transform);
+            }
+
+            if (!any)
+            {
+                Debug.LogWarning($"[Transplante] '{go.name}' não tem malha mensurável; " +
+                                 "quem depender desta caixa vai receber zero.");
+            }
+
             return bounds;
+        }
+
+        /// <summary>
+        /// Leva o coração a um tamanho utilizável, medindo a malha em vez de confiar no arquivo.
+        ///
+        /// Modelo de banco público não tem compromisso com escala. Instanciado como veio, este
+        /// entra na cena com quase seis metros e engole o paciente.
+        ///
+        /// Escala uniforme, nunca por eixo: distorcer um órgão para caber é o tipo de coisa que
+        /// passa despercebida na tela e um médico enxerga na hora.
+        /// </summary>
+        private static void NormaliseHeartScale(GameObject model)
+        {
+            Bounds local = LocalBounds(model, model.transform);
+            float longest = Mathf.Max(local.size.x, Mathf.Max(local.size.y, local.size.z));
+
+            if (longest <= 1e-6f)
+            {
+                Debug.LogError("[Transplante] coração sem volume mensurável; escala não aplicada.");
+                return;
+            }
+
+            float factor = HeartLongestAxis / longest;
+            model.transform.localScale = model.transform.localScale * factor;
+
+            Debug.Log($"[Transplante] coração normalizado: maior eixo {longest:F3} → " +
+                      $"{HeartLongestAxis:F3} m (fator {factor:F4})");
         }
 
         /// <summary>

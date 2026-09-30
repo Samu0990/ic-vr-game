@@ -157,6 +157,14 @@ namespace VRSurgery.Session
             session = controller;
             leaderboard = board;
 
+            // A partir daqui quem arquiva é este componente. Sem isto o placar grava "Anônimo"
+            // no instante em que a rodada acaba e o nome digitado entra depois, como segunda
+            // linha — o placar do estande encheria de duplicata.
+            if (leaderboard != null)
+            {
+                leaderboard.YieldFilingTo(this);
+            }
+
             if (session != null && isActiveAndEnabled)
             {
                 session.RoundEnded += HandleRoundEnded;
