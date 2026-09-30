@@ -173,6 +173,16 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   outro campo de visão e um quadro atrasado — era a "câmera bugada" no Unity. Agora desenha só
   com óculos rodando num PC; no Editor sem óculos e no Quest fica desligado (no Quest isso também
   poupa uma renderização inteira da sala por quadro). A pose é copiada logo antes de renderizar.
+- **Óculos com a mesma imagem do notebook e do Quest** (`HeadsetPostProcessing`): o óculos era
+  a única câmera com o pós-processamento clínico (exposição −0,1, mais contraste, filtro frio e
+  **vinheta**). Por isso ele ficava mais escuro que o espelho no notebook e que o próprio Quest,
+  e no VR a vinheta fecha em volta de cada olho como um túnel. Agora o pós fica desligado no PC
+  e no Quest; o volume continua na cena como opção (`Enable On Pc`), desligado. Não precisa reconstruir a cena para valer: o campo mudou de nome, então a cena antiga já abre com o pós desligado.
+- **Diagnóstico do óculos no Console** (`HeadsetDiagnostics`): ao dar Play sai uma linha
+  `[Óculos]` dizendo se há óculos rodando e por qual runtime OpenXR (Meta/Oculus, SteamVR,
+  Monado/WiVRn…), a API gráfica, o espaço de cor, a qualidade, o URP em uso, se as luzes extras
+  estão ligadas e se há pós. **"NENHUM óculos rodando"** com o óculos conectado quer dizer que o
+  Unity não está desenhando nele: o que aparece escuro é a sala vazia do Link, não o jogo.
 - **Mãos de luva no lugar dos controles** (`ControllerHand` + `HandPoser`): a mão oficial da
   Unity que já vem no projeto (sample *HandVisualizer* do pacote XR Hands, a mesma do rastreio de
   mãos), com a luva de nitrila azul. Ela segue a **pose de empunhadura** do controle (a palma
@@ -377,8 +387,12 @@ conferir com o óculos:
   se a pele original aparecer por baixo da janela aberta, aumentar a margem em
   `CutSkinUnderPatch`.
 - Orientação do texto do **monitor de sinais vitais** e o sentido da varredura do ECG.
-- O **pós-processamento** agora liga no PC (`HeadsetPostProcessing`) e continua desligado
-  no Quest standalone. Medir o frame time antes de ligar no Quest.
+- O **pós-processamento** está desligado no óculos, no PC e no Quest (`HeadsetPostProcessing`).
+  Se quiser o visual "clínico" de volta, ligar `Enable On Pc` só para comparar, e medir o
+  frame time antes de ligar no Quest. A vinheta do perfil não deve voltar no VR.
+- **Streaming no Linux** (ALVR/WiVRn/Monado) tem problema conhecido de sRGB que deixa a imagem
+  inteira mais escura no óculos. Se a linha `[Óculos]` mostrar um desses runtimes, o teste que
+  vale para a cor é o APK rodando no Quest.
 - A **tolerância do bisturi** (1,4 cm da linha média, 4 mm acima e 3 cm abaixo da pele)
   e o raio da agulha (1,3 cm) são estimativas.
 - **Lâmina em pé** (sessão seguinte): o construtor descobre para que lado a lâmina do modelo
@@ -417,7 +431,7 @@ legibilidade dos anéis a 30 cm do olho são estimativas informadas, não mediç
 - **Projeção do `TransplanteCardiaco` é nova e não testada em sala, e usa 3 displays.** Display 1 espelha o cirurgião (fila de espera), Display 2 é o projetor apontado pro manequim físico (só a cena 3D: paciente, coração, luz avermelhando com o relógio, nenhum texto), Display 3 é um monitor à parte, ao lado do manequim, com relógio, placar e a instrução do momento (`ProjectionHUD`, como um monitor de sinais vitais). A separação existe porque texto projetado em cima de um corpo físico não dá pra ler. A barra de sangramento no Display 3 lê a fração de anastomoses vazando em vez de um `BleedingSystem`. Posição da câmera do Display 2 e enquadramento herdaram os números validados no MVP, não foram remedidos para este paciente nem para o manequim real.
 - **O gradil costal** é proporcionalmente estreito: 23,8 × 16,0 × 30,0 cm contra
   28 × 20 × 30 reais. Escala uniforme, sem distorção, mas um tórax magro.
-- **Atmosfera visual nova e não testada no headset.** `TuneRoomLighting` reforça a luz direcional e pendura um foco cirúrgico sobre o tórax; `BuildClinicalPostProcessing` liga um Volume global (bloom leve, saturação -6, vinheta sutil) só na câmera do headset — espectador e projetor continuam com `renderPostProcessing = false`. `ApplyGloveMaterialToHands` procura por qualquer renderer com "Hand" no nome sob "XR Origin" para trocar pelo material `GLOVE_NitrileBlue`; se a malha de mão do VR Template usada no projeto tiver outro nome, o Console avisa e nada é trocado — confirme no primeiro build. Custo de GPU do Volume no Quest ainda não foi medido.
+- **Atmosfera visual nova e não testada no headset.** `TuneRoomLighting` reforça a luz direcional e pendura um foco cirúrgico sobre o tórax; `BuildClinicalPostProcessing` cria um Volume global (bloom leve, saturação -6, vinheta sutil) que hoje não é desenhado por nenhuma câmera: o óculos também ficou com `renderPostProcessing = false`, igual ao espectador e ao projetor. `ApplyGloveMaterialToHands` procura por qualquer renderer com "Hand" no nome sob "XR Origin" para trocar pelo material `GLOVE_NitrileBlue`; se a malha de mão do VR Template usada no projeto tiver outro nome, o Console avisa e nada é trocado — confirme no primeiro build. Custo de GPU do Volume no Quest ainda não foi medido.
 - **Teclado de nome no placar não validado.** `NameEntryController` + `NameEntryWorker` existem e têm testes de lógica. O painel agora fica à frente e à direita do cirurgião, na borda da mesa, inclinado para o olho, e só aparece quando há um nome para digitar (`NameEntryPanel`), com a tecla sob o dedo acendendo. Ninguém tentou digitar um nome com o óculos posto.
 
 Próximo passo recomendado para a incisão: ordenar a borda por conectividade topológica (não

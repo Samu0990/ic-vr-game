@@ -3851,8 +3851,18 @@ namespace VRSurgery.EditorTools
                 return;
             }
 
-            if (head.GetComponent<HeadsetPostProcessing>() == null) { head.gameObject.AddComponent<HeadsetPostProcessing>(); }
-            Debug.Log($"[Transplante] pós-processamento ligado em '{head.name}' no PC (desligado no Quest standalone)");
+            // Off on the PC as on the Quest: the headset was the only camera with the grade, and
+            // came out darker than the laptop mirror and the Quest itself. The switch stays, off.
+            HeadsetPostProcessing post = head.GetComponent<HeadsetPostProcessing>();
+            if (post == null) { post = head.gameObject.AddComponent<HeadsetPostProcessing>(); }
+            SetPrivateField(post, "enableOnPc", false);
+            SetPrivateField(post, "enableOnMobile", false);
+
+            // One Console line on Play saying how the picture reaches the headset, if at all.
+            if (head.GetComponent<HeadsetDiagnostics>() == null) { head.gameObject.AddComponent<HeadsetDiagnostics>(); }
+
+            Debug.Log($"[Transplante] pós-processamento desligado em '{head.name}' no PC e no Quest " +
+                      "(óculos = notebook = APK); diagnóstico do óculos no Console ao dar Play");
         }
     }
 }
