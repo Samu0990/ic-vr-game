@@ -32,6 +32,7 @@ namespace VRSurgery.VR
         private float _logTimer;
         private bool _manual;
         private bool _floorRequested;
+        private TrackedPoseDriver _driver;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Create()
@@ -51,6 +52,7 @@ namespace VRSurgery.VR
             {
                 _origin = FindFirstObjectByType<XROrigin>();
                 if (_origin == null) { return; }
+                _driver = null;
 
                 _floorRequested = false;
                 _manual = false;
@@ -70,8 +72,18 @@ namespace VRSurgery.VR
             Camera cam = _origin.Camera;
             if (cam == null) { return; }
 
-            // Every frame and cheap: a scene reload can leave the actions disabled again.
-            EnableHeadActions(cam);
+            if (_manual)
+            {
+                // The driver writes zeros over the pose every frame while its actions read
+                // nothing (seen on Quest Link), so it must not run beside the manual drive.
+                if (_driver != null && _driver.enabled) { _driver.enabled = false; }
+                DriveCamera();
+            }
+            else
+            {
+                // Every frame and cheap: a scene reload can leave the actions disabled again.
+                EnableHeadActions(cam);
+            }
 
             bool tracked = TryReadHead(out Vector3 pos, out Quaternion rot);
             if (tracked && !_manual)
@@ -81,6 +93,7 @@ namespace VRSurgery.VR
                 if (_mismatchSeconds >= MismatchSecondsBeforeManual)
                 {
                     _manual = true;
+                    _driver = cam.GetComponent<TrackedPoseDriver>();
                     Debug.LogWarning($"[FloorTrackingOrigin] Camera not following the tracked head (off by {off:F0} deg). Driving it from the XR device.");
                 }
             }
