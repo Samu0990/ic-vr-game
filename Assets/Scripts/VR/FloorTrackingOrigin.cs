@@ -10,7 +10,8 @@ namespace VRSurgery.VR
     /// <summary>
     /// Makes sure the headset camera follows the head on Quest.
     ///
-    /// 1. Asks for Floor tracking, so the head reports its real height above the play area.
+    /// 1. Once a headset is running, asks for Floor tracking, so the head reports its real height
+    ///    above the play area. With no headset the template's camera offset is left alone.
     /// 2. Enables the head's input actions. The head TrackedPoseDriver reads InputActionReferences
     ///    that only receive data while something enables them, normally an InputActionManager in
     ///    the scene. The Transplante scene has none (the hands use inline actions that their
@@ -30,6 +31,7 @@ namespace VRSurgery.VR
         private float _mismatchSeconds;
         private float _logTimer;
         private bool _manual;
+        private bool _floorRequested;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Create()
@@ -50,10 +52,19 @@ namespace VRSurgery.VR
                 _origin = FindFirstObjectByType<XROrigin>();
                 if (_origin == null) { return; }
 
-                _origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
+                _floorRequested = false;
                 _manual = false;
                 _mismatchSeconds = 0f;
-                Debug.Log("[FloorTrackingOrigin] Requested Floor tracking origin on " + _origin.name);
+            }
+
+            // Floor only once a headset is running. Without one (the Editor with no headset) the
+            // template's camera Y offset is what puts the camera at head height, and Floor drops
+            // that offset and leaves the camera on the floor.
+            if (!_floorRequested && HeadsetRunning())
+            {
+                _origin.RequestedTrackingOriginMode = XROrigin.TrackingOriginMode.Floor;
+                _floorRequested = true;
+                Debug.Log("[FloorTrackingOrigin] Headset running: requested Floor tracking origin on " + _origin.name);
             }
 
             Camera cam = _origin.Camera;
@@ -79,7 +90,7 @@ namespace VRSurgery.VR
             {
                 _logTimer = 0f;
                 float eye = cam.transform.position.y - _origin.transform.position.y;
-                Debug.Log($"[FloorTrackingOrigin] eye={eye:F2} m mode={_origin.CurrentTrackingOriginMode} manual={_manual} " + Probe(cam));
+                Debug.Log($"[FloorTrackingOrigin] eye={eye:F2} m mode={_origin.CurrentTrackingOriginMode} manual={_manual} floorRequested={_floorRequested} " + Probe(cam));
             }
         }
 
@@ -91,6 +102,11 @@ namespace VRSurgery.VR
             if (!TryReadHead(out Vector3 pos, out Quaternion rot)) { return; }
 
             _origin.Camera.transform.SetLocalPositionAndRotation(pos, rot);
+        }
+
+        private static bool HeadsetRunning()
+        {
+            return XRSettings.isDeviceActive || InputDevices.GetDeviceAtXRNode(XRNode.Head).isValid;
         }
 
         private static bool TryReadHead(out Vector3 pos, out Quaternion rot)
