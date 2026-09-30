@@ -35,6 +35,13 @@ namespace VRSurgery.VR
         [Tooltip("Refits at the start of each visitor's briefing.")]
         [SerializeField] private EventSessionController session;
 
+        [Header("Eye height")]
+        [Tooltip("Puts the camera at exactly Locked Eye Height above the stance on every fit, so the headset starts where Play without a headset starts. Overrides short mode.")]
+        [SerializeField] private bool lockEyeHeight = true;
+
+        [Tooltip("Camera height above the stance in metres. Match the Main Camera Y when pressing Play without a headset.")]
+        [SerializeField] private float lockedEyeHeight = 1.36144f;
+
         [Header("Short mode")]
         [SerializeField] private bool shortMode = true;
 
@@ -133,7 +140,15 @@ namespace VRSurgery.VR
             // camera offset means device tracking, where the height is a guess: no lift then.
             float eye = head.position.y - rig.position.y;
             bool floorTracking = head.parent == null || head.parent == rig || Mathf.Abs(head.parent.localPosition.y) < 0.05f;
-            Lift = shortMode && floorTracking ? LiftFor(eye) : 0f;
+            if (lockEyeHeight)
+            {
+                // Whatever height the runtime reports, end with the camera at the locked height.
+                Lift = lockedEyeHeight - eye;
+            }
+            else
+            {
+                Lift = shortMode && floorTracking ? LiftFor(eye) : 0f;
+            }
 
             Solve(head.position, head.forward, rig.position, rig.rotation, stance.position, stance.forward, Lift,
                 out Vector3 position, out Quaternion rotation);
