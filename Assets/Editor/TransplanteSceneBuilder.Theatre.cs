@@ -2931,7 +2931,20 @@ namespace VRSurgery.EditorTools
             // Job Simulator rules: let go and it falls where it is, toss it and it flies; only if
             // it ends up out of reach does it pop back onto the tray.
             grab.throwOnDetach = true;
-            grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
+
+            // Held, the instrument is exactly where the hand is — no spring, no lag, and nothing
+            // the room can push it out of. VelocityTracking, which it used before, follows the
+            // hand with forces, and forces can be resisted: a scalpel is meant to be pressed
+            // into skin, so its collider spent the whole incision fighting the patient's, and
+            // what the visitor felt was a blade that skated, juddered and lagged behind their
+            // hand. A surgical instrument is the one case where being unable to bump into the
+            // world is the right trade — the incision is judged by where the blade is, by
+            // SkinIncisionWorker's own geometry, never by a collision.
+            grab.movementType = XRBaseInteractable.MovementType.Instantaneous;
+
+            // A short glide into the grip instead of a teleport: the tool is picked up in the
+            // hand's own good time rather than appearing there between two frames.
+            grab.attachEaseInTime = 0.12f;
 
             // No glow of its own: GrabOutlines draws the light-blue rim on whichever instrument
             // the hand would take, and lighting every one within reach would contradict it.
@@ -2950,9 +2963,14 @@ namespace VRSurgery.EditorTools
             bladeBlood = null;
             Material blood = Paint("bladeBlood", new Color(0.33f, 0.01f, 0.02f), 0f, 0.92f);
             const float gripZ = -0.02f;
+            // The grab box is the handle, near enough: 14 x 16 mm around a scalpel that really is
+            // about that. It used to be 24 x 24, a fat sausage round a thin knife, and the near
+            // grab picks whichever instrument's SURFACE is closest to the palm — so a box 8 mm
+            // too generous on every side made the scalpel win reaches that were meant for the
+            // pen or the forceps lying 45 mm away from it.
             GameObject tool = GrabbableTool("Bisturi", "scalpel", "Bisturi", ToolType.Scalpel, ToolCapability.Cut,
                 position, rotation, new Vector3(0f, 0f, gripZ), new Vector3(0f, 0f, gripZ - 0.005f),
-                new Vector3(0.024f, 0.024f, 0.13f), out interactable);
+                new Vector3(0.014f, 0.016f, 0.13f), out interactable);
 
             float tipZ = 0.055f;
             GameObject asset = AssetDatabase.LoadAssetAtPath<GameObject>(ScalpelFbx);

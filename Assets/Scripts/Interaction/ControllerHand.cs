@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.InputSystem.XR;
+using VRSurgery.Data;
 using UnityEngine.XR.Interaction.Toolkit.Interactors;
 
 namespace VRSurgery.Interaction
@@ -58,20 +59,93 @@ namespace VRSurgery.Interaction
         [Tooltip("The middle of the fist, where instruments sit, in the grip frame.")]
         [SerializeField] private Vector3 fistOffset = Vector3.zero;
 
+        [Tooltip("How far forward, in degrees, an instrument is tipped in the fist. 0 lays it " +
+                 "along the handle, out past the thumb; 40 is the angle a scalpel or a pen makes " +
+                 "with the hand that holds it.")]
+        [SerializeField, Range(0f, 80f)] private float toolPitch = 40f;
+
+        [Tooltip("The hold used for something that declares none of its own: slim, pencil-grip. " +
+                 "A tool's own ToolDefinition.Hold overrides this.")]
+        [SerializeField] private HandHold defaultHold = HandHold.Default;
+
+        [Tooltip("How quickly the instrument's own hold angle takes over when one is picked up, " +
+                 "per second. Keeps the tool from popping to a new angle the frame it is grabbed.")]
+        [SerializeField, Min(1f)] private float holdBlendSpeed = 10f;
+
         [SerializeField, HideInInspector] private Vector3 _modelRestPosition;
         [SerializeField, HideInInspector] private Quaternion _modelRestRotation = Quaternion.identity;
         [SerializeField, HideInInspector] private bool _restStored;
 
         private Renderer[] _renderers = new Renderer[0];
         private bool _shown = true;
+        private HandHold _hold;
+        private bool _holding;
+        private float _pitchNow = float.NaN;
+        private readonly float[] _closures = new float[HandPoser.FingerCount];
+        private readonly float[] _frame = new float[HandPoser.FingerCount];
+        private Vector3 _seatLocal;
+        private bool _seatSolved;
+        private SurgicalInteractable _heldLast;
+        private bool _closuresSolved;
+
+        /// <summary>Closure the fingers are put at while working out where a handle would sit.</summary>
+        private const float SeatReferenceClosure = 0.72f;
+
 
         public bool IsLeftHand => isLeftHand;
         public Transform Model => model;
         public Transform GrabPoint => grabPoint;
         public HandPoser Poser => poser;
 
-        /// <summary>The middle of the fist in world space.</summary>
-        public Vector3 FistPosition => transform.TransformPoint(fistOffset);
+        /// <summary>
+        /// The middle of the fist in world space: where the handle of a held instrument lies.
+        ///
+        /// Taken from the rig — the hollow between the palm and the curled fingers — rather than
+        /// from the hand's origin. The origin is the controller's grip axis, and the hand model
+        /// is deliberately slid <see cref="palmDepth"/> off that axis so the palm appears to wrap
+        /// a handle. Seating instruments on the origin therefore parked them in mid-air beside a
+        /// hand that was closing on nothing: on this rig the fingertips ended up 40 to 76 mm from
+        /// a handle 8 mm thick.
+        /// </summary>
+        public Vector3 FistPosition => transform.TransformPoint((_seatSolved ? _seatLocal : Vector3.zero) + fistOffset);
+
+        /// <summary>
+        /// How an instrument sits in this fist: the grip frame, tipped forward by
+        /// <see cref="toolPitch"/>. A tool's own +Z — the blade, the nib, the needle — ends up
+        /// pointing out past the thumb and down towards the fingers, which is how a hand holds
+        /// one.
+        /// </summary>
+        public Quaternion ToolHold => transform.rotation * Quaternion.Euler(CurrentPitch, 0f, 0f);
+
+        /// <summary>
+        /// The angle in use right now: the held instrument's own, eased in, or this hand's
+        /// default when nothing is held.
+        /// </summary>
+        public float CurrentPitch => float.IsNaN(_pitchNow) ? toolPitch : _pitchNow;
+
+        /// <summary>The hold driving the fingers right now. Empty-handed this is the default.</summary>
+        public HandHold CurrentHold => _holding ? _hold : SafeDefaultHold;
+
+        /// <summary>
+        /// This hand's fallback hold, guarded against the scene having been saved before the
+        /// field existed. Unity reads a struct that is absent from the YAML as all zeros, and an
+        /// all-zero hold would hold every instrument with a flat open palm.
+        /// </summary>
+        private HandHold SafeDefaultHold => defaultHold.IsConfigured ? defaultHold : HandHold.Default;
+
+        /// <summary>True while an instrument is in this fist.</summary>
+        public bool IsHolding => _holding;
+
+        /// <summary>
+        /// The hold to use for something being held: the instrument's own if it authored one,
+        /// otherwise the fallback. Pure and static so the choice can be tested without an
+        /// interactor, a rig or a headset.
+        /// </summary>
+        public static HandHold HoldFor(SurgicalInteractable held, in HandHold fallback)
+        {
+            ToolDefinition definition = held != null ? held.ToolDefinition : null;
+            return definition != null && definition.Hold.IsConfigured ? definition.Hold : fallback;
+        }
 
         private void Awake()
         {
@@ -79,6 +153,16 @@ namespace VRSurgery.Interaction
             AlignModel();
             if (poser != null) { poser.Calibrate(); }
             MovePokePointToFingertip();
+
+            // _hold só é preenchido ao segurar algo; sem isto DeclaredClosure leria o struct
+            // zerado e semearia zeros, que é exatamente o que se quer evitar.
+            _hold = SafeDefaultHold;
+
+            // Sem isto as aberturas começam em zero, que é mão aberta, não mão relaxada.
+            for (int finger = 0; finger < _closures.Length; finger++)
+            {
+                _closures[finger] = DeclaredClosure(finger);
+            }
         }
 
         /// <summary>
@@ -137,6 +221,44 @@ namespace VRSurgery.Interaction
                 : (transform.InverseTransformPoint(wrist.position) + transform.InverseTransformPoint(middle.position)) * 0.5f;
             Vector3 target = Quaternion.Euler(rotationOffset) * (-wantPalm * palmDepth) + positionOffset;
             model.localPosition += target - palmCentre;
+
+            SolveGripSeat(palmBone);
+        }
+
+        /// <summary>
+        /// Works out where a handle sits inside this fist, once, from the model's own bones.
+        ///
+        /// The fingers are put in a reference grip and the seat is taken as the middle of what
+        /// they enclose, so it follows whatever hand model is dropped in instead of being a
+        /// hand-tuned offset that only suits one rig.
+        /// </summary>
+        private void SolveGripSeat(Transform palmBone)
+        {
+            _seatSolved = false;
+            if (poser == null || model == null) { return; }
+
+            poser.Calibrate();
+            if (!poser.IsCalibrated) { return; }
+
+            for (int finger = 0; finger < HandPoser.FingerCount; finger++)
+            {
+                poser.SetFingerImmediate(finger, SeatReferenceClosure);
+            }
+
+            Transform wrist = HandPoser.FindBone(model, "Wrist");
+            Vector3 sum = palmBone != null ? palmBone.position : (wrist != null ? wrist.position : transform.position);
+            int count = 1;
+
+            foreach (int finger in new[] { HandPoser.Middle, HandPoser.Ring, HandPoser.Little })
+            {
+                Vector3 tip = poser.TipPosition(finger);
+                if (tip != Vector3.zero) { sum += tip; count++; }
+            }
+
+            _seatLocal = transform.InverseTransformPoint(sum / count);
+            _seatSolved = true;
+
+            poser.Restore();
         }
 
         private void MovePokePointToFingertip()
@@ -161,19 +283,171 @@ namespace VRSurgery.Interaction
                 transform.SetPositionAndRotation(controller.position, controller.rotation);
             }
 
-            if (grabPoint != null && controller != null)
-            {
-                grabPoint.localPosition = controller.InverseTransformPoint(FistPosition);
-                grabPoint.localRotation = Quaternion.identity;
-            }
+            ResolveHeldTool(Time.deltaTime);
+            PlaceGrabPoint();
 
             if (poser != null && active)
             {
-                float grip = inputs != null ? inputs.selectInput.ReadValue() : 0f;
                 float trigger = inputs != null ? inputs.activateInput.ReadValue() : 0f;
-                if (inputs != null && inputs.hasSelection) { grip = 1f; }
-                poser.Tick(Time.deltaTime, grip, trigger);
+
+                if (_holding)
+                {
+                    // An instrument is in the fist, so the handle decides where the fingers stop,
+                    // not the button. Squeezing harder used to drive the grip to a full fist, which
+                    // closed the fingers straight through a 6 mm scalpel shank.
+                    //
+                    // The index still answers the trigger, curling from where the instrument rests
+                    // it: that is what working a pair of forceps looks like from inside the glove.
+                    for (int finger = 0; finger < _closures.Length; finger++)
+                    {
+                        _frame[finger] = _closures[finger];
+                    }
+
+                    _frame[HandPoser.Index] = Mathf.Lerp(_closures[HandPoser.Index], 1f, trigger);
+                    poser.TickFingers(Time.deltaTime, _frame);
+                }
+                else
+                {
+                    float grip = inputs != null ? inputs.selectInput.ReadValue() : 0f;
+                    poser.Tick(Time.deltaTime, grip, trigger);
+                }
             }
+        }
+
+        /// <summary>
+        /// Works out what is being held and eases this hand's hold angle toward that
+        /// instrument's own. Falls back to <see cref="defaultHold"/> for anything that declares
+        /// no hold, which is still a grip on a handle rather than a clenched fist.
+        /// </summary>
+        private void ResolveHeldTool(float deltaTime)
+        {
+            _holding = inputs != null && inputs.hasSelection;
+
+            if (_holding)
+            {
+                SurgicalInteractable held = FindHeldInstrument();
+                _hold = HoldFor(held, SafeDefaultHold);
+
+                // Solving is a short sweep per finger, so it runs when what is held changes, not
+                // every frame.
+                // O flag explícito importa: segurar algo que não é um instrumento nosso devolve
+                // null aqui, e comparar null com null pularia o solve, deixando todo dedo no zero
+                // do array — mão aberta e reta agarrada ao objeto.
+                if (!_closuresSolved || held != _heldLast)
+                {
+                    _heldLast = held;
+                    SolveHoldClosures(held);
+                    _closuresSolved = true;
+                }
+            }
+            else
+            {
+                _heldLast = null;
+                _closuresSolved = false;
+            }
+
+            float target = _holding ? _hold.pitchDegrees : toolPitch;
+            _pitchNow = float.IsNaN(_pitchNow)
+                ? target
+                : Mathf.Lerp(_pitchNow, target, deltaTime <= 0f ? 1f : Mathf.Clamp01(deltaTime * holdBlendSpeed));
+        }
+
+        /// <summary>
+        /// Closes each finger exactly as far as it has to go to reach this instrument's handle,
+        /// solved against the rig.
+        ///
+        /// One number for the whole hand cannot do this: on this hand the middle finger meets a
+        /// scalpel at about 0.8 closed, the index only at 1.0, and the little finger never gets
+        /// nearer than 30 mm. A finger that cannot reach keeps the pose the instrument asked for
+        /// instead of closing uselessly through thin air.
+        /// </summary>
+        private void SolveHoldClosures(SurgicalInteractable held)
+        {
+            if (poser == null || !poser.IsCalibrated)
+            {
+                for (int finger = 0; finger < _closures.Length; finger++)
+                {
+                    _closures[finger] = DeclaredClosure(finger);
+                }
+
+                return;
+            }
+
+            Vector3 origin = FistPosition;
+            Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, 0f, 0f) * Vector3.forward;
+            float radius = HandleRadiusFor(held);
+
+            for (int finger = 0; finger < _closures.Length; finger++)
+            {
+                float solved = poser.SolveClosure(finger, origin, axis, radius, out float solvedError);
+                float declared = DeclaredClosure(finger);
+
+                // Keep whichever pose actually ends up nearer the handle. A fixed tolerance threw
+                // away a solved closure that was closer than the authored one simply for not
+                // reaching the steel — which is exactly the thumb's case on this rig.
+                float declaredError = Mathf.Abs(
+                    poser.DistanceAt(finger, declared, origin, axis) - radius);
+
+                _closures[finger] = solvedError <= declaredError ? solved : declared;
+            }
+        }
+
+        /// <summary>
+        /// How thick the handle is where the hand closes on it: what the instrument declares, or
+        /// measured off its own collider when it declares nothing.
+        /// </summary>
+        private float HandleRadiusFor(SurgicalInteractable held)
+        {
+            if (_hold.handleRadius > 0f) { return _hold.handleRadius; }
+
+            Collider collider = held != null ? held.GetComponent<Collider>() : null;
+            switch (collider)
+            {
+                case BoxCollider box: return Mathf.Min(box.size.x, box.size.y) * 0.5f;
+                case CapsuleCollider capsule: return capsule.radius;
+                default: return 0.009f;
+            }
+        }
+
+        private float DeclaredClosure(int finger)
+        {
+            if (finger == HandPoser.Thumb) { return _hold.thumbClosure; }
+            if (finger == HandPoser.Index) { return _hold.indexClosure; }
+            return _hold.gripClosure;
+        }
+
+        /// <summary>The instrument this hand has selected, if it is one of ours.</summary>
+        private SurgicalInteractable FindHeldInstrument()
+        {
+            if (inputs == null) { return null; }
+
+            var selected = inputs.interactablesSelected;
+            for (int i = 0; i < selected.Count; i++)
+            {
+                Component component = selected[i] as Component;
+                if (component == null) { continue; }
+
+                SurgicalInteractable instrument = component.GetComponentInParent<SurgicalInteractable>();
+                if (instrument != null) { return instrument; }
+            }
+
+            return null;
+        }
+
+        /// <summary>
+        /// Puts the grab point in the fist, turned the way this hand holds an instrument.
+        ///
+        /// Position AND rotation come from the hand. Only the position used to: the grab point is
+        /// parented to the rig's controller transform, which follows the POINTING pose, so a tool
+        /// was handed the aim direction while the glove closed around it on the GRIP pose. Those
+        /// two differ by some 40 degrees on a Touch controller, and that gap is why a held
+        /// instrument looked skewered through the hand instead of gripped by it — worst on the
+        /// scalpel, which is long, thin, and the first thing anyone picks up.
+        /// </summary>
+        public void PlaceGrabPoint()
+        {
+            if (grabPoint == null) { return; }
+            grabPoint.SetPositionAndRotation(FistPosition, ToolHold);
         }
 
         private bool GripTracked()

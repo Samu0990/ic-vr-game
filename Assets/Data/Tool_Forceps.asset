@@ -19,3 +19,8 @@ MonoBehaviour:
   hapticProfile: {fileID: 11400000, guid: eb977ddd6a9e8f6f9b8a0b7a49bb74d1, type: 2}
   gripPointLocalPosition: {x: 0, y: 0, z: 0}
   gripPointLocalEulerAngles: {x: 0, y: 0, z: 0}
+  hold:
+    gripClosure: 0.5
+    indexClosure: 0.3
+    thumbClosure: 0.42
+    pitchDegrees: 32
