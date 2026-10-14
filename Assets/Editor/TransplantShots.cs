@@ -31,6 +31,7 @@ namespace VRSurgery.EditorTools
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (args[i] == "-out") { output = args[i + 1]; }
+                if (args[i] == "-size") { ParseSize(args[i + 1]); }
             }
 
             try
@@ -43,6 +44,21 @@ namespace VRSurgery.EditorTools
             {
                 Debug.LogError("[Shots] TRANSPLANT_SHOTS_FAILED " + exception);
                 EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>Resolução das fotos. -size 3840x2160 na linha de comando para imagens de apresentação.</summary>
+        private static int _width = 1400;
+        private static int _height = 900;
+
+        private static void ParseSize(string value)
+        {
+            string[] parts = value.ToLowerInvariant().Split('x');
+            if (parts.Length == 2 && int.TryParse(parts[0], out int w) && int.TryParse(parts[1], out int h) &&
+                w >= 64 && h >= 64 && w <= 8192 && h <= 8192)
+            {
+                _width = w;
+                _height = h;
             }
         }
 
@@ -167,7 +183,7 @@ namespace VRSurgery.EditorTools
             cam.transform.position = from;
             cam.transform.rotation = Quaternion.LookRotation((look - from).normalized, Vector3.up);
 
-            RenderTexture target = new RenderTexture(1400, 900, 24, RenderTextureFormat.ARGB32)
+            RenderTexture target = new RenderTexture(_width, _height, 24, RenderTextureFormat.ARGB32)
             {
                 antiAliasing = 4
             };
@@ -177,8 +193,8 @@ namespace VRSurgery.EditorTools
 
             RenderTexture previous = RenderTexture.active;
             RenderTexture.active = target;
-            Texture2D shot = new Texture2D(1400, 900, TextureFormat.RGB24, false);
-            shot.ReadPixels(new Rect(0, 0, 1400, 900), 0, 0);
+            Texture2D shot = new Texture2D(_width, _height, TextureFormat.RGB24, false);
+            shot.ReadPixels(new Rect(0, 0, _width, _height), 0, 0);
             shot.Apply();
             RenderTexture.active = previous;
 

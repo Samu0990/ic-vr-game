@@ -30,9 +30,12 @@ namespace VRSurgery.EditorTools
         {
             string output = "Logs/GripProbe";
             string[] args = System.Environment.GetCommandLineArgs();
+            if (System.Array.IndexOf(args, "-ring") >= 0) { _ring = true; }
             for (int i = 0; i < args.Length - 1; i++)
             {
                 if (args[i] == "-out") { output = args[i + 1]; }
+                if (args[i] == "-size") { ParseSize(args[i + 1]); }
+                if (args[i] == "-ring") { _ring = true; }
             }
 
             try
@@ -45,6 +48,21 @@ namespace VRSurgery.EditorTools
             {
                 Debug.LogError("[GripProbe] GRIP_PROBE_FAILED " + exception);
                 EditorApplication.Exit(1);
+            }
+        }
+
+        /// <summary>Resolução das fotos. -size 3840x2160 na linha de comando para imagens de apresentação.</summary>
+        private static int _width = 1200;
+        private static int _height = 900;
+
+        private static void ParseSize(string value)
+        {
+            string[] parts = value.ToLowerInvariant().Split('x');
+            if (parts.Length == 2 && int.TryParse(parts[0], out int w) && int.TryParse(parts[1], out int h) &&
+                w >= 64 && h >= 64 && w <= 8192 && h <= 8192)
+            {
+                _width = w;
+                _height = h;
             }
         }
 
@@ -90,12 +108,31 @@ namespace VRSurgery.EditorTools
 
                 report.AppendLine(Measure(instrumentName, hand, instrument, hold));
                 report.AppendLine(Sweep(hand, instrument));
+                report.AppendLine(SkinCheck(hand));
+
+                // A varredura termina com a mão fechada em punho; sem reposar, a foto mostrava
+                // a pose da varredura e não a pega que acabou de ser medida.
+                PoseFingers(hand, hold, HandleRadius(instrument, hold));
 
                 // Gravado a cada instrumento: sem isto um tombo no último perde as medidas de
                 // todos os anteriores, que é exatamente o que acontecia ao rodar sem tela.
                 File.WriteAllText(Path.Combine(folder, "pega.txt"), report.ToString());
 
-                if (CanRender) { Shoot(folder, instrumentName, hand, instrument); }
+                if (CanRender)
+                {
+                    Shoot(folder, instrumentName, hand, instrument);
+
+                    // Controle: a mesma mão, toda aberta e toda fechada. Se as fotos saírem iguais,
+                    // a pele não está seguindo os ossos que o HandPoser gira.
+                    if (instrumentName == Instruments[0] && hand.Poser != null)
+                    {
+                        for (int f = 0; f < HandPoser.FingerCount; f++) { hand.Poser.SetFingerImmediate(f, 0f); }
+                        Shoot(folder, instrumentName + "_CONTROLE_aberta", hand, instrument);
+                        for (int f = 0; f < HandPoser.FingerCount; f++) { hand.Poser.SetFingerImmediate(f, 1f); }
+                        Shoot(folder, instrumentName + "_CONTROLE_fechada", hand, instrument);
+                        PoseFingers(hand, hold, HandleRadius(instrument, hold));
+                    }
+                }
             }
 
             if (!CanRender)
@@ -261,6 +298,39 @@ namespace VRSurgery.EditorTools
             return s.ToString();
         }
 
+        /// <summary>
+        /// Confere se a malha visível da mão está presa aos ossos que o HandPoser gira. Medir osso
+        /// que a pele não segue é medir uma mão que ninguém vê.
+        /// </summary>
+        private static string SkinCheck(ControllerHand hand)
+        {
+            StringBuilder s = new StringBuilder("    pele x ossos:\n");
+            SkinnedMeshRenderer[] skins = hand.Model.GetComponentsInChildren<SkinnedMeshRenderer>(true);
+            MeshRenderer[] rigid = hand.Model.GetComponentsInChildren<MeshRenderer>(true);
+            s.AppendLine($"      SkinnedMeshRenderer: {skins.Length}   MeshRenderer: {rigid.Length}");
+
+            foreach (string joint in new[] { "IndexProximal", "MiddleIntermediate", "ThumbDistal", "LittleProximal" })
+            {
+                Transform bone = HandPoser.FindBone(hand.Model, joint);
+                int bound = 0;
+                foreach (SkinnedMeshRenderer skin in skins)
+                {
+                    if (bone != null && System.Array.IndexOf(skin.bones, bone) >= 0) { bound++; }
+                }
+
+                string path = bone != null ? AnimationUtility.CalculateTransformPath(bone, hand.Model) : "(não achado)";
+                s.AppendLine($"      {joint,-20} {path,-60} pele presa: {(bound > 0 ? "SIM" : "NÃO")}");
+            }
+
+            foreach (SkinnedMeshRenderer skin in skins)
+            {
+                s.AppendLine($"      malha '{skin.name}' ativa={skin.gameObject.activeInHierarchy} enabled={skin.enabled} " +
+                             $"ossos={skin.bones.Length} raiz={(skin.rootBone != null ? skin.rootBone.name : "-")}");
+            }
+
+            return s.ToString();
+        }
+
         private static float DistanceToAxis(Vector3 point, Vector3 origin, Vector3 direction)
         {
             Vector3 v = point - origin;
@@ -269,6 +339,15 @@ namespace VRSurgery.EditorTools
 
         private static void Shoot(string folder, string name, ControllerHand hand, SurgicalInteractable instrument)
         {
+            // A pele só é recalculada no laço de frames do Unity, que um Camera.Render() chamado
+            // direto não percorre: sem isto a foto mostra a mão congelada na pose em que a cena
+            // abriu, por mais que os ossos tenham sido dobrados. Medido: aberta, pega e punho
+            // fechado saíam como a mesma imagem.
+            foreach (SkinnedMeshRenderer skin in hand.Model.GetComponentsInChildren<SkinnedMeshRenderer>(true))
+            {
+                skin.forceMatrixRecalculationPerRender = true;
+            }
+
             Vector3 centre = hand.GrabPoint.position;
             Transform model = hand.Model;
 
@@ -285,6 +364,27 @@ namespace VRSurgery.EditorTools
                 Vector3 from = centre + dir.normalized * 0.22f + Vector3.up * 0.04f;
                 Render(Path.Combine(folder, $"{name}_{tag}.png"), from, centre, 34f);
             }
+
+            if (_ring) { ShootRing(folder, name, hand); }
+        }
+
+        /// <summary>-ring: oito vistas em volta da mão, mais afastadas, para escolher a de apresentação.</summary>
+        private static bool _ring;
+
+        private static void ShootRing(string folder, string name, ControllerHand hand)
+        {
+            // Mira entre o punho e a pinça, para caber a mão inteira e o instrumento.
+            Transform wrist = HandPoser.FindBone(hand.Model, "Wrist");
+            Vector3 centre = wrist != null ? Vector3.Lerp(wrist.position, hand.GrabPoint.position, 0.6f) : hand.GrabPoint.position;
+            Transform frame = hand.transform;
+
+            for (int i = 0; i < 8; i++)
+            {
+                float yaw = i * 45f;
+                Vector3 local = Quaternion.Euler(0f, yaw, 0f) * Vector3.forward + Vector3.up * 0.45f;
+                Vector3 from = centre + frame.TransformDirection(local.normalized) * 0.34f;
+                Render(Path.Combine(folder, $"{name}_volta_{yaw:000}.png"), from, centre, 38f);
+            }
         }
 
         private static void Render(string path, Vector3 from, Vector3 look, float fov)
@@ -299,7 +399,7 @@ namespace VRSurgery.EditorTools
             rig.transform.position = from;
             rig.transform.LookAt(look);
 
-            RenderTexture target = new RenderTexture(1200, 900, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
+            RenderTexture target = new RenderTexture(_width, _height, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
             cam.targetTexture = target;
             cam.Render();
 
