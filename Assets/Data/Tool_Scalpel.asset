@@ -20,7 +20,9 @@ MonoBehaviour:
   gripPointLocalPosition: {x: 0, y: 0, z: 0}
   gripPointLocalEulerAngles: {x: 0, y: 0, z: 0}
   hold:
+    style: 0
     gripClosure: 0.58
     indexClosure: 0.22
     thumbClosure: 0.5
     pitchDegrees: 40
+    tuckClosure: 0.85

@@ -31,6 +31,19 @@ namespace VRSurgery.Interaction
 
         private static readonly string[] FingerNames = { "Thumb", "Index", "Middle", "Ring", "Little" };
 
+        /// <summary>
+        /// Which part of a finger is measured against a handle.
+        ///
+        /// A fist closing round a haft touches it with the very tips, but a pencil grip does not:
+        /// the shank crosses the PAD of the last joint and the fingertip carries on past it. Ask
+        /// a pinched finger to put its tip on the steel and it curls a knuckle too far.
+        /// </summary>
+        public enum Contact
+        {
+            Tip = 0,
+            Pad = 1,
+        }
+
         private static readonly string[] FingerJoints = { "Proximal", "Intermediate", "Distal", "Tip" };
         private static readonly string[] ThumbJoints = { "Metacarpal", "Proximal", "Distal", "Tip" };
 
@@ -61,6 +74,7 @@ namespace VRSurgery.Interaction
         private readonly float[] _curl = new float[FingerCount];
         private readonly float[] _targets = new float[FingerCount];
         private readonly Transform[] _tips = new Transform[FingerCount];
+        private readonly Transform[] _distals = new Transform[FingerCount];
         private bool _calibrated;
 
         public bool IsLeftHand => isLeftHand;
@@ -82,6 +96,22 @@ namespace VRSurgery.Interaction
         {
             Transform tip = _tips[Mathf.Clamp(finger, 0, FingerCount - 1)];
             return tip != null ? tip.position : Vector3.zero;
+        }
+
+        /// <summary>
+        /// World position of the part of a finger that meets a handle: the tip, or the middle of
+        /// the pad — halfway between the last knuckle and the tip, which is where a pinched
+        /// instrument actually rests. Falls back to the tip when the rig has no distal bone.
+        /// </summary>
+        public Vector3 ContactPosition(int finger, Contact contact)
+        {
+            finger = Mathf.Clamp(finger, 0, FingerCount - 1);
+            Vector3 tip = TipPosition(finger);
+            if (contact == Contact.Tip) { return tip; }
+
+            Transform distal = _distals[finger];
+            if (distal == null || tip == Vector3.zero) { return tip; }
+            return (distal.position + tip) * 0.5f;
         }
 
         private void Awake() => Calibrate();
@@ -123,7 +153,11 @@ namespace VRSurgery.Interaction
             // Sem este cache, o solver procurava cada ponta pelo nome 240 vezes por pega, e cada
             // busca varria a hierarquia inteira alocando um array. No Quest isso é um engasgo de
             // GC toda vez que se pega um instrumento.
-            for (int i = 0; i < FingerCount; i++) { _tips[i] = FindBone(transform, FingerNames[i] + "Tip"); }
+            for (int i = 0; i < FingerCount; i++)
+            {
+                _tips[i] = FindBone(transform, FingerNames[i] + "Tip");
+                _distals[i] = FindBone(transform, FingerNames[i] + "Distal");
+            }
 
             for (int i = 0; i < _curl.Length; i++) { _curl[i] = relaxed; }
             _calibrated = _joints.Count > 0;
@@ -241,7 +275,13 @@ namespace VRSurgery.Interaction
         /// through the steel, never a grip on it.
         /// </summary>
         public float SolveClosure(int finger, Vector3 axisOrigin, Vector3 axisDirection, float targetRadius,
-            out float achievedError)
+            out float achievedError) =>
+            SolveClosure(finger, axisOrigin, axisDirection, targetRadius, Contact.Tip, out achievedError);
+
+        /// <inheritdoc cref="SolveClosure(int,Vector3,Vector3,float,out float)"/>
+        /// <param name="contact">Which part of the finger has to land on the handle.</param>
+        public float SolveClosure(int finger, Vector3 axisOrigin, Vector3 axisDirection, float targetRadius,
+            Contact contact, out float achievedError)
         {
             achievedError = float.MaxValue;
             if (!_calibrated) { return 0f; }
@@ -264,7 +304,7 @@ namespace VRSurgery.Interaction
                 float closure = i / (float)steps;
                 SetFingerImmediate(finger, closure);
 
-                float distance = DistanceToAxis(TipPosition(finger), axisOrigin, axisDirection);
+                float distance = DistanceToAxis(ContactPosition(finger, contact), axisOrigin, axisDirection);
                 float error = Mathf.Abs(distance - targetRadius);
                 if (error < bestError)
                 {
@@ -287,7 +327,12 @@ namespace VRSurgery.Interaction
         /// How far this finger's tip would sit from an axis at a given closure. Lets the caller
         /// compare candidate poses instead of trusting a fixed tolerance.
         /// </summary>
-        public float DistanceAt(int finger, float closure, Vector3 axisOrigin, Vector3 axisDirection)
+        public float DistanceAt(int finger, float closure, Vector3 axisOrigin, Vector3 axisDirection) =>
+            DistanceAt(finger, closure, axisOrigin, axisDirection, Contact.Tip);
+
+        /// <inheritdoc cref="DistanceAt(int,float,Vector3,Vector3)"/>
+        public float DistanceAt(int finger, float closure, Vector3 axisOrigin, Vector3 axisDirection,
+            Contact contact)
         {
             if (!_calibrated) { return float.MaxValue; }
 
@@ -295,7 +340,7 @@ namespace VRSurgery.Interaction
             float restore = _curl[finger];
 
             SetFingerImmediate(finger, closure);
-            float distance = DistanceToAxis(TipPosition(finger), axisOrigin, axisDirection);
+            float distance = DistanceToAxis(ContactPosition(finger, contact), axisOrigin, axisDirection);
 
             SetFingerImmediate(finger, restore);
             return distance;

@@ -83,12 +83,13 @@ namespace VRSurgery.Interaction
         private float _pitchNow = float.NaN;
         private readonly float[] _closures = new float[HandPoser.FingerCount];
         private readonly float[] _frame = new float[HandPoser.FingerCount];
-        private Vector3 _seatLocal;
+        private Vector3 _pinchLocal;
+        private Vector3 _fistLocal;
         private bool _seatSolved;
         private SurgicalInteractable _heldLast;
         private bool _closuresSolved;
 
-        /// <summary>Closure the fingers are put at while working out where a handle would sit.</summary>
+        /// <summary>Closure the fingers are put at while working out where a fist would hold a haft.</summary>
         private const float SeatReferenceClosure = 0.72f;
 
 
@@ -106,8 +107,25 @@ namespace VRSurgery.Interaction
         /// a handle. Seating instruments on the origin therefore parked them in mid-air beside a
         /// hand that was closing on nothing: on this rig the fingertips ended up 40 to 76 mm from
         /// a handle 8 mm thick.
+        ///
+        /// Where exactly depends on the grip — see <see cref="SeatLocal"/>.
         /// </summary>
-        public Vector3 FistPosition => transform.TransformPoint((_seatSolved ? _seatLocal : Vector3.zero) + fistOffset);
+        public Vector3 FistPosition => transform.TransformPoint(SeatLocal + fistOffset);
+
+        /// <summary>
+        /// Where in the hand the handle lies, for the grip in use. A pinched instrument rides at
+        /// the fingertips, well forward of a hafted one sitting in the middle of a closed fist —
+        /// which is also why a scalpel reaches further than it did when everything was seated in
+        /// the fist.
+        /// </summary>
+        private Vector3 SeatLocal
+        {
+            get
+            {
+                if (!_seatSolved) { return Vector3.zero; }
+                return CurrentHold.IsPencil ? _pinchLocal : _fistLocal;
+            }
+        }
 
         /// <summary>
         /// How an instrument sits in this fist: the grip frame, tipped forward by
@@ -226,11 +244,13 @@ namespace VRSurgery.Interaction
         }
 
         /// <summary>
-        /// Works out where a handle sits inside this fist, once, from the model's own bones.
+        /// Works out where a handle sits inside this hand, once, from the model's own bones.
         ///
-        /// The fingers are put in a reference grip and the seat is taken as the middle of what
-        /// they enclose, so it follows whatever hand model is dropped in instead of being a
-        /// hand-tuned offset that only suits one rig.
+        /// Both seats are solved here, because a hand has two of them. Which one is used depends
+        /// on what is being held, and that changes from grab to grab, while this runs at startup.
+        ///
+        /// The seats are read off the rig rather than authored, so they follow whatever hand
+        /// model is dropped in instead of being an offset tuned to one skeleton.
         /// </summary>
         private void SolveGripSeat(Transform palmBone)
         {
@@ -240,6 +260,19 @@ namespace VRSurgery.Interaction
             poser.Calibrate();
             if (!poser.IsCalibrated) { return; }
 
+            _fistLocal = SolveFistSeat(palmBone);
+            _pinchLocal = SolvePinchSeat();
+            _seatSolved = true;
+
+            poser.Restore();
+        }
+
+        /// <summary>
+        /// The middle of a closed fist: where the haft of a mallet or a retractor lies. The
+        /// fingers are curled to a reference grip and the seat is the middle of what they enclose.
+        /// </summary>
+        private Vector3 SolveFistSeat(Transform palmBone)
+        {
             for (int finger = 0; finger < HandPoser.FingerCount; finger++)
             {
                 poser.SetFingerImmediate(finger, SeatReferenceClosure);
@@ -255,10 +288,45 @@ namespace VRSurgery.Interaction
                 if (tip != Vector3.zero) { sum += tip; count++; }
             }
 
-            _seatLocal = transform.InverseTransformPoint(sum / count);
-            _seatSolved = true;
+            return transform.InverseTransformPoint(sum / count);
+        }
 
-            poser.Restore();
+        /// <summary>
+        /// The pinch: where a scalpel lies when it is held the way a surgeon actually holds one.
+        ///
+        /// Taken as the point midway between the two sides of the pinch: the thumb pad on one
+        /// side, the index and middle pads on the other. A pinch has two opposing faces and the
+        /// handle lies between them.
+        ///
+        /// Averaging the three pads evenly does NOT work, and the rig says so: index and middle
+        /// are neighbours on the same side of the shank, so an even mean only sits on the axis
+        /// when the thumb is twice as far out as they are. Measured on this hand it was exactly
+        /// that — index pad 6.8 mm and middle 6.6 mm from the axis, thumb 17.2 mm, with the
+        /// fingers dead on a 7 mm shank and the thumb hanging 10 mm clear of it.
+        ///
+        /// This is the fix for the instrument that never looked held: seated in the fist, a
+        /// scalpel sat in the middle of the palm with the fingers curled past it, which is a hand
+        /// holding a hammer. A pencil grip carries it out at the fingertips.
+        /// </summary>
+        private Vector3 SolvePinchSeat()
+        {
+            HandHold reference = SafeDefaultHold;
+            poser.SetFingerImmediate(HandPoser.Thumb, reference.thumbClosure);
+            poser.SetFingerImmediate(HandPoser.Index, reference.indexClosure);
+            poser.SetFingerImmediate(HandPoser.Middle, reference.gripClosure);
+
+            Vector3 thumb = poser.ContactPosition(HandPoser.Thumb, HandPoser.Contact.Pad);
+            Vector3 index = poser.ContactPosition(HandPoser.Index, HandPoser.Contact.Pad);
+            Vector3 middle = poser.ContactPosition(HandPoser.Middle, HandPoser.Contact.Pad);
+
+            // Sem as três polpas não há pinça que se meça; o punho ao menos existe sempre.
+            if (thumb == Vector3.zero || index == Vector3.zero || middle == Vector3.zero)
+            {
+                return _fistLocal;
+            }
+
+            Vector3 fingerSide = (index + middle) * 0.5f;
+            return transform.InverseTransformPoint((thumb + fingerSide) * 0.5f);
         }
 
         private void MovePokePointToFingertip()
@@ -356,10 +424,15 @@ namespace VRSurgery.Interaction
         /// Closes each finger exactly as far as it has to go to reach this instrument's handle,
         /// solved against the rig.
         ///
-        /// One number for the whole hand cannot do this: on this hand the middle finger meets a
-        /// scalpel at about 0.8 closed, the index only at 1.0, and the little finger never gets
-        /// nearer than 30 mm. A finger that cannot reach keeps the pose the instrument asked for
-        /// instead of closing uselessly through thin air.
+        /// Only the fingers that touch it are solved. Which ones those are is the grip: a pencil
+        /// grip meets a scalpel at three pads and folds the other two away, so chasing the ring
+        /// and little fingers onto the shank was asking them to do something no hand does — and
+        /// on this rig they could not reach it anyway, ending some 30 mm short with the hand
+        /// clenched round nothing.
+        ///
+        /// One number for the whole hand cannot do the rest either: the middle finger meets a
+        /// scalpel at about 0.8 closed and the index much straighter. A finger that cannot reach
+        /// keeps the pose the instrument asked for instead of closing uselessly through thin air.
         /// </summary>
         private void SolveHoldClosures(SurgicalInteractable held)
         {
@@ -376,20 +449,43 @@ namespace VRSurgery.Interaction
             Vector3 origin = FistPosition;
             Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, 0f, 0f) * Vector3.forward;
             float radius = HandleRadiusFor(held);
+            HandPoser.Contact contact = _hold.IsPencil ? HandPoser.Contact.Pad : HandPoser.Contact.Tip;
 
             for (int finger = 0; finger < _closures.Length; finger++)
             {
-                float solved = poser.SolveClosure(finger, origin, axis, radius, out float solvedError);
                 float declared = DeclaredClosure(finger);
+
+                // A folded-away finger has no handle to solve against: it just folds.
+                if (!TouchesHandle(finger))
+                {
+                    _closures[finger] = declared;
+                    continue;
+                }
+
+                float solved = poser.SolveClosure(finger, origin, axis, radius, contact, out float solvedError);
 
                 // Keep whichever pose actually ends up nearer the handle. A fixed tolerance threw
                 // away a solved closure that was closer than the authored one simply for not
                 // reaching the steel — which is exactly the thumb's case on this rig.
                 float declaredError = Mathf.Abs(
-                    poser.DistanceAt(finger, declared, origin, axis) - radius);
+                    poser.DistanceAt(finger, declared, origin, axis, contact) - radius);
 
                 _closures[finger] = solvedError <= declaredError ? solved : declared;
             }
+        }
+
+        /// <summary>
+        /// Whether this finger is on the instrument at all under the hold in force.
+        ///
+        /// A pencil grip is a three-point one: the thumb and index pinch the handle and the
+        /// middle finger sits under it. The ring and little fingers curl into the palm and touch
+        /// nothing — look at any photograph of a surgeon holding a scalpel. A power grip has
+        /// every finger on the haft.
+        /// </summary>
+        private bool TouchesHandle(int finger)
+        {
+            if (!CurrentHold.IsPencil) { return true; }
+            return finger == HandPoser.Thumb || finger == HandPoser.Index || finger == HandPoser.Middle;
         }
 
         /// <summary>
@@ -413,6 +509,7 @@ namespace VRSurgery.Interaction
         {
             if (finger == HandPoser.Thumb) { return _hold.thumbClosure; }
             if (finger == HandPoser.Index) { return _hold.indexClosure; }
+            if (!TouchesHandle(finger)) { return _hold.TuckClosure; }
             return _hold.gripClosure;
         }
 

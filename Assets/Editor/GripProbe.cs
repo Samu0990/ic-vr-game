@@ -51,6 +51,14 @@ namespace VRSurgery.EditorTools
         [MenuItem("VRSurgery/Sonda da pega")]
         public static void RunMenu() => Run("Logs/GripProbe");
 
+        /// <summary>
+        /// Se dá para desenhar. Em -batchmode -nographics não há dispositivo gráfico, e mandar a
+        /// URP renderizar assim derruba o editor com SIGSEGV no meio da sonda — as medidas, que
+        /// são o que importa, não dependem de desenhar nada.
+        /// </summary>
+        private static bool CanRender =>
+            SystemInfo.graphicsDeviceType != UnityEngine.Rendering.GraphicsDeviceType.Null;
+
         public static void Run(string folder)
         {
             EditorSceneManager.OpenScene(ScenePath, OpenSceneMode.Single);
@@ -82,7 +90,17 @@ namespace VRSurgery.EditorTools
 
                 report.AppendLine(Measure(instrumentName, hand, instrument, hold));
                 report.AppendLine(Sweep(hand, instrument));
-                Shoot(folder, instrumentName, hand, instrument);
+
+                // Gravado a cada instrumento: sem isto um tombo no último perde as medidas de
+                // todos os anteriores, que é exatamente o que acontecia ao rodar sem tela.
+                File.WriteAllText(Path.Combine(folder, "pega.txt"), report.ToString());
+
+                if (CanRender) { Shoot(folder, instrumentName, hand, instrument); }
+            }
+
+            if (!CanRender)
+            {
+                report.AppendLine("(sem GPU: só as medidas, sem os PNGs)");
             }
 
             string path = Path.Combine(folder, "pega.txt");
@@ -103,13 +121,37 @@ namespace VRSurgery.EditorTools
             Vector3 origin = hand.FistPosition;
             Vector3 axis = hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f) * Vector3.forward;
 
+            HandPoser.Contact contact = hold.IsPencil ? HandPoser.Contact.Pad : HandPoser.Contact.Tip;
+
             for (int finger = 0; finger < HandPoser.FingerCount; finger++)
             {
-                float solved = poser.SolveClosure(finger, origin, axis, radius, out float error);
-                float declared = finger == HandPoser.Thumb ? hold.thumbClosure
-                    : finger == HandPoser.Index ? hold.indexClosure : hold.gripClosure;
+                float declared = DeclaredClosure(hold, finger);
+
+                // Dedo recolhido não resolve contra nada: só dobra. Igual ao jogo.
+                if (!Touches(hold, finger))
+                {
+                    poser.SetFingerImmediate(finger, declared);
+                    continue;
+                }
+
+                float solved = poser.SolveClosure(finger, origin, axis, radius, contact, out float error);
                 poser.SetFingerImmediate(finger, error <= 0.022f ? solved : declared);
             }
+        }
+
+        /// <summary>Quais dedos encostam no cabo: pinça são três, punho são cinco.</summary>
+        private static bool Touches(in HandHold hold, int finger)
+        {
+            if (!hold.IsPencil) { return true; }
+            return finger == HandPoser.Thumb || finger == HandPoser.Index || finger == HandPoser.Middle;
+        }
+
+        private static float DeclaredClosure(in HandHold hold, int finger)
+        {
+            if (finger == HandPoser.Thumb) { return hold.thumbClosure; }
+            if (finger == HandPoser.Index) { return hold.indexClosure; }
+            if (!Touches(hold, finger)) { return hold.TuckClosure; }
+            return hold.gripClosure;
         }
 
         /// <summary>Raio do cabo: o que a ferramenta declara, ou medido no collider dela.</summary>
@@ -147,8 +189,9 @@ namespace VRSurgery.EditorTools
 
             StringBuilder s = new StringBuilder();
             s.AppendLine($"--- {name}");
-            s.AppendLine($"    pega declarada: grip={hold.gripClosure:0.00} index={hold.indexClosure:0.00} " +
-                         $"thumb={hold.thumbClosure:0.00} pitch={hold.pitchDegrees:0}");
+            s.AppendLine($"    pega: {(hold.IsPencil ? "PINÇA (lápis)" : "PUNHO")}  " +
+                         $"grip={hold.gripClosure:0.00} index={hold.indexClosure:0.00} " +
+                         $"thumb={hold.thumbClosure:0.00} recolhe={hold.TuckClosure:0.00} pitch={hold.pitchDegrees:0}");
             s.AppendLine($"    raio do cabo: {handleRadius * 1000f:0.0} mm");
 
             Transform palm = HandPoser.FindBone(hand.Model, "Palm");
@@ -157,15 +200,27 @@ namespace VRSurgery.EditorTools
                 s.AppendLine($"    palma -> eixo do cabo: {DistanceToAxis(palm.position, axisOrigin, axis) * 1000f:0.0} mm");
             }
 
-            foreach (string finger in new[] { "Thumb", "Index", "Middle", "Ring", "Little" })
+            string[] names = { "Thumb", "Index", "Middle", "Ring", "Little" };
+            for (int finger = 0; finger < names.Length; finger++)
             {
-                Transform tip = HandPoser.FindBone(hand.Model, finger + "Tip");
+                Transform tip = HandPoser.FindBone(hand.Model, names[finger] + "Tip");
                 if (tip == null) { continue; }
 
-                float d = DistanceToAxis(tip.position, axisOrigin, axis) * 1000f;
+                // Numa pinça o cabo cruza a POLPA, não a ponta: medir a ponta mede o dedo que já
+                // passou do cabo e diz que está longe quando está certo.
+                bool pad = hold.IsPencil && Touches(hold, finger);
+                Transform distal = HandPoser.FindBone(hand.Model, names[finger] + "Distal");
+                Vector3 point = pad && distal != null ? (distal.position + tip.position) * 0.5f : tip.position;
+                string where = pad && distal != null ? "polpa" : "ponta";
+
+                float d = DistanceToAxis(point, axisOrigin, axis) * 1000f;
                 float gap = d - handleRadius * 1000f;
-                string verdict = gap < -3f ? "DENTRO do aço" : gap > 12f ? "LONGE, fecha no vazio" : "ok";
-                s.AppendLine($"    {finger,-7} ponta -> eixo: {d,6:0.0} mm   folga {gap,6:0.0} mm   {verdict}");
+
+                string verdict = !Touches(hold, finger)
+                    ? "recolhido, não toca (certo)"
+                    : gap < -3f ? "DENTRO do aço" : gap > 12f ? "LONGE, fecha no vazio" : "ok";
+
+                s.AppendLine($"    {names[finger],-7} {where} -> eixo: {d,6:0.0} mm   folga {gap,6:0.0} mm   {verdict}");
             }
 
             return s.ToString();
