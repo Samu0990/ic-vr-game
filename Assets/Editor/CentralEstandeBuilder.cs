@@ -66,12 +66,32 @@ namespace VRSurgery.EditorTools
                 return report.summary.result;
             }
 
+            RemoveDebugFolders(folder);
             if (target == BuildTarget.StandaloneLinux64) { WriteLinuxLaunchers(folder, executable); }
             else { WriteWindowsLaunchers(folder, executable); }
             File.WriteAllText(Path.Combine(folder, "LEIA-ME.txt"), ReadMe(target == BuildTarget.StandaloneLinux64));
 
-            Debug.Log($"[Estande] CENTRAL_BUILD_OK {folder} ({report.summary.totalSize / (1024 * 1024)} MB)");
+            long bytes = 0;
+            foreach (FileInfo file in new DirectoryInfo(folder).EnumerateFiles("*", SearchOption.AllDirectories)) { bytes += file.Length; }
+            Debug.Log($"[Estande] CENTRAL_BUILD_OK {folder} ({bytes / (1024 * 1024)} MB)");
             return report.summary.result;
+        }
+
+        /// <summary>
+        /// The IL2CPP build leaves its intermediate sources and Burst's debug symbols next to the
+        /// player: about 1.3 GB that the program does not use and the notebook has no room for.
+        /// Unity names them after the product name, not the executable, hence the wildcard.
+        /// </summary>
+        private static void RemoveDebugFolders(string folder)
+        {
+            foreach (string pattern in new[] { "*_BackUpThisFolder_ButDontShipItWithYourGame", "*_BurstDebugInformation_DoNotShip" })
+            {
+                foreach (string debug in Directory.GetDirectories(folder, pattern))
+                {
+                    try { Directory.Delete(debug, recursive: true); }
+                    catch (System.Exception error) { Debug.LogWarning($"[Estande] não apaguei {debug}: {error.Message}"); }
+                }
+            }
         }
 
         private static void WriteLinuxLaunchers(string folder, string executable)
