@@ -155,7 +155,20 @@ namespace VRSurgery.Transplant
         /// Which level is being run. Decides how much of the pump the visitor works themselves and
         /// how long the round lasts; the clinical rules are the same at all three.
         /// </summary>
-        public BypassPlan Plan { get; private set; } = BypassPlan.For(SurgicalDifficulty.Dificil);
+        [SerializeField] private SurgicalDifficulty difficulty = SurgicalDifficulty.Dificil;
+        private BypassPlan _plan;
+        public BypassPlan Plan
+        {
+            get
+            {
+                if (_plan == null || _plan.Difficulty != difficulty)
+                {
+                    _plan = BypassPlan.For(difficulty);
+                }
+
+                return _plan;
+            }
+        }
 
         /// <summary>Round length for this level. The session reads it instead of a constant.</summary>
         public float RoundSeconds => Plan.RoundSeconds;
@@ -230,7 +243,8 @@ namespace VRSurgery.Transplant
         /// <summary>Sets the level. Takes effect at the next Begin.</summary>
         public void SetDifficulty(SurgicalDifficulty difficulty)
         {
-            Plan = BypassPlan.For(difficulty);
+            this.difficulty = difficulty;
+            _plan = BypassPlan.For(difficulty);
         }
 
         public void ResetProcedure()

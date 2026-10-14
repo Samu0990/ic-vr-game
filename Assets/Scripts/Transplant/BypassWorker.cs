@@ -27,7 +27,7 @@ namespace VRSurgery.Transplant
 
         [Tooltip("Steps this one hold performs, in order. More than one on the easier levels, " +
                  "where several steps collapse into a single gesture.")]
-        [NonSerialized] public BypassStep[] Chain;
+        public BypassStep[] Chain;
 
         [NonSerialized] public float Held;
 
@@ -86,6 +86,7 @@ namespace VRSurgery.Transplant
         {
             _interactable = GetComponent<SurgicalInteractable>();
             if (tip == null) { tip = transform; }
+            RestoreSerializedPlanAndChains();
         }
 
         private void Update() => Tick(Time.deltaTime);
@@ -96,6 +97,12 @@ namespace VRSurgery.Transplant
             ActiveSite = null;
 
             if (deltaTime <= 0f || tip == null || procedure == null) { return; }
+
+            // Scenes authored before Chain and the difficulty were serialized still exist in
+            // builds and branches. Recover their exact plan from the authored site layout once,
+            // rather than turning a medium entry gesture into an impossible jump straight to
+            // cardioplegia.
+            RestoreSerializedPlanAndChains();
 
             bool held = !requireHeldInstrument || _interactable == null || _interactable.IsHeld;
             if (!held) { return; }
@@ -143,9 +150,13 @@ namespace VRSurgery.Transplant
 
             // Working the wrong site is refused before any time is banked, so a visitor cannot
             // hold on the clamp for six seconds and only then be told it was the wrong move.
-            if (best.Step != expected)
+            BypassStep firstStep = best.Chain != null && best.Chain.Length > 0
+                ? best.Chain[0]
+                : best.Step;
+
+            if (firstStep != expected)
             {
-                BypassAttempt preview = procedure.Bypass.Why(best.Step, procedure.IsImplantComplete);
+                BypassAttempt preview = procedure.Bypass.Why(firstStep, procedure.IsImplantComplete);
                 if (!preview.Accepted)
                 {
                     Refuse(preview.Reason);
@@ -177,6 +188,72 @@ namespace VRSurgery.Transplant
                 LastRefusal = string.Empty;
                 StepPerformed?.Invoke(step);
             }
+
+            // The pump owns the safety checks, but completing its last required action must also
+            // hand the operation to the next stage. Previously the state reached Arrested/Off
+            // while the scene remained stuck forever on the same instruction.
+            if (procedure.Stage == TransplantStage.GoOnBypass && procedure.Bypass.IsArrested)
+            {
+                procedure.CompleteStage(TransplantStage.GoOnBypass);
+            }
+            else if (procedure.Stage == TransplantStage.Restart && procedure.Bypass.IsOff)
+            {
+                procedure.CompleteStage(TransplantStage.Restart);
+            }
+        }
+
+        /// <summary>
+        /// Restores data that older scene YAML could not retain because Chain and difficulty were
+        /// runtime-only. A plan is accepted only when every authored site matches its gesture's
+        /// anchor and duration, so custom layouts are never guessed or silently rewritten.
+        /// </summary>
+        private void RestoreSerializedPlanAndChains()
+        {
+            if (procedure == null || sites == null || sites.Count == 0) { return; }
+
+            BypassPlan plan = procedure.Plan;
+            if (!SitesMatch(plan))
+            {
+                foreach (SurgicalDifficulty candidate in new[]
+                         { SurgicalDifficulty.Facil, SurgicalDifficulty.Medio, SurgicalDifficulty.Dificil })
+                {
+                    BypassPlan possible = BypassPlan.For(candidate);
+                    if (!SitesMatch(possible)) { continue; }
+
+                    procedure.SetDifficulty(candidate);
+                    plan = possible;
+                    break;
+                }
+            }
+
+            if (!SitesMatch(plan)) { return; }
+
+            for (int i = 0; i < sites.Count; i++)
+            {
+                BypassSite site = sites[i];
+                if (site == null || site.Chain != null && site.Chain.Length > 0) { continue; }
+
+                BypassGesture gesture = plan.Gestures[i];
+                site.Chain = (BypassStep[])gesture.Steps.Clone();
+            }
+        }
+
+        private bool SitesMatch(BypassPlan plan)
+        {
+            if (plan == null || plan.Gestures.Count != sites.Count) { return false; }
+
+            for (int i = 0; i < sites.Count; i++)
+            {
+                BypassSite site = sites[i];
+                BypassGesture gesture = plan.Gestures[i];
+                if (site == null || site.Step != gesture.Anchor ||
+                    Mathf.Abs(site.Seconds - gesture.Seconds) > 0.01f)
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private string GateReason(BypassStep step)
@@ -212,6 +289,7 @@ namespace VRSurgery.Transplant
             tip = workingTip != null ? workingTip : transform;
             sites = bypassSites;
             procedure = transplant;
+            RestoreSerializedPlanAndChains();
         }
     }
 }
