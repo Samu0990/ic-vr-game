@@ -9,6 +9,7 @@ using VRSurgery.Data;
 using VRSurgery.Feedback;
 using VRSurgery.Interaction;
 using VRSurgery.Session;
+using VRSurgery.Stand;
 using VRSurgery.Surgery;
 using VRSurgery.Tools;
 using VRSurgery.Transplant;
@@ -90,14 +91,29 @@ namespace VRSurgery.EditorTools
         /// </summary>
         private static SurgicalDifficulty _difficulty = SurgicalDifficulty.Medio;
 
-        [MenuItem("VRSurgery/Transplante — nível Fácil")]
-        public static void BuildEasy() { _difficulty = SurgicalDifficulty.Facil; Build(); }
-
-        [MenuItem("VRSurgery/Transplante — nível Médio")]
+        /// <summary>
+        /// The one level the game ships with. The stand runs a single difficulty with adaptive
+        /// help (PaceAssist) instead of a menu of levels, so Fácil and Difícil are no longer built
+        /// — their plans stay in BypassPlan, where the tests and older scenes still use them.
+        /// </summary>
+        [MenuItem("VRSurgery/Transplante — construir cena (nível único)")]
         public static void BuildMedium() { _difficulty = SurgicalDifficulty.Medio; Build(); }
 
-        [MenuItem("VRSurgery/Transplante — nível Difícil")]
-        public static void BuildHard() { _difficulty = SurgicalDifficulty.Dificil; Build(); }
+        /// <summary>Headless rebuild: -executeMethod VRSurgery.EditorTools.TransplanteSceneBuilder.BuildFromCommandLine</summary>
+        public static void BuildFromCommandLine()
+        {
+            try
+            {
+                BuildMedium();
+                Debug.Log("[Transplante] TRANSPLANT_BUILD_OK");
+                EditorApplication.Exit(0);
+            }
+            catch (System.Exception error)
+            {
+                Debug.LogError("[Transplante] TRANSPLANT_BUILD_FAILED " + error);
+                EditorApplication.Exit(1);
+            }
+        }
 
         /// <summary>
         /// Where the thorax sits, as a fraction of stature measured from the soles. The heart
@@ -118,6 +134,7 @@ namespace VRSurgery.EditorTools
         [MenuItem("VRSurgery/Build 'Transplante Cardíaco'")]
         public static void BuildFromMenu()
         {
+            _difficulty = SurgicalDifficulty.Medio;
             Build();
             EditorUtility.DisplayDialog("Transplante Cardíaco",
                 "Cena construída. Veja o Console para as medidas e o veredito de proporção.", "OK");
@@ -1374,17 +1391,46 @@ namespace VRSurgery.EditorTools
             speaker.volume = 1f;
             voice.AddComponent<VoiceGuide>().Bind(speaker, session, procedure, incision, _cautery, _defibrillation, pace, vessels);
 
-            BuildProjectionHUD(systems, session, leaderboard, vessels);
+            GameObject audienceHud = BuildProjectionHUD(systems, session, leaderboard, vessels);
             WireUrgencyTint(systems);
             HideOperatorVisualsFromProjection();
             BuildSpectatorCamera();
             BuildProjectionCamera(WorldBounds(sternum).center);
+            BuildStandLink(systems, session, nameEntry, procedure, audienceHud);
 
             // Atmosfera visual do centro cirúrgico: nada disso é visto pelo projetor nem pelo
             // espelho do espectador (ambos já pedem renderPostProcessing = false), só por quem
             // está de headset.
             TuneRoomLighting(WorldBounds(sternum).center);
             BuildClinicalPostProcessing();
+        }
+
+        /// <summary>
+        /// The stand link: on the headset, the overhead picture of the patient and every finished
+        /// round go to the notebook beside the mannequin, which drives the projector and the
+        /// ranking monitor, and the name typed there comes back.
+        ///
+        /// The PC outputs built above — spectator, projector camera, audience monitor — are
+        /// switched off on the headset, where Displays 1 to 3 do not exist and those cameras
+        /// would be drawn every frame for nobody. In the editor and on a PC they stay as they were.
+        /// </summary>
+        private static void BuildStandLink(GameObject systems, EventSessionController session,
+            NameEntryController nameEntry, TransplantProcedure procedure, GameObject audienceHud)
+        {
+            GameObject projectionCamera = GameObject.Find("ProjectionCamera");
+            GameObject spectatorCamera = GameObject.Find("SpectatorCamera");
+            GameObject skin = GameObject.Find("Body_Skin");
+
+            StandFrameStreamer streamer = systems.AddComponent<StandFrameStreamer>();
+            streamer.Bind(projectionCamera != null ? projectionCamera.GetComponent<Camera>() : null,
+                skin != null ? skin.GetComponent<Renderer>() : null);
+
+            systems.AddComponent<StandLinkServer>().Bind(session, nameEntry, procedure, streamer);
+            systems.AddComponent<StandOutputsForPlatform>().Bind(spectatorCamera, projectionCamera, audienceHud);
+
+            Debug.Log($"[Transplante] central do estande: imagem de cima de {(skin != null ? skin.name : "nada")}, " +
+                      $"porta {StandProtocol.DefaultTcpPort}, saídas de PC desligadas no óculos: " +
+                      $"{(spectatorCamera != null ? 1 : 0) + (projectionCamera != null ? 1 : 0) + (audienceHud != null ? 1 : 0)}");
         }
 
         /// <summary>

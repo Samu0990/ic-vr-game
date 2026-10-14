@@ -60,6 +60,13 @@ namespace VRSurgery.Session
         /// <summary>Raised once the pending run has been filed, one way or another.</summary>
         public event Action NameEntryClosed;
 
+        /// <summary>
+        /// Raised when a run is filed, with the name it was filed under — the fallback when nothing
+        /// was typed. <see cref="NameEntryClosed"/> says only that it happened; the stand's
+        /// notebook needs to know which name went on the board.
+        /// </summary>
+        public event Action<string, SessionResult> NameFiled;
+
         private void OnEnable()
         {
             if (session != null)
@@ -122,6 +129,27 @@ namespace VRSurgery.Session
         }
 
         /// <summary>
+        /// Files the pending run under a name typed somewhere else — the stand's notebook — so the
+        /// visitor does not have to type it again on the headset's keyboard. The same character
+        /// rules as the keys apply. A no-op with nothing pending.
+        /// </summary>
+        public void ConfirmWith(string name)
+        {
+            if (!_pending.HasValue)
+            {
+                return;
+            }
+
+            _typed = string.Empty;
+            foreach (char character in name ?? string.Empty)
+            {
+                AppendCharacter(character);
+            }
+
+            Confirm();
+        }
+
+        /// <summary>
         /// Files the pending run under whatever was typed, or under <see cref="fallbackName"/> when
         /// nothing was. Safe to call with nothing pending — a stray Confirm key press is a no-op.
         /// </summary>
@@ -144,6 +172,7 @@ namespace VRSurgery.Session
                 leaderboard.Submit(name, result);
             }
 
+            NameFiled?.Invoke(name, result);
             NameEntryClosed?.Invoke();
         }
 
