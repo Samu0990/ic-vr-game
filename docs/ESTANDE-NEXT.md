@@ -18,13 +18,26 @@ mais e fecha o teclado do óculos, para o visitante não digitar de novo.
 
 ## 1. Equipamento
 
-- Meta Quest carregado, com o jogo instalado (APK).
+- Meta Quest carregado, com o jogo **Meta Health** instalado (veja *Instalar no Quest* abaixo).
 - Notebook com a central (`Builds/CentralEstande_Linux/`) e carregador.
 - Projetor + cabo HDMI. Suporte que deixe o projetor **acima** do manequim, apontando para baixo.
 - Monitor para o ranking + cabo (DisplayPort ou USB-C, porque o HDMI vai para o projetor).
 - Manequim do tronco para cima, deitado com a **cabeça à esquerda** de quem olha a imagem do projetor
   (a calibração gira a imagem se precisar).
 - Extensão elétrica.
+
+### Instalar no Quest (uma vez, antes do evento)
+
+O APK fica em `Builds/Quest/Transplante.apk` (gerado no Unity: menu `Build` → `Transplante — APK do Quest`).
+
+1. Ligue o **modo desenvolvedor** do Quest: app Meta Horizon no celular → Dispositivos → o Quest →
+   Configurações do fone → Modo de desenvolvedor.
+2. Conecte o Quest no notebook pelo cabo USB-C e, no óculos, aceite *Permitir depuração USB*.
+3. No notebook:
+   ```bash
+   ~/Unity/Hub/Editor/6000.3.22f1/Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/adb install -r Builds/Quest/Transplante.apk
+   ```
+4. No Quest o jogo aparece em **Biblioteca → Fontes desconhecidas → Meta Health**.
 
 ## 2. Rede
 
@@ -48,7 +61,7 @@ No Quest: Configurações → Wi-Fi → conectar na rede do estande.
 
 ## 3. Ligar
 
-1. No Quest, abra o jogo.
+1. No Quest, abra o **Meta Health** (Biblioteca → Fontes desconhecidas).
 2. No notebook:
    ```bash
    cd Builds/CentralEstande_Linux
