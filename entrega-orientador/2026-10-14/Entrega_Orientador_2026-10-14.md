@@ -2,15 +2,14 @@
 
 Projeto de Iniciação Científica, FIAP. **Faltam 10 dias para o NEXT (sábado, 24/10).**
 
-## Arquivos desta entrega
+## Arquivos
 
-| O quê | Arquivo |
+| O quê | Onde |
 |---|---|
-| Jogo para o Meta Quest (APK, 144 MB) | [MetaHealth-Quest.apk](https://github.com/Samu0990/ic-vr-game/releases/download/entrega-2026-10-14/MetaHealth-Quest.apk) |
-| Documento do projeto, revisado | [PDF](Projeto_IC_Simulador_Transplante_Cardiaco_REVISADO.pdf) · [Word](Projeto_IC_Simulador_Transplante_Cardiaco_REVISADO.docx) |
-| Imagens em alta resolução para a galeria | [pasta imagens](imagens/) (três em 4K) |
-| Guia de montagem e operação do estande | [ESTANDE-NEXT.md](../../docs/ESTANDE-NEXT.md) |
-| Este relatório em PDF | [Relatorio_2026-10-14.pdf](Relatorio_2026-10-14.pdf) |
+| Documento do projeto, revisado | [PDF](https://raw.githubusercontent.com/Samu0990/ic-vr-game/main/entrega-orientador/2026-10-14/Projeto_IC_Simulador_Transplante_Cardiaco_REVISADO.pdf) · [Word](https://raw.githubusercontent.com/Samu0990/ic-vr-game/main/entrega-orientador/2026-10-14/Projeto_IC_Simulador_Transplante_Cardiaco_REVISADO.docx) |
+| Imagens em alta resolução para a galeria | [pasta de imagens](https://github.com/Samu0990/ic-vr-game/tree/main/entrega-orientador/2026-10-14/imagens) (três em 4K) |
+| Guia de montagem e operação do estande | [ESTANDE-NEXT.md](https://github.com/Samu0990/ic-vr-game/blob/main/docs/ESTANDE-NEXT.md) |
+| Código-fonte do jogo | [repositório ic-vr-game](https://github.com/Samu0990/ic-vr-game) |
 
 Nesta cópia pública do documento os números de RM foram retirados. A versão com RM vai pelo sistema FIAP IC.
 
@@ -62,9 +61,9 @@ ranking. **Falta testar com o Quest de verdade** na próxima sessão com o ócul
 
 | Projetor: o paciente visto de cima | Ranking: nome de quem terminou |
 |---|---|
-| ![Vista de cima projetada no manequim](imagens/estande_projetor_vista_de_cima.png) | ![Campo de nome no ranking](imagens/estande_ranking_nome.png) |
+| ![Vista de cima projetada no manequim](https://raw.githubusercontent.com/Samu0990/ic-vr-game/main/entrega-orientador/2026-10-14/imagens/estande_projetor_vista_de_cima.png) | ![Campo de nome no ranking](https://raw.githubusercontent.com/Samu0990/ic-vr-game/main/entrega-orientador/2026-10-14/imagens/estande_ranking_nome.png) |
 
-![Ranking com aviso de tempo esgotado](imagens/estande_ranking_tempo_esgotado.png)
+![Ranking com aviso de tempo esgotado](https://raw.githubusercontent.com/Samu0990/ic-vr-game/main/entrega-orientador/2026-10-14/imagens/estande_ranking_tempo_esgotado.png)
 
 ## Bugs e melhorias: situação
 
@@ -109,5 +108,5 @@ elétrica e material de higiene do óculos.
 
 ---
 
-Código-fonte completo neste repositório. Instalação no Quest: veja *Instalar no Quest* no
-[guia do estande](../../docs/ESTANDE-NEXT.md).
+O APK do Quest (Meta Health) foi gerado e é instalado pelo cabo, a partir do notebook. O passo a passo
+está em *Instalar no Quest*, no [guia do estande](https://github.com/Samu0990/ic-vr-game/blob/main/docs/ESTANDE-NEXT.md).
