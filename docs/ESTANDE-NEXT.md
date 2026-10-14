@@ -58,7 +58,7 @@ No Quest: Configurações → Wi-Fi → conectar na rede do estande.
    Se só houver um monitor extra: `MONITOR_PROJETOR=2 MONITOR_RANKING=1 ./iniciar_estande.sh`.
 3. Em cada janela: **F9/F10** muda de monitor, **F11** tela cheia, **F1** ajuda.
 
-O ranking mostra **● Óculos conectado** quando achou o Quest.
+O ranking mostra **• Óculos conectado** (verde) quando achou o Quest, e **• Procurando o óculos…** (laranja) enquanto não acha.
 
 ## 4. Calibrar o projetor (uma vez, na montagem)
 
@@ -72,6 +72,9 @@ Na janela do projetor:
 | **R** | gira 90° |
 | **H / V** | espelha na horizontal / vertical |
 | **0** | volta ao ajuste inicial |
+
+A imagem mostra só o paciente do jogo, visto de cima, do peito à cabeça. Em volta fica preto,
+que no projetor é luz apagada: a bancada não acende. Focos e arco de anestesia não aparecem.
 
 Encaixe o contorno no manequim com a cabeça no lugar da cabeça. O ajuste é **salvo sozinho**
 (`dados_estande/calibracao_projetor.json`) e volta na próxima vez que a central abrir.
