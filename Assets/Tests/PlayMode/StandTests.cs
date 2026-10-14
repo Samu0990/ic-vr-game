@@ -98,7 +98,7 @@ namespace VRSurgery.Tests
             Assert.AreEqual("João", StandProtocol.SanitizeName("  João!!  "));
             Assert.AreEqual("Ana Clara", StandProtocol.SanitizeName("Ana   Clara"), "Espaços repetidos viram um.");
             Assert.AreEqual("Conceição", StandProtocol.SanitizeName("Conceição"));
-            Assert.AreEqual("AbcdefghijKL", StandProtocol.SanitizeName("Abcdefghij KLmnop"), "Doze caracteres, como o teclado do óculos.");
+            Assert.AreEqual("Abcdefghij K", StandProtocol.SanitizeName("Abcdefghij KLmnop"), "Doze caracteres contando o espaço, como o teclado do óculos.");
             Assert.AreEqual(string.Empty, StandProtocol.SanitizeName("<>;\"'"));
         }
 
