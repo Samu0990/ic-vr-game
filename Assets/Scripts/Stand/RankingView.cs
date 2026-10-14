@@ -185,10 +185,15 @@ namespace VRSurgery.Stand
 
         private void BuildBanner(Transform canvas)
         {
-            Image banner = StandUi.Panel("Aviso", canvas, Warn, new Vector2(0.15f, 1f), new Vector2(0.85f, 1f),
-                new Vector2(0f, -330f), new Vector2(0f, -230f));
+            // Na faixa do rodapé, abaixo das duas colunas: no alto ela cobria o 1º lugar justo
+            // quando o público olha o ranking. O rodapé de teclas some só pelos segundos do aviso.
+            Image banner = StandUi.Panel("Aviso", canvas, Warn, Vector2.zero, new Vector2(1f, 0f),
+                new Vector2(70f, 14f), new Vector2(-70f, 84f));
             _bannerText = StandUi.Label("Texto", banner.transform, string.Empty, 40, Background, TextAnchor.MiddleCenter,
                 Vector2.zero, Vector2.one, new Vector2(20f, 0f), new Vector2(-20f, 0f), FontStyle.Bold);
+            _bannerText.resizeTextForBestFit = true;
+            _bannerText.resizeTextMinSize = 22;
+            _bannerText.resizeTextMaxSize = 40;
             _banner = banner.gameObject;
             _banner.SetActive(false);
         }

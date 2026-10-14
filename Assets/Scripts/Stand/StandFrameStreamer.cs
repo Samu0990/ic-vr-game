@@ -36,6 +36,11 @@ namespace VRSurgery.Stand
         [SerializeField] private bool headTowardPositiveZ = true;
         [SerializeField, Range(1f, 1.5f)] private float margin = 1.08f;
 
+        [Tooltip("How far above the highest point of the skin the picture still shows things, in metres. " +
+                 "What is higher — the surgical lights, the anaesthesia arch, the drip bags — would land " +
+                 "on the mannequin as dark bands across it.")]
+        [SerializeField, Range(0.05f, 1f)] private float showAbovePatient = 0.15f;
+
         [SerializeField, Min(64)] private int width = 768;
         [SerializeField, Min(64)] private int height = 480;
         [SerializeField, Range(1f, 30f)] private float framesPerSecond = 10f;
@@ -135,8 +140,16 @@ namespace VRSurgery.Stand
             _camera.orthographic = true;
             _camera.aspect = aspect;
             _camera.orthographicSize = Mathf.Max(halfWidth, halfLength / aspect) * margin;
-            _camera.nearClipPlane = 0.05f;
-            _camera.farClipPlane = cameraY + 1f;
+
+            // Só a fatia do paciente. O que está acima dele viraria faixa escura atravessada no
+            // manequim, e o chão e a mesa em volta acenderiam a bancada: fora da fatia fica preto,
+            // que no projetor é luz apagada.
+            float sliceTop = body.max.y + showAbovePatient;
+            float sliceBottom = body.min.y + 0.01f;
+            _camera.nearClipPlane = Mathf.Max(0.01f, cameraY - sliceTop);
+            _camera.farClipPlane = Mathf.Max(_camera.nearClipPlane + 0.1f, cameraY - sliceBottom);
+            _camera.clearFlags = CameraClearFlags.SolidColor;
+            _camera.backgroundColor = Color.black;
         }
 
         private void Update()
