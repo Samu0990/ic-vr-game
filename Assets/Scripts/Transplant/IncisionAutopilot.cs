@@ -329,6 +329,11 @@ namespace VRSurgery.Transplant
             _along = 1f;
             if (incision != null) { incision.ResetIncision(); }
             if (patch != null) { patch.ResetClosed(); }
+
+            // Quem começa a cirurgia é este piloto: ao reiniciar ele a devolve ao começo. Sem isto
+            // a ferida voltava fechada mas a cirurgia continuava em "abrir o tórax", e a espera
+            // pela etapa do corte não terminava nunca.
+            if (procedure != null && beginProcedure) { procedure.ResetProcedure(); }
             if (scalpel != null && _bound) { scalpel.SetPositionAndRotation(_restPose.position, _restPose.rotation); }
             Enter(Phase.Esperando);
         }

@@ -2520,6 +2520,29 @@ namespace VRSurgery.EditorTools
             return new Bounds(centre, size);
         }
 
+        /// <summary>
+        /// The whole patient, from just under the table top to a hand's breadth above the skin.
+        ///
+        /// <see cref="InsideThePatient"/> covers only the open window over the heart. A tool let
+        /// go anywhere else on the body falls straight through the skin — the skin has no
+        /// collider, so the hands can reach in — and comes to rest on the table inside the body,
+        /// where that zone never looks. Still within reach, it was never sent back: that was the
+        /// instrument left standing in the patient's chest after use. Anything left lying here now
+        /// goes back to the tray, as the scene promises — nothing stays on the patient.
+        /// </summary>
+        private static Bounds OnThePatient()
+        {
+            GameObject skin = GameObject.Find("Body_Skin");
+            if (skin == null) { return InsideThePatient(); }
+
+            Bounds body = WorldBounds(skin);
+            float bottom = TableTopY - 0.05f;
+            float top = body.max.y + 0.12f;
+            return new Bounds(
+                new Vector3(body.center.x, (bottom + top) * 0.5f, body.center.z),
+                new Vector3(body.size.x + 0.04f, top - bottom, body.size.z + 0.04f));
+        }
+
         /// <summary>Between the shoulders of a visitor standing at the stance: the middle of what they can reach.</summary>
         private static Vector3 ReachCentre() => Stance(_thorax) + new Vector3(0f, 1.3f, 0f);
 
@@ -2951,7 +2974,7 @@ namespace VRSurgery.EditorTools
 
             ReturnHomeOnRelease release = tool.AddComponent<ReturnHomeOnRelease>();
             release.Bind(interactable);
-            release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f, InsideThePatient());
+            release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f, InsideThePatient(), OnThePatient());
             return tool;
         }
 

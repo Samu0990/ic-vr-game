@@ -36,8 +36,11 @@ namespace VRSurgery.VR
         [SerializeField] private EventSessionController session;
 
         [Header("Eye height")]
+        // Desligado para o NEXT: travar todo visitante a 1,36 m abaixava o mundo de quem é alto —
+        // um adulto de 1,80 m via as próprias mãos uns 30 cm abaixo da mesa e não alcançava o
+        // paciente. Cada um opera na sua altura; quem é baixo é levantado pelo modo baixinho.
         [Tooltip("Puts the camera at exactly Locked Eye Height above the stance on every fit, so the headset starts where Play without a headset starts. Overrides short mode.")]
-        [SerializeField] private bool lockEyeHeight = true;
+        [SerializeField] private bool lockEyeHeight = false;
 
         [Tooltip("Camera height above the stance in metres. Match the Main Camera Y when pressing Play without a headset.")]
         [SerializeField] private float lockedEyeHeight = 1.36144f;
@@ -110,7 +113,8 @@ namespace VRSurgery.VR
             if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { Fit(); }
 
             // The head became measurable after the last fit (tracking arrived late): fit again.
-            if (lockEyeHeight && _eyeUnmeasured && MayFit && head != null && rig != null
+            // In both modes: a child fitted before tracking arrived would otherwise never be lifted.
+            if (_eyeUnmeasured && MayFit && head != null && rig != null
                 && head.position.y - rig.position.y >= MeasurableEye)
             {
                 Fit();
