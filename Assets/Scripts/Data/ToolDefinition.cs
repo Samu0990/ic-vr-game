@@ -58,10 +58,16 @@ namespace VRSurgery.Data
                  "the sensible default for the style.")]
         [Range(0f, 1f)] public float tuckClosure;
 
-        [Tooltip("Degrees the instrument is tipped forward in the fist. 0 lays it along the " +
-                 "handle out past the thumb; 40 is the angle a scalpel or a pen makes with the " +
-                 "hand that holds it.")]
-        [Range(0f, 80f)] public float pitchDegrees;
+        [Tooltip("Degrees the instrument is turned in the plane of the palm. 0 lays it across " +
+                 "the palm with the tip out past the thumb, as a fist holds a dagger; 90 points it " +
+                 "down the fingers; 125 is a pen held to write, tip past the fingertips and the " +
+                 "back end crossing towards the web between thumb and index.")]
+        [Range(0f, 180f)] public float pitchDegrees;
+
+        [Tooltip("Degrees the tip leans out of the palm, towards the side the palm faces. A pen " +
+                 "held to write has its tip below the fingers and its back resting on the web " +
+                 "between thumb and index, above the hand. 0 keeps it in the plane of the palm.")]
+        [Range(0f, 60f)] public float leanDegrees;
 
         /// <summary>
         /// A pencil grip on a slim instrument. Used when a tool declares no hold of its own,
@@ -78,6 +84,26 @@ namespace VRSurgery.Data
             tuckClosure = 0.85f,
         };
 
+        /// <summary>
+        /// A pen held to write: scalpel, dissecting forceps, needle holder, cautery pen.
+        ///
+        /// <see cref="Default"/> sits the shank across the palm, tip past the thumb and back end
+        /// out by the little finger — the way a fist holds a dagger. Seen from the palm, the
+        /// handle of the scalpel crossed the whole hand. Held to write, the shank runs the other
+        /// diagonal: tip out past the fingertips, back end over the web between thumb and index,
+        /// leaning above the back of the hand.
+        /// </summary>
+        public static HandHold Writing
+        {
+            get
+            {
+                HandHold hold = Default;
+                hold.pitchDegrees = 125f;
+                hold.leanDegrees = 30f;
+                return hold;
+            }
+        }
+
         /// <summary>A whole-fist grip for saws, retractors and defibrillator paddles.</summary>
         public static HandHold Power => new HandHold
         {
@@ -89,6 +115,17 @@ namespace VRSurgery.Data
             handleRadius = 0f,
             tuckClosure = 0f,
         };
+
+        /// <summary>
+        /// How the instrument sits in the hand's grip frame: turned <paramref name="pitch"/> in the
+        /// plane of the palm, then leaned <paramref name="lean"/> out of it, towards the side the
+        /// palm faces (+X for a left hand, -X for a right one).
+        /// </summary>
+        public static Quaternion Tilt(float pitch, float lean, bool isLeftHand) =>
+            Quaternion.Euler(pitch, 0f, 0f) * Quaternion.Euler(0f, isLeftHand ? lean : -lean, 0f);
+
+        /// <summary>This hold's <see cref="Tilt(float, float, bool)"/>.</summary>
+        public Quaternion TiltFor(bool isLeftHand) => Tilt(pitchDegrees, leanDegrees, isLeftHand);
 
         /// <summary>Whether the handle is pinched at the fingertips rather than wrapped in a fist.</summary>
         public bool IsPencil => style == GripStyle.Pencil;

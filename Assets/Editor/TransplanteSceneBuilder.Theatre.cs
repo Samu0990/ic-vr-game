@@ -2942,7 +2942,13 @@ namespace VRSurgery.EditorTools
             grip.transform.SetParent(tool.transform, false);
             grip.transform.localPosition = gripLocal;
 
-            ToolDefinition definition = ToolDefinition.Create(id, label, type, capability);
+            // Instrumentos de lápis seguram-se como uma caneta para escrever; o resto (serra, pás)
+            // fica na pega padrão da mão.
+            bool writing = type == ToolType.Scalpel || type == ToolType.Forceps ||
+                           type == ToolType.NeedleHolder || type == ToolType.Cautery;
+            ToolDefinition definition = writing
+                ? ToolDefinition.Create(id, label, type, capability, null, HandHold.Writing)
+                : ToolDefinition.Create(id, label, type, capability);
             interactable = tool.AddComponent<SurgicalInteractable>();
             SetPrivateField(interactable, "toolDefinition", definition);
             SetPrivateField(interactable, "gripPoint", grip.transform);

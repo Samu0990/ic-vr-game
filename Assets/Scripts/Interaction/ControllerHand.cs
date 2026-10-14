@@ -81,6 +81,7 @@ namespace VRSurgery.Interaction
         private HandHold _hold;
         private bool _holding;
         private float _pitchNow = float.NaN;
+        private float _leanNow;
         private readonly float[] _closures = new float[HandPoser.FingerCount];
         private readonly float[] _frame = new float[HandPoser.FingerCount];
         private Vector3 _pinchLocal;
@@ -133,7 +134,7 @@ namespace VRSurgery.Interaction
         /// pointing out past the thumb and down towards the fingers, which is how a hand holds
         /// one.
         /// </summary>
-        public Quaternion ToolHold => transform.rotation * Quaternion.Euler(CurrentPitch, 0f, 0f);
+        public Quaternion ToolHold => transform.rotation * HandHold.Tilt(CurrentPitch, _leanNow, isLeftHand);
 
         /// <summary>
         /// The angle in use right now: the held instrument's own, eased in, or this hand's
@@ -415,9 +416,9 @@ namespace VRSurgery.Interaction
             }
 
             float target = _holding ? _hold.pitchDegrees : toolPitch;
-            _pitchNow = float.IsNaN(_pitchNow)
-                ? target
-                : Mathf.Lerp(_pitchNow, target, deltaTime <= 0f ? 1f : Mathf.Clamp01(deltaTime * holdBlendSpeed));
+            float blend = deltaTime <= 0f ? 1f : Mathf.Clamp01(deltaTime * holdBlendSpeed);
+            _pitchNow = float.IsNaN(_pitchNow) ? target : Mathf.Lerp(_pitchNow, target, blend);
+            _leanNow = Mathf.Lerp(_leanNow, _holding ? _hold.leanDegrees : 0f, blend);
         }
 
         /// <summary>
@@ -447,7 +448,7 @@ namespace VRSurgery.Interaction
             }
 
             Vector3 origin = FistPosition;
-            Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, 0f, 0f) * Vector3.forward;
+            Vector3 axis = transform.rotation * _hold.TiltFor(isLeftHand) * Vector3.forward;
             float radius = HandleRadiusFor(held);
             HandPoser.Contact contact = _hold.IsPencil ? HandPoser.Contact.Pad : HandPoser.Contact.Tip;
 

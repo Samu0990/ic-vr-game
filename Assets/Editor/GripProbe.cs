@@ -103,7 +103,10 @@ namespace VRSurgery.EditorTools
 
                 HandHold hold = ControllerHand.HoldFor(instrument, HandHold.Default);
                 PoseFingers(hand, hold, HandleRadius(instrument, hold));
-                hand.PlaceGrabPoint();
+
+                // Na pega do próprio instrumento, como no jogo depois que a inclinação assenta.
+                // PlaceGrabPoint() usa a inclinação de mão vazia, e a foto mostrava outra pega.
+                hand.GrabPoint.SetPositionAndRotation(hand.FistPosition, hand.transform.rotation * hold.TiltFor(hand.IsLeftHand));
                 Attach(instrument, hand.GrabPoint);
 
                 report.AppendLine(Measure(instrumentName, hand, instrument, hold));
@@ -156,7 +159,7 @@ namespace VRSurgery.EditorTools
             // Mesmo caminho do jogo: resolve quanto cada dedo tem de fechar para alcançar o cabo,
             // e quem não alcança fica na pose que a ferramenta pediu.
             Vector3 origin = hand.FistPosition;
-            Vector3 axis = hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f) * Vector3.forward;
+            Vector3 axis = hand.transform.rotation * hold.TiltFor(hand.IsLeftHand) * Vector3.forward;
 
             HandPoser.Contact contact = hold.IsPencil ? HandPoser.Contact.Pad : HandPoser.Contact.Tip;
 
@@ -228,7 +231,7 @@ namespace VRSurgery.EditorTools
             s.AppendLine($"--- {name}");
             s.AppendLine($"    pega: {(hold.IsPencil ? "PINÇA (lápis)" : "PUNHO")}  " +
                          $"grip={hold.gripClosure:0.00} index={hold.indexClosure:0.00} " +
-                         $"thumb={hold.thumbClosure:0.00} recolhe={hold.TuckClosure:0.00} pitch={hold.pitchDegrees:0}");
+                         $"thumb={hold.thumbClosure:0.00} recolhe={hold.TuckClosure:0.00} pitch={hold.pitchDegrees:0} lean={hold.leanDegrees:0}");
             s.AppendLine($"    raio do cabo: {handleRadius * 1000f:0.0} mm");
 
             Transform palm = HandPoser.FindBone(hand.Model, "Palm");
