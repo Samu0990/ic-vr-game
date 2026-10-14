@@ -66,17 +66,26 @@ namespace VRSurgery.Tests
         public void TearDown() => SurgeryEvents.ResetAll();
 
         /// <summary>
-        /// Põe o órgão num lugar como a física espera. Mexer só no transform deixa a interpolação
-        /// do Rigidbody arrastá-lo de volta para onde estava durante os próximos passos de física:
-        /// numa suíte sem limite de quadros, dois quadros cabem dentro de um passo, e o coração
-        /// "pousado" ainda estava a 10 cm do leito ao ser solto — o teste dependia da velocidade
-        /// da máquina. Rigidbody.position teleporta sem posições intermediárias.
+        /// Põe o órgão num lugar de uma vez, como a mão o teria posto.
+        ///
+        /// No jogo a mão move o coração pela física a cada quadro e a interpolação do Rigidbody
+        /// só suaviza esse caminho. Um salto de 60 cm num quadro é outra coisa: até o próximo
+        /// passo de física a interpolação desenha o órgão entre o lugar antigo e o novo, e numa
+        /// suíte sem limite de quadros vários quadros cabem num passo. O coração "pousado" ainda
+        /// estava a 25–45 cm do leito ao ser solto, e o teste passava ou falhava conforme a
+        /// velocidade da máquina. Nem Rigidbody.position evita isso; sem interpolação, sim. A cena
+        /// é recarregada a cada teste, então isso não vaza para os outros.
         /// </summary>
         private static void Teleport(GameObject organ, Vector3 position)
         {
-            organ.transform.position = position;
             Rigidbody body = organ.GetComponent<Rigidbody>();
-            if (body != null) { body.position = position; }
+            if (body != null)
+            {
+                body.interpolation = RigidbodyInterpolation.None;
+                body.position = position;
+            }
+
+            organ.transform.position = position;
         }
 
         /// <summary>
