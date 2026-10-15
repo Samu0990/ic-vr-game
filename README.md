@@ -457,10 +457,5 @@ ligação do albedo/normal da pele no URP. Só depois repetir a captura orgânic
 182 mil triângulos para a anatomia toda, contra 5,98 milhões como os modelos chegaram.
 O alvo é 72 Hz (13,9 ms por frame), não 60 FPS — num headset, 60 FPS é desconforto.
 
-**Texturas dos modelos .glb:** o glTFast importa imagem embutida no `.glb` sem compressão (o
-coração sozinho chegava a 341 MB). As imagens ficam fora do modelo, em `Texturas/<modelo>/`, e
-`GlbTextureImportRules` as importa em ASTC 6×6 até 1024 px (64 px para mapas de cor lisa). Para
-um modelo novo: `python3 Tools/modelos/extrair_texturas_glb.py Assets/Models/.../modelo.glb`.
-
 **Variantes de shader:** o nível de qualidade Ultra não entra no build do Android (o Quest usa o
 Low), o que corta as variantes do URP/Lit compiladas no build.
