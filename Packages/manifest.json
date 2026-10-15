@@ -1,6 +1,5 @@
 {
   "dependencies": {
-    "com.coplaydev.unity-mcp": "https://github.com/CoplayDev/unity-mcp.git?path=/MCPForUnity#v10.1.2",
     "com.unity.cinemachine": "3.1.7",
     "com.unity.cloud.gltfast": "6.20.0",
     "com.unity.feature.development": "1.0.2",
