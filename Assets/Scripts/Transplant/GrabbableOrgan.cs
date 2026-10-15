@@ -89,10 +89,11 @@ namespace VRSurgery.Transplant
         /// </summary>
         private void HandleReleased(SurgicalInteractable source, IHandInteractor previousHolder)
         {
-            if (role == OrganRole.Native)
-            {
-                Evaluate();
-            }
+            // The donor is also evaluated here. Its Update gives continuous seating feedback,
+            // but relying on a later frame after release left a correctly placed heart waiting
+            // forever in some interaction/test orders. Release is the definitive moment when an
+            // organ can become implanted, so both roles get one immediate evaluation.
+            Evaluate();
         }
 
         private void Evaluate()

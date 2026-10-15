@@ -1,8 +1,10 @@
 using System.Collections.Generic;
 using NUnit.Framework;
 using UnityEngine;
+using VRSurgery.Data;
 using VRSurgery.Interaction;
 using VRSurgery.Surgery;
+using VRSurgery.Tools;
 
 namespace VRSurgery.Tests
 {
@@ -50,18 +52,23 @@ namespace VRSurgery.Tests
             Transform wrist = Joint(hand.transform, p + "Wrist", Vector3.zero);
             Joint(wrist, p + "Palm", new Vector3(0f, 0f, 0.05f));
 
-            (string finger, float x)[] fingers =
+            // O comprimento importa: um mínimo tem cerca de 80% do médio, e é por isso que ele
+            // não alcança um cabo que o médio alcança. Com os quatro do mesmo tamanho o esqueleto
+            // de teste não representava mão nenhuma, e um dedo curto e um longo "resolviam" o
+            // mesmo fechamento.
+            (string finger, float x, float length)[] fingers =
             {
-                ("Index", -0.025f), ("Middle", -0.008f), ("Ring", 0.01f), ("Little", 0.027f),
+                ("Index", -0.025f, 0.95f), ("Middle", -0.008f, 1f),
+                ("Ring", 0.01f, 0.96f), ("Little", 0.027f, 0.84f),
             };
-            foreach ((string finger, float x) in fingers)
+            foreach ((string finger, float x, float length) in fingers)
             {
                 float fx = x * side;
                 Transform meta = Joint(wrist, p + finger + "Metacarpal", new Vector3(fx * 0.4f, 0f, 0.02f));
-                Transform proximal = Joint(meta, p + finger + "Proximal", new Vector3(fx, 0f, 0.09f));
-                Transform middle = Joint(proximal, p + finger + "Intermediate", new Vector3(fx, 0f, 0.135f));
-                Transform distal = Joint(middle, p + finger + "Distal", new Vector3(fx, 0f, 0.165f));
-                Joint(distal, p + finger + "Tip", new Vector3(fx, 0f, 0.19f));
+                Transform proximal = Joint(meta, p + finger + "Proximal", new Vector3(fx, 0f, 0.09f * length));
+                Transform middle = Joint(proximal, p + finger + "Intermediate", new Vector3(fx, 0f, 0.135f * length));
+                Transform distal = Joint(middle, p + finger + "Distal", new Vector3(fx, 0f, 0.165f * length));
+                Joint(distal, p + finger + "Tip", new Vector3(fx, 0f, 0.19f * length));
             }
 
             Transform tm = Joint(wrist, p + "ThumbMetacarpal", new Vector3(-0.02f * side, -0.01f, 0.03f));
@@ -213,12 +220,341 @@ namespace VRSurgery.Tests
             }
         }
 
+        /// <summary>
+        /// O sintoma relatado: "agarrar os itens tá meio estranho, o bisturi é o mais estranho".
+        ///
+        /// O ponto de pega é filho da transform do controle, que segue a pose de APONTAR, mas a
+        /// luva segue a pose de EMPUNHAR. Enquanto só a posição vinha da mão, a ferramenta
+        /// recebia a direção da mira e ficava atravessada na luva que supostamente a segurava —
+        /// uns 40 graus de diferença num Touch. Num bisturi, que é comprido e fino, isso é a
+        /// diferença entre segurar e espetar.
+        /// </summary>
+        [Test]
+        public void OInstrumentoFicaNaMao_NaoNaDirecaoEmQueOControleAponta()
+        {
+            foreach (bool left in new[] { false, true })
+            {
+                string which = left ? "esquerda" : "direita";
+
+                // A mão na pose de empunhar, e o controle apontando para outro lado: é assim que
+                // as duas poses chegam de um Touch.
+                GameObject root = Spawn("Mao");
+                root.transform.SetPositionAndRotation(new Vector3(0.2f, 1.05f, 0.1f), Quaternion.Euler(15f, 40f, 0f));
+                GameObject controller = Spawn("Controle");
+                controller.transform.SetPositionAndRotation(root.transform.position, Quaternion.Euler(60f, 40f, 0f));
+
+                GameObject model = Skeleton(left, root.transform);
+                Transform fist = new GameObject("PontoDePega").transform;
+                fist.SetParent(controller.transform, false);
+
+                ControllerHand hand = root.AddComponent<ControllerHand>();
+                hand.enabled = false;
+                hand.Bind(left, controller.transform, model.transform, null, null, fist, null);
+                hand.AlignModel();
+                hand.PlaceGrabPoint();
+
+                Assert.Less(Vector3.Distance(fist.position, hand.FistPosition), 1e-4f,
+                    $"O instrumento tem de ficar no punho ({which}).");
+
+                // O eixo do cabo é +Z da mão, os dedos descem por -Y: a ferramenta sai por cima do
+                // polegar e cai na direção dos dedos, que é como se pega uma caneta ou um bisturi.
+                Vector3 nose = fist.forward;
+                Assert.Greater(Vector3.Dot(nose, root.transform.forward), 0.3f,
+                    $"A ponta tem de sair por cima do polegar, ao longo do cabo ({which}).");
+                Assert.Less(Vector3.Dot(nose, root.transform.up), -0.3f,
+                    $"A ponta tem de cair na direção dos dedos, e não ficar reta no ar ({which}).");
+                Assert.Less(Mathf.Abs(Vector3.Dot(nose, root.transform.right)), 0.05f,
+                    $"Nada de torcer o instrumento para o lado ({which}).");
+
+                // O eixo X é a face da lâmina — é por ele que o SkinIncisionWorker sabe se o
+                // bisturi está de pé. Inclinar a ferramenta não pode mexer nisso.
+                Assert.Greater(Vector3.Dot(fist.right, root.transform.right), 0.999f,
+                    $"A face da lâmina tem de continuar sendo o eixo da palma ({which}).");
+
+                // E o controle pode apontar para onde quiser: quem manda na pega é a mão.
+                Quaternion before = fist.rotation;
+                controller.transform.rotation = Quaternion.Euler(-30f, 200f, 25f);
+                hand.PlaceGrabPoint();
+                Assert.Less(Quaternion.Angle(before, fist.rotation), 0.01f,
+                    $"Girar o controle girou a ferramenta na mão parada ({which}).");
+            }
+        }
+
         // ------------------------------------------------------------------ outline
 
         private static Material OutlineMaterial()
         {
             Shader shader = Shader.Find("VRSurgery/GrabOutline");
             return new Material(shader != null ? shader : Shader.Find("Hidden/InternalErrorShader"));
+        }
+
+        // --------------------------------------------- o cabo assentado onde os dedos fecham
+
+        [Test]
+        public void OCaboAssentaNoVaoDaMao_NaoNaOrigemDoControle()
+        {
+            GameObject root = Spawn("Mao");
+            root.transform.SetPositionAndRotation(new Vector3(0.2f, 1.05f, 0.1f), Quaternion.Euler(15f, 40f, 0f));
+            GameObject controller = Spawn("Controle");
+            controller.transform.SetPositionAndRotation(root.transform.position, root.transform.rotation);
+
+            GameObject model = Skeleton(false, root.transform);
+            HandPoser poser = model.AddComponent<HandPoser>();
+            poser.Bind(false);
+
+            Transform fist = new GameObject("PontoDePega").transform;
+            fist.SetParent(controller.transform, false);
+
+            ControllerHand hand = root.AddComponent<ControllerHand>();
+            hand.enabled = false;
+            hand.Bind(false, controller.transform, model.transform, poser, null, fist, null);
+            hand.AlignModel();
+
+            // A origem da mão é o eixo do controle; o modelo foi deslocado para fora dele de
+            // propósito. Assentar o instrumento na origem era o que o deixava boiando ao lado.
+            float fromOrigin = Vector3.Distance(hand.FistPosition, root.transform.position);
+            Assert.That(fromOrigin, Is.GreaterThan(0.005f),
+                "O cabo tem de sair da origem do controle e ir para o vão da mão.");
+
+            // A surgical pencil grip sits between the two faces of the pinch, not in the middle
+            // of a hammer fist. Rebuild that pinch on the test rig and compare directly.
+            //
+            // Entre as DUAS FACES, não a média dos três dedos: indicador e médio são vizinhos do
+            // mesmo lado da haste, então a média simples só cai no eixo com o polegar ao dobro da
+            // distância deles. Medido na sonda era exatamente isso — indicador 6,8 mm e médio
+            // 6,6 mm cravados numa haste de 7 mm, e o polegar boiando a 17,2 mm.
+            HandHold hold = HandHold.Default;
+            poser.SetFingerImmediate(HandPoser.Thumb, hold.thumbClosure);
+            poser.SetFingerImmediate(HandPoser.Index, hold.indexClosure);
+            poser.SetFingerImmediate(HandPoser.Middle, hold.gripClosure);
+
+            Vector3 thumbPad = poser.ContactPosition(HandPoser.Thumb, HandPoser.Contact.Pad);
+            Vector3 fingerSide =
+                (poser.ContactPosition(HandPoser.Index, HandPoser.Contact.Pad) +
+                 poser.ContactPosition(HandPoser.Middle, HandPoser.Contact.Pad)) * 0.5f;
+            Vector3 pinch = (thumbPad + fingerSide) * 0.5f;
+
+            Assert.That(Vector3.Distance(hand.FistPosition, pinch), Is.LessThan(0.001f),
+                "O cabo deve ficar entre a polpa do polegar e a dos dedos que se opõem a ele.");
+
+            // E o polegar tem de ficar do lado OPOSTO aos dedos, não junto deles.
+            Assert.That(Vector3.Dot(thumbPad - pinch, fingerSide - pinch), Is.LessThan(0f),
+                "Numa pinça o polegar opõe os dedos: o cabo fica entre eles, não ao lado dos três.");
+        }
+
+        [Test]
+        public void NumaPincaAnelarEMinimoSeRecolhemEmVezDeAgarrarOCabo()
+        {
+            HandHold pencil = HandHold.Default;
+            HandHold power = HandHold.Power;
+
+            Assert.IsTrue(pencil.IsPencil);
+            Assert.IsFalse(power.IsPencil);
+
+            // Recolhidos quer dizer bem fechados, e mais fechados do que os dedos que seguram.
+            Assert.That(pencil.TuckClosure, Is.GreaterThan(pencil.gripClosure),
+                "Anelar e mínimo dobram para dentro da palma, mais do que o médio que apoia o cabo.");
+
+            // Num punho não existe dedo recolhido: todos fecham junto na haste.
+            Assert.That(power.TuckClosure, Is.EqualTo(power.gripClosure).Within(1e-4f),
+                "Num punho não há dedo sobrando: todos fecham no cabo.");
+        }
+
+        [Test]
+        public void UmaPegaGravadaAntesDoRecolhimentoNaoDeixaOsDedosRetos()
+        {
+            // Unity lê um campo ausente do YAML como 0, e 0 em tuckClosure seria "dedo reto".
+            HandHold old = new HandHold
+            {
+                style = GripStyle.Pencil,
+                gripClosure = 0.58f, indexClosure = 0.22f, thumbClosure = 0.5f, pitchDegrees = 40f,
+            };
+
+            Assert.That(old.tuckClosure, Is.EqualTo(0f), "Campo ausente no .asset lê zero.");
+            Assert.That(old.TuckClosure, Is.GreaterThan(0.5f),
+                "Zero significa 'não autorado', nunca 'anelar e mínimo esticados'.");
+        }
+
+        [Test]
+        public void APolpaEOFimDoDedoSaoPontosDiferentes()
+        {
+            HandPoser poser = Poser(false, out GameObject _);
+            poser.SetFingerImmediate(HandPoser.Index, 0.3f);
+
+            Vector3 tip = poser.ContactPosition(HandPoser.Index, HandPoser.Contact.Tip);
+            Vector3 pad = poser.ContactPosition(HandPoser.Index, HandPoser.Contact.Pad);
+
+            Assert.That(Vector3.Distance(tip, pad), Is.GreaterThan(0.002f),
+                "Numa pinça a haste cruza a polpa, e a ponta do dedo segue adiante dela.");
+            Assert.That(Vector3.Distance(tip, pad), Is.LessThan(0.03f),
+                "A polpa fica dentro da última falange, não no meio da mão.");
+        }
+
+        [Test]
+        public void CadaDedoFechaOQuantoPrecisa_NaoTodosOMesmoTanto()
+        {
+            HandPoser poser = Poser(false, out GameObject hand);
+
+            // Um cabo fino cruzando a palma, que é como um cabo fica numa mão: ATRAVESSADO nos
+            // dedos, do mínimo para o polegar.
+            //
+            // Ao longo de hand.forward o eixo corre PARALELO aos dedos esticados, e aí a conta
+            // não fecha para ninguém: a distância da ponta ao eixo é raiz(x²+y²), dobrar o dedo
+            // só faz crescer y, e todo dedo "resolve" fechamento zero por não ter como se
+            // aproximar. Um cabo assim seria uma agulha espetada para fora da mão.
+            Transform wrist = HandPoser.FindBone(hand.transform, "Wrist");
+            Transform palm = HandPoser.FindBone(hand.transform, "Palm");
+            Vector3 toPalm = HandPoser.PalmNormal(
+                wrist.position,
+                HandPoser.FindBone(hand.transform, "IndexProximal").position,
+                HandPoser.FindBone(hand.transform, "LittleProximal").position,
+                false);
+
+            Vector3 origin = palm.position + toPalm * 0.03f;
+            Vector3 axis = hand.transform.right;
+
+            float middle = poser.SolveClosure(HandPoser.Middle, origin, axis, 0.008f, out float _);
+            float little = poser.SolveClosure(HandPoser.Little, origin, axis, 0.008f, out float _);
+
+            Assert.That(Mathf.Abs(middle - little), Is.GreaterThan(0.01f),
+                "Dedos de comprimentos diferentes não alcançam o mesmo cabo no mesmo fechamento.");
+        }
+
+        [Test]
+        public void InstrumentosCirurgicosUsamAPegaAdequadaAoTipo()
+        {
+            Assert.IsTrue(ToolDefinition.DefaultHoldFor(ToolType.Scalpel).IsPencil,
+                "Bisturi deve ser apoiado em pinça cirúrgica.");
+            Assert.IsTrue(ToolDefinition.DefaultHoldFor(ToolType.NeedleHolder).IsPencil,
+                "Porta-agulha deve usar pinça, não punho fechado.");
+            Assert.IsFalse(ToolDefinition.DefaultHoldFor(ToolType.Retractor).IsPencil,
+                "Serra/retrator deve ficar firme no punho.");
+            Assert.IsFalse(ToolDefinition.DefaultHoldFor(ToolType.Defibrillator).IsPencil,
+                "Pás internas precisam de empunhadura firme.");
+        }
+
+        [Test]
+        public void OSolverParaNaPrimeiraAproximacao_NaoFechaAtravesDoCabo()
+        {
+            HandPoser poser = Poser(false, out GameObject hand);
+            Transform palm = HandPoser.FindBone(hand.transform, "Palm");
+            Vector3 origin = palm.position;
+            Vector3 axis = hand.transform.right;
+            const float radius = 0.008f;
+
+            float solved = poser.SolveClosure(HandPoser.Middle, origin, axis, radius, out float error);
+
+            poser.SetFingerImmediate(HandPoser.Middle, solved);
+            float atSolved = DistanceToAxis(poser.TipPosition(HandPoser.Middle), origin, axis);
+
+            poser.SetFingerImmediate(HandPoser.Middle, 1f);
+            float atFull = DistanceToAxis(poser.TipPosition(HandPoser.Middle), origin, axis);
+
+            Assert.That(atSolved, Is.LessThanOrEqualTo(atFull + 1e-4f),
+                "Fechar até o fim passa do cabo e sai do outro lado; o solver não pode escolher esse ramo.");
+            Assert.That(error, Is.LessThan(1f));
+        }
+
+        [Test]
+        public void OsDedosPodemTerFechamentosDiferentesAoMesmoTempo()
+        {
+            HandPoser poser = Poser(false, out GameObject _);
+            float[] closures = { 0.1f, 0.9f, 0.5f, 0.3f, 0.7f };
+
+            poser.TickFingers(1f, closures);
+
+            Assert.That(poser.FingerCurl(HandPoser.Thumb), Is.EqualTo(0.1f).Within(0.02f));
+            Assert.That(poser.FingerCurl(HandPoser.Index), Is.EqualTo(0.9f).Within(0.02f));
+            Assert.That(poser.FingerCurl(HandPoser.Little), Is.EqualTo(0.7f).Within(0.02f));
+        }
+
+        private static float DistanceToAxis(Vector3 point, Vector3 origin, Vector3 direction)
+        {
+            Vector3 v = point - origin;
+            return (v - Vector3.Project(v, direction.normalized)).magnitude;
+        }
+
+        // ------------------------------------------------- a pega em volta do que esta na mao
+
+        [Test]
+        public void SegurarUmInstrumentoNaoFechaAMaoNumPunho()
+        {
+            HandPoser poser = Poser(false, out GameObject _);
+            HandHold scalpel = new HandHold
+            {
+                gripClosure = 0.58f, indexClosure = 0.22f, thumbClosure = 0.5f, pitchDegrees = 40f,
+            };
+
+            // Um frame longo para chegar no alvo sem iterar.
+            poser.TickTo(1f, scalpel.indexClosure, scalpel.gripClosure, scalpel.thumbClosure);
+
+            Assert.That(poser.Curl(HandPoser.GripGroup), Is.EqualTo(0.58f).Within(0.02f),
+                "Os dedos tem que parar no cabo, nao fechar um punho.");
+            Assert.That(poser.Curl(HandPoser.GripGroup), Is.LessThan(0.95f),
+                "Um punho cheio atravessa uma haste de 6 mm.");
+            Assert.That(poser.Curl(HandPoser.IndexGroup), Is.LessThan(0.4f),
+                "O indice fica ao longo da haste, quase reto.");
+        }
+
+        [Test]
+        public void OIndiceAindaRespondeAoGatilhoComOInstrumentoNaMao()
+        {
+            HandPoser poser = Poser(false, out GameObject _);
+            const float rest = 0.22f;
+
+            poser.TickTo(1f, Mathf.Lerp(rest, 1f, 0f), 0.58f, 0.5f);
+            float off = poser.Curl(HandPoser.IndexGroup);
+
+            poser.TickTo(1f, Mathf.Lerp(rest, 1f, 1f), 0.58f, 0.5f);
+            float on = poser.Curl(HandPoser.IndexGroup);
+
+            Assert.That(off, Is.EqualTo(rest).Within(0.02f));
+            Assert.That(on, Is.GreaterThan(0.9f), "Puxar o gatilho ainda tem que dobrar o indice.");
+        }
+
+        [Test]
+        public void CadaInstrumentoUsaAPegaQueEleMesmoDeclara()
+        {
+            HandHold forceps = new HandHold
+            {
+                gripClosure = 0.5f, indexClosure = 0.3f, thumbClosure = 0.42f, pitchDegrees = 32f,
+            };
+            ToolDefinition definition = ToolDefinition.Create(
+                "forceps", "Pinca", default, default, null, forceps);
+
+            GameObject tool = Spawn("Pinca");
+            tool.AddComponent<Rigidbody>();
+            SurgicalInteractable instrument = tool.AddComponent<SurgicalInteractable>();
+            typeof(SurgicalInteractable)
+                .GetField("toolDefinition", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)
+                .SetValue(instrument, definition);
+
+            HandHold chosen = ControllerHand.HoldFor(instrument, HandHold.Default);
+
+            Assert.That(chosen.pitchDegrees, Is.EqualTo(32f).Within(0.01f),
+                "A pinca inclina no proprio angulo, nao nos 40 graus globais do bisturi.");
+            Assert.That(chosen.gripClosure, Is.EqualTo(0.5f).Within(0.01f));
+            Object.DestroyImmediate(definition);
+        }
+
+        [Test]
+        public void SemPegaDeclarada_CaiNaPadraoEmVezDoPunhoCheio()
+        {
+            HandHold fallback = HandHold.Default;
+
+            HandHold nothingHeld = ControllerHand.HoldFor(null, fallback);
+
+            Assert.That(nothingHeld.gripClosure, Is.EqualTo(fallback.gripClosure).Within(0.001f));
+            Assert.That(nothingHeld.gripClosure, Is.LessThan(1f), "A padrao nunca e um punho cheio.");
+        }
+
+        [Test]
+        public void UmaPegaTodaZeroContaComoNaoDeclarada()
+        {
+            // Importa porque a Unity le um struct ausente do .asset como tudo zero, e uma pega
+            // toda zero significaria segurar o instrumento com a palma aberta.
+            Assert.That(default(HandHold).IsConfigured, Is.False);
+            Assert.That(HandHold.Default.IsConfigured, Is.True);
         }
 
         [Test]

@@ -42,3 +42,9 @@ crashlytics-build.properties
 
 # Dumps de crash do editor
 mono_crash.*.blob
+
+# Ranking e calibração da central do estande (dados do evento, não código)
+/dados_estande/
+
+# Temporários do CMake/Gradle que o build Android deixa na raiz
+/.utmp/

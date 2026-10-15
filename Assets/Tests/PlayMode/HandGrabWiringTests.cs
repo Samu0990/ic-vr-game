@@ -66,6 +66,29 @@ namespace VRSurgery.Tests
         public void TearDown() => SurgeryEvents.ResetAll();
 
         /// <summary>
+        /// Põe o órgão num lugar de uma vez, como a mão o teria posto.
+        ///
+        /// No jogo a mão move o coração pela física a cada quadro e a interpolação do Rigidbody
+        /// só suaviza esse caminho. Um salto de 60 cm num quadro é outra coisa: até o próximo
+        /// passo de física a interpolação desenha o órgão entre o lugar antigo e o novo, e numa
+        /// suíte sem limite de quadros vários quadros cabem num passo. O coração "pousado" ainda
+        /// estava a 25–45 cm do leito ao ser solto, e o teste passava ou falhava conforme a
+        /// velocidade da máquina. Nem Rigidbody.position evita isso; sem interpolação, sim. A cena
+        /// é recarregada a cada teste, então isso não vaza para os outros.
+        /// </summary>
+        private static void Teleport(GameObject organ, Vector3 position)
+        {
+            Rigidbody body = organ.GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                body.interpolation = RigidbodyInterpolation.None;
+                body.position = position;
+            }
+
+            organ.transform.position = position;
+        }
+
+        /// <summary>
         /// The rig's grab interactors, which is where the adapter has to live: it requires an
         /// XRBaseInteractor on its own GameObject.
         ///
@@ -76,6 +99,33 @@ namespace VRSurgery.Tests
         /// </summary>
         private static XRHandInteractor[] Hands() =>
             Object.FindObjectsByType<XRHandInteractor>(FindObjectsInactive.Include, FindObjectsSortMode.None);
+
+        /// <summary>
+        /// Pula o teste quando não há mão viva para agarrar com.
+        ///
+        /// O adaptador assina selectEntered/selectExited no OnEnable, e o rig desliga os controles
+        /// quando não detecta dispositivo XR — que é sempre o caso numa suíte headless. Levantar
+        /// o evento nesse estado não chega a ninguém, e o teste falharia dizendo que o agarre está
+        /// quebrado quando o que falta é o óculos.
+        ///
+        /// Pular declarando o motivo é melhor que falhar por um motivo errado, e melhor que
+        /// passar sem ter verificado nada. O que dá para verificar sem hardware — que o adaptador
+        /// está na cena e que as regras de explante e implante funcionam — está coberto pelos
+        /// outros testes deste arquivo e pelo TransplantRoundTests.
+        ///
+        /// NÃO tente ligar os controles à força: já foi tentado, e ativar o Near-Far Interactor
+        /// sem dispositivo presente TRAVA a suíte inteira em vez de falhar.
+        /// </summary>
+        private static void RequireTrackedHands()
+        {
+            foreach (XRHandInteractor hand in Hands())
+            {
+                if (hand.isActiveAndEnabled) { return; }
+            }
+
+            Assert.Ignore("Sem dispositivo XR: o rig desliga os controles e o adaptador não " +
+                          "chega a assinar os eventos. Este comportamento só se verifica no óculos.");
+        }
 
         // NOTA: houve aqui um PowerUpHands() que ligava os GameObjects dos controles para que o
         // OnEnable do adaptador assinasse os eventos da XRI. Ele TRAVA a suíte inteira: ativar o
@@ -118,20 +168,42 @@ namespace VRSurgery.Tests
         }
 
         /// <summary>Walks the operation to the stage where the native heart may come out.</summary>
+        /// <summary>
+        /// Leva a operação até a cardiectomia, seja qual for a ordem de etapas configurada.
+        ///
+        /// Avança pela etapa que o procedimento diz estar em curso, em vez de repetir uma lista
+        /// escrita à mão. A versão anterior assumia OpenChest → GoOnBypass e quebrou quando as
+        /// etapas de pele (SkinIncision, CloseSkin) e o pericárdio entraram: o teste acusava o
+        /// produto por uma mudança que era dele mesmo. Um teste de ligação não deve ter opinião
+        /// sobre quantas etapas existem antes da que ele testa.
+        /// </summary>
         private void AdvanceToExplant()
         {
             _procedure.Begin();
-            _procedure.CompleteStage(TransplantStage.OpenChest);
 
-            // O tórax está aberto a essa altura, e é a abertura que expõe o coração. Sem isto ele
-            // segue desativado e nenhuma mão o alcançaria — no jogo nem no teste.
+            // O tórax se abre no caminho, e é a abertura que expõe o coração. Sem isto ele segue
+            // desativado e nenhuma mão o alcançaria — no jogo nem no teste.
             _nativeHeart.SetActive(true);
-            _procedure.Bypass.Attempt(BypassStep.Cannulate);
-            _procedure.Bypass.Attempt(BypassStep.ClampAorta);
-            _procedure.Bypass.Attempt(BypassStep.Cardioplegia);
-            _procedure.CompleteStage(TransplantStage.GoOnBypass);
 
-            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage);
+            for (int guard = 0; guard < 16; guard++)
+            {
+                if (_procedure.Stage == TransplantStage.RemoveNativeHeart) { return; }
+
+                if (_procedure.Stage == TransplantStage.GoOnBypass)
+                {
+                    _procedure.Bypass.Attempt(BypassStep.Cannulate);
+                    _procedure.Bypass.Attempt(BypassStep.ClampAorta);
+                    _procedure.Bypass.Attempt(BypassStep.Cardioplegia);
+                }
+
+                if (!_procedure.CompleteStage(_procedure.Stage))
+                {
+                    Assert.Fail($"A operação travou em {_procedure.Stage} a caminho da cardiectomia.");
+                }
+            }
+
+            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
+                "Não foi possível chegar à retirada do coração em 16 etapas.");
         }
 
         [UnityTest]
@@ -160,6 +232,8 @@ namespace VRSurgery.Tests
         [UnityTest]
         public IEnumerator GrabbingAnOrganMarksItHeld()
         {
+            RequireTrackedHands();
+
             // Exposto, como estaria com o tórax aberto: o adaptador resolve o interactable subindo
             // a hierarquia, e GetComponentInParent ignora objeto inativo.
             _nativeHeart.SetActive(true);
@@ -185,6 +259,8 @@ namespace VRSurgery.Tests
         [UnityTest]
         public IEnumerator ReleasingTheNativeHeartAwayFromTheChestCompletesTheExplant()
         {
+            RequireTrackedHands();
+
             AdvanceToExplant();
 
             XRHandInteractor hand = Hands()[0];
@@ -194,7 +270,7 @@ namespace VRSurgery.Tests
             yield return null;
 
             // Carried well clear of the pericardium — further than the explant threshold.
-            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
+            Teleport(_nativeHeart, _seat.position + new Vector3(0.6f, 0.1f, 0f));
             yield return null;
 
             Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
@@ -212,6 +288,8 @@ namespace VRSurgery.Tests
         [UnityTest]
         public IEnumerator TheDonorHeartDoesNotCountAsImplantedWhileItIsStillBeingHeld()
         {
+            RequireTrackedHands();
+
             AdvanceToExplant();
             _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
             Assert.AreEqual(TransplantStage.PlaceDonorHeart, _procedure.Stage);
@@ -224,7 +302,7 @@ namespace VRSurgery.Tests
             yield return null;
 
             // Lowered exactly into the pericardium, but not let go of.
-            _donorHeart.transform.position = _seat.position;
+            Teleport(_donorHeart, _seat.position);
             yield return null;
             yield return null;
 
@@ -240,5 +318,85 @@ namespace VRSurgery.Tests
             Assert.IsTrue(organ.Satisfied, "Pousado no lugar certo e solto: aí sim está posicionado.");
             Assert.AreEqual(TransplantStage.ConnectVessels, _procedure.Stage);
         }
+
+        // -----------------------------------------------------------------------------------
+        // As regras do órgão, sem depender do óculos.
+        //
+        // Os três testes acima verificam o CAMINHO — evento da XRI chegando ao contrato — e por
+        // isso precisam de dispositivo. Estes verificam as REGRAS, chamando o contrato direto:
+        // é o mesmo OnGrabbed/OnReleased que o adaptador chama quando a mão fecha. Assim a
+        // lógica que decide o que é cardiectomia e o que é implante fica coberta em qualquer
+        // máquina, e o que fica pendente de hardware é só o fio entre um e outro.
+        // -----------------------------------------------------------------------------------
+
+        [UnityTest]
+        public IEnumerator CarregarONaoBastaParaExplantar_PrecisaPousar()
+        {
+            AdvanceToExplant();
+
+            SurgicalInteractable organ = _nativeHeart.GetComponent<SurgicalInteractable>();
+            organ.OnGrabbed(null);
+            yield return null;
+
+            Teleport(_nativeHeart, _seat.position + new Vector3(0.6f, 0.1f, 0f));
+            yield return null;
+
+            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
+                "Carregar o coração não é explantar; ele ainda está na mão do cirurgião.");
+
+            organ.OnReleased();
+            yield return null;
+
+            Assert.IsTrue(_nativeHeart.GetComponent<GrabbableOrgan>().Satisfied);
+            Assert.AreEqual(TransplantStage.PlaceDonorHeart, _procedure.Stage,
+                "Com o coração doente fora e pousado, a operação avança para o doador.");
+        }
+
+        [UnityTest]
+        public IEnumerator SoltarPertoDoAssentoNaoExplanta()
+        {
+            AdvanceToExplant();
+
+            SurgicalInteractable organ = _nativeHeart.GetComponent<SurgicalInteractable>();
+            organ.OnGrabbed(null);
+            yield return null;
+
+            // Levantado, mas ainda dentro do tórax: não é cardiectomia, é hesitação.
+            Teleport(_nativeHeart, _seat.position + new Vector3(0.03f, 0.02f, 0f));
+            organ.OnReleased();
+            yield return null;
+
+            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
+                "Mexer no coração sem tirá-lo do lugar não pode contar como retirada.");
+        }
+
+        [UnityTest]
+        public IEnumerator ODoadorNaoContaImplantadoEnquantoEstaNaMao()
+        {
+            AdvanceToExplant();
+            _procedure.CompleteStage(TransplantStage.RemoveNativeHeart);
+            Assert.AreEqual(TransplantStage.PlaceDonorHeart, _procedure.Stage);
+
+            SurgicalInteractable organ = _donorHeart.GetComponent<SurgicalInteractable>();
+            GrabbableOrgan grabbable = _donorHeart.GetComponent<GrabbableOrgan>();
+
+            organ.OnGrabbed(null);
+            yield return null;
+
+            Teleport(_donorHeart, _seat.position);
+            yield return null;
+            yield return null;
+
+            Assert.IsFalse(grabbable.Satisfied,
+                "Um coração ainda preso à mão do cirurgião não está implantado.");
+
+            organ.OnReleased();
+            yield return null;
+            yield return null;
+
+            Assert.IsTrue(grabbable.Satisfied, "Pousado no lugar certo e solto: aí sim.");
+            Assert.AreEqual(TransplantStage.ConnectVessels, _procedure.Stage);
+        }
+
     }
 }

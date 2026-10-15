@@ -3,7 +3,7 @@
 Projeto de iniciação científica. Experiência de realidade virtual em que o visitante
 executa um transplante de coração, pensada para estande de evento com fila.
 
-Unity 6000.3.22f1 · URP · OpenXR · Meta Quest (standalone)
+Unity 6000.3.22f1 · URP · OpenXR · Meta Quest (standalone) · nome do app no Quest: **Meta Health**
 
 ---
 
@@ -25,10 +25,9 @@ e a `SurgeryMVP` é a única que ainda usa bisturi e pinça.
 ## Construir a cena
 
 > **Depois de puxar alterações do construtor, reconstrua a cena** (`VRSurgery` →
-> `Transplante — nível Médio`). O arquivo `TransplanteCardiaco.unity` no repositório é
-> sempre a última cena gerada por alguém; código novo do construtor só aparece depois do
-> rebuild. A cena **não** foi regenerada na sessão que adicionou bisturi, sutura e sala
-> (ela rodou sem Unity) — o primeiro rebuild é seu.
+> `Transplante — construir cena (nível único)`). O arquivo `TransplanteCardiaco.unity` no
+> repositório é sempre a última cena gerada por alguém; código novo do construtor só aparece
+> depois do rebuild.
 
 As cenas são **geradas por código**, não editadas à mão. Arrastar objetos na
 Hierarchy funciona até o próximo rebuild, que desfaz tudo. Para mudar a cena,
@@ -36,33 +35,47 @@ mude o construtor.
 
 No Editor, menu `VRSurgery`:
 
-- `Transplante — nível Fácil` / `Médio` / `Difícil`
+- `Transplante — construir cena (nível único)`
 - `Build 'A Porta de Entrada'` (legado)
 - `Rebuild MVP Scene` (legado)
 
 Por linha de comando, sem abrir o Editor:
 
 ```bash
-~/Unity/Hub/Editor/6000.3.22f1/Editor/Unity -batchmode -quit \
-  -projectPath . -executeMethod VRSurgery.EditorTools.TransplanteSceneBuilder.BuildMedium
+~/Unity/Hub/Editor/6000.3.22f1/Editor/Unity -batchmode -quit -nographics \
+  -projectPath . -executeMethod VRSurgery.EditorTools.TransplanteSceneBuilder.BuildFromCommandLine
 ```
 
-## Níveis de dificuldade
+## Rodar no Meta Quest
 
-O nível decide quanto da circulação extracorpórea o visitante executa. **As regras
-clínicas não mudam** — o que muda é em que ponto da cirurgia ele entra.
+**No Editor, com o óculos (PC Windows com Quest Link ou Air Link):** abra a cena
+`TransplanteCardiaco`, conecte o Quest pelo Link e aperte Play. No PC aparecem também o
+espelho do cirurgião e as saídas de projeção.
 
-| Nível | CEC | Gestos | Rodada |
-|---|---|---|---|
-| Fácil | Equipe já colocou em bomba; saída em um gesto | 7 s | 90 s |
-| Médio | Entrada encadeada em um gesto; saída completa | 26 s | 150 s |
-| Difícil | Os seis gestos, um a um | 37 s | 240 s |
+**Sozinho no óculos (APK):** precisa do módulo *Android Build Support* (com OpenJDK e
+Android SDK & NDK) no Unity Hub.
 
-A duração da rodada vem do nível (`BypassPlan`), não de uma constante. Um nível mais
-fácil é um visitante que chega mais tarde na cirurgia, nunca um paciente para quem as
-regras deixaram de valer: o preparo da equipe passa pelas mesmas validações
-(`ApplyTeamPreparation`), então nenhum nível produz um paciente que o procedimento não
-poderia ter produzido.
+1. Menu `Build` → `Transplante — APK do Quest`. Sai em `Builds/Quest/Transplante.apk`.
+   O primeiro build compila os shaders do zero e demora; os seguintes usam o cache.
+2. Com o modo desenvolvedor do Quest ligado e o óculos no cabo USB:
+   `adb install -r Builds/Quest/Transplante.apk` (o `adb` vem com o Android SDK do Unity, em
+   `Editor/Data/PlaybackEngines/AndroidPlayer/SDK/platform-tools/`).
+3. No Quest: Biblioteca → Fontes desconhecidas → **Meta Health**.
+
+Por linha de comando: `-buildTarget Android -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildQuestFromCommandLine`.
+
+**Central do estande** (projetor e ranking num notebook ao lado do manequim): menu `Build` →
+`Central do estande — Linux 64` ou `Windows 64`. O jogo no Quest manda a imagem de cima do
+paciente e os resultados pela rede Wi-Fi (`Scripts/Stand/`).
+
+## Nível único
+
+O estande roda **um nível só**, com ajuda adaptativa (veja *Ajuda adaptativa* abaixo), no
+plano Médio da circulação extracorpórea: entrada em bomba encadeada num gesto, saída completa.
+Os planos Fácil e Difícil continuam em `BypassPlan`, usados pelos testes, mas o construtor não
+gera mais cenas com eles. O preparo da equipe passa pelas mesmas validações do procedimento
+(`ApplyTeamPreparation`), então nenhum plano produz um paciente que a cirurgia não poderia ter
+produzido.
 
 ## A cirurgia
 
@@ -82,9 +95,9 @@ falha não ensina nada.
 A incisão e a sutura são etapas opcionais do `TransplantProcedure`
 (`SetSkinStages(true)`), ligadas pela cena. Sem elas o procedimento é exatamente o de
 antes, que é o que todos os testes antigos montam à mão. Com elas a rodada ganha 45 s
-(`SkinStageSeconds`) sobre o tempo do nível, mais 10 s do pericárdio (`PericardiumSeconds`), e mais 12 s (`DefibrillationSeconds`) nos
-níveis em que retirar o clampe é um gesto próprio (Médio e Difícil), que são os que têm
-a fibrilação.
+(`SkinStageSeconds`) sobre o tempo do plano, mais 10 s do pericárdio (`PericardiumSeconds`) e
+mais 12 s da fibrilação (`DefibrillationSeconds`), porque no plano Médio retirar o clampe é um
+gesto próprio.
 
 ### O que o visitante vê e faz
 
@@ -141,7 +154,8 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   **arremessar** também funciona. Só se ele parar **fora do alcance** (chão, outro lado da
   mesa, atirado longe) por 0,6 s é que some e **reaparece com um "pop"** no lugar dele. A cada
   novo visitante, tudo volta para a bandeja. Instrumento que cai **dentro do paciente** (atravessa
-  a pele da janela, que não tem colisor) também conta como perdido e reaparece.
+  a pele da janela, que não tem colisor) também conta como perdido e reaparece, e o que é
+  **solto em cima do corpo** volta para a bandeja em vez de ficar em pé no peito.
 - **A mesa vai até o visitante** (`VisitorFit` no XR Origin): no início de cada briefing (e de
   novo 3 s depois) e **quando o sensor de presença do óculos detecta que alguém o colocou**, nunca
   com a rodada correndo o rig é movido para a cabeça ficar exatamente
@@ -199,6 +213,10 @@ Não há níveis de dificuldade para o visitante escolher; o jogo ajuda quem pre
   **ponto de toque** (`Poke Point`, que aperta teclas e faz os gestos com a mão) vai para a
   **ponta do indicador** da luva. Ajuste fino no óculos, no `ControllerHand` de cada mão:
   `palmDepth`, `positionOffset`, `rotationOffset`, `fistOffset`.
+- **Bisturi seguro como caneta** (`HandHold.Writing`): bisturi, pinça, porta-agulha e bisturi
+  elétrico ficam pinçados entre polegar e indicador, com a lâmina além das pontas dos dedos e o
+  fundo do cabo voltando sobre a prega entre polegar e indicador. Serra, pás e órgãos usam a
+  pega padrão. Medir com `VRSurgery` → `Sonda da pega` (`GripProbe`).
 - **Contorno azul-claro** (`GrabOutlines` + `InteractableOutline`, shader
   `VRSurgery/GrabOutline`): só **o que cada mão vazia pegaria agora** fica contornado — não todos
   os instrumentos ao alcance. Some ao pegar. É um casco invertido de 2,5 mm (um desenho a mais
@@ -310,7 +328,7 @@ sem frame.
 | Onde | O quê |
 |---|---|
 | `Scripts/Transplant/BypassProcedure.cs` | CEC. C# puro, sem `UnityEngine` |
-| `Scripts/Transplant/BypassPlan.cs` | Os três níveis. C# puro |
+| `Scripts/Transplant/BypassPlan.cs` | Os três planos da CEC (o estande usa o Médio). C# puro |
 | `Scripts/Transplant/TransplantProcedure.cs` | Ordem das etapas |
 | `Scripts/Transplant/*Worker.cs` | Onde está a mão do cirurgião |
 | `Scripts/Interaction/` | Contrato de agarre, usado por todos os instrumentos |
@@ -353,7 +371,15 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
 
 # o tórax com pele e esterno desligados
 -executeMethod VRSurgery.EditorTools.ThoraxProbe.RunFromCommandLine -out /tmp/torax
+
+# paciente, tórax e corações; -size 3840x2160 para imagens de apresentação
+-executeMethod VRSurgery.EditorTools.TransplantShots.RunFromCommandLine -out /tmp/fotos
+
+# a mão segurando cada instrumento, com a distância de cada dedo ao cabo
+-executeMethod VRSurgery.EditorTools.GripProbe.RunFromCommandLine -out /tmp/pega
 ```
+
+As fotos precisam de GPU: rode esses sem `-nographics`.
 
 ## Testes
 
@@ -362,13 +388,15 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
   -projectPath . -runTests -testPlatform PlayMode -testResults /tmp/res.xml
 ```
 
-**121 testes passando na última execução registrada neste README**, antes dos testes do PR do orientador (`AnastomosisTests`, `NameEntryTests`, `VesselAnastomosisVisualTests`) e dos 44 de `SkinStagesTests` (incisão, técnica do bisturi, nota, sutura, pele, etapas novas, correções do PR). Esses ainda precisam ser rodados no Editor. O que os testes cobrem e por quê:
+**289 testes na última execução (15/10/2026): 286 passam e nenhum falha.** Os outros 3
+(`HandGrabWiringTests`) só rodam com o óculos conectado. A suíte inteira leva uns 12 minutos.
+O que os testes cobrem e por quê:
 
 - **A volta do estande**: a rodada começa no primeiro corte, o transplante concluído vence a
   rodada, e o visitante seguinte recebe tórax fechado e coração doente de volta. Essas regras
   já existiam todas, e nenhuma estava ligada — a classe de defeito que um teste de cada lado
   da junção não enxerga
-- **Ordem da CEC** nos três níveis, incluindo cada erro clínico nomeado
+- **Ordem da CEC** nos três planos, incluindo cada erro clínico nomeado
 - **Ergonomia**: todo instrumento alcançável pelos dois ombros — canhoto e pessoa de
   braço curto precisam pegar qualquer instrumento com qualquer mão
 - **Anastomose**: encostar não costura; só segurar costura
@@ -376,10 +404,7 @@ vinheta cobrindo a visão inteira. Todos esses passaram nos testes.
 
 ## Limitações conhecidas
 
-**Sessão de 29/09 (bisturi, sutura, sala, correções do PR do orientador) — escrita sem Unity.**
-O código compila contra as DLLs de referência do Unity e stubs dos pacotes, mas nada foi
-renderizado nem jogado. Primeiro rebuild: olhar o Console, depois olhar a cena. Pontos a
-conferir com o óculos:
+**Pontos a conferir com o óculos:**
 - Posição da **bandeja de instrumentos** ao lado da mesa (à esquerda do visitante), do bisturi
   e do porta-agulha; o alcance foi calculado para ombro entre 1,10 m e 1,35 m. A pinça e o
   porta-agulha ficam a ~83–85° do olhar (limite do teste: 90°): conferir se acham sem ajuda.
@@ -408,7 +433,7 @@ conferir com o óculos:
 - O `Cloth` não é documentado para colliders de trigger, por isso as esferas das mãos são
   sólidas e ignoram instrumentos e órgãos. Se algo for empurrado pela mão, é aí que olhar.
 
-Nada aqui foi jogado com o óculos. Os tempos de gesto, os raios de 2,2 cm e a
+O jogo ainda foi pouco jogado com o óculos. Os tempos de gesto, os raios de 2,2 cm e a
 legibilidade dos anéis a 30 cm do olho são estimativas informadas, não medições.
 
 - **Modelos são sopa de cascas.** O coração tem 40.236 arestas abertas em 776 laços;
@@ -427,8 +452,11 @@ legibilidade dos anéis a 30 cm do olho são estimativas informadas, não mediç
   superfícies que dobram mais de 90 graus exigirão outra estratégia de projeção.
 - `WoundRenderer` (faixa cosmética) e `IncisableSkin` (troca binária de estado) continuam no
   legado e não foram removidos neste incremento.
-- **A projeção exige Display 2**, que não existe em Quest standalone.
-- **Projeção do `TransplanteCardiaco` é nova e não testada em sala, e usa 3 displays.** Display 1 espelha o cirurgião (fila de espera), Display 2 é o projetor apontado pro manequim físico (só a cena 3D: paciente, coração, luz avermelhando com o relógio, nenhum texto), Display 3 é um monitor à parte, ao lado do manequim, com relógio, placar e a instrução do momento (`ProjectionHUD`, como um monitor de sinais vitais). A separação existe porque texto projetado em cima de um corpo físico não dá pra ler. A barra de sangramento no Display 3 lê a fração de anastomoses vazando em vez de um `BleedingSystem`. Posição da câmera do Display 2 e enquadramento herdaram os números validados no MVP, não foram remedidos para este paciente nem para o manequim real.
+- **Projeção ainda não testada em sala.** No Quest standalone não existem Displays 2 e 3: as
+  saídas de PC (espelho, câmera do projetor, monitor do público) ficam desligadas no óculos
+  (`StandOutputsForPlatform`), e a imagem de cima do paciente vai pela rede para a central do
+  estande no notebook (`StandFrameStreamer` → `ProjectorView`), cortada na fatia do paciente.
+  No PC com Link as 3 saídas continuam como antes. A calibração no manequim real está por fazer.
 - **O gradil costal** é proporcionalmente estreito: 23,8 × 16,0 × 30,0 cm contra
   28 × 20 × 30 reais. Escala uniforme, sem distorção, mas um tórax magro.
 - **Atmosfera visual nova e não testada no headset.** `TuneRoomLighting` reforça a luz direcional e pendura um foco cirúrgico sobre o tórax; `BuildClinicalPostProcessing` cria um Volume global (bloom leve, saturação -6, vinheta sutil) que hoje não é desenhado por nenhuma câmera: o óculos também ficou com `renderPostProcessing = false`, igual ao espectador e ao projetor. `ApplyGloveMaterialToHands` procura por qualquer renderer com "Hand" no nome sob "XR Origin" para trocar pelo material `GLOVE_NitrileBlue`; se a malha de mão do VR Template usada no projeto tiver outro nome, o Console avisa e nada é trocado — confirme no primeiro build. Custo de GPU do Volume no Quest ainda não foi medido.
@@ -442,3 +470,6 @@ ligação do albedo/normal da pele no URP. Só depois repetir a captura orgânic
 
 182 mil triângulos para a anatomia toda, contra 5,98 milhões como os modelos chegaram.
 O alvo é 72 Hz (13,9 ms por frame), não 60 FPS — num headset, 60 FPS é desconforto.
+
+**Variantes de shader:** o nível de qualidade Ultra não entra no build do Android (o Quest usa o
+Low), o que corta as variantes do URP/Lit compiladas no build.

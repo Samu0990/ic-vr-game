@@ -55,9 +55,29 @@ namespace VRSurgery.Session
         [Tooltip("Optional. When set, finished rounds are filed automatically.")]
         [SerializeField] private EventSessionController session;
 
-        [Tooltip("Filed under this until the visitor can type a name. PENDING: the concept has " +
-                 "them registering one, which needs a keyboard the headset can show.")]
+        [Tooltip("Filed under this quando ninguém pergunta o nome ao visitante.")]
         [SerializeField] private string pendingName = "Anônimo";
+
+        [Tooltip("Arquivar a rodada sozinho quando ela termina. Desligado por quem pergunta o " +
+                 "nome ao visitante, que passa a ser o dono do arquivamento.")]
+        [SerializeField] private bool fileAutomatically = true;
+
+        /// <summary>
+        /// Cede o arquivamento a quem pergunta o nome.
+        ///
+        /// Sem isto os dois arquivam a mesma rodada: este aqui grava "Anônimo" no instante em que
+        /// o round acaba, e o teclado grava o nome digitado alguns segundos depois. O placar do
+        /// estande encheria de "Anônimo" duplicado ao lado de cada nome de verdade.
+        ///
+        /// Fica ligado por padrão porque as cenas antigas não têm teclado nenhum e dependem deste
+        /// componente para registrar qualquer coisa.
+        /// </summary>
+        public void YieldFilingTo(Component owner)
+        {
+            fileAutomatically = false;
+            Debug.Log($"[Placar] arquivamento entregue a {owner.GetType().Name}; " +
+                      "o placar não registra mais sozinho.");
+        }
 
         private readonly List<LeaderboardEntry> _entries = new List<LeaderboardEntry>();
 
@@ -97,7 +117,11 @@ namespace VRSurgery.Session
             }
         }
 
-        private void HandleRoundEnded(SessionResult result) => Submit(pendingName, result);
+        private void HandleRoundEnded(SessionResult result)
+        {
+            if (!fileAutomatically) { return; }
+            Submit(pendingName, result);
+        }
 
         public void Bind(EventSessionController controller)
         {

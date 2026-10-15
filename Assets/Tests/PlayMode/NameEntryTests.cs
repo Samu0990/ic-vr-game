@@ -38,11 +38,21 @@ namespace VRSurgery.Tests
             _nameEntry = _host.AddComponent<NameEntryController>();
             _nameEntry.Bind(_session, _leaderboard);
             _host.SetActive(true);
+
+            // O placar sobrevive entre execuções de propósito — no estande, uma queda de energia
+            // não pode apagar a manhã inteira. Consequência para a suíte: sem limpar, Entries[0]
+            // é o recorde de alguma execução anterior e as asserções comparam contra lixo. Era
+            // isto que fazia estes testes esperarem "ANA" e receberem "A".
+            _leaderboard.Clear();
         }
 
         [TearDown]
         public void TearDown()
         {
+            // Limpa também na saída: o que estes testes gravam fica em PlayerPrefs e apareceria
+            // no placar do estande na próxima vez que o jogo abrisse nesta máquina.
+            if (_leaderboard != null) { _leaderboard.Clear(); }
+
             if (_host != null) { Object.DestroyImmediate(_host); }
             if (_definition != null) { Object.DestroyImmediate(_definition); }
             SurgeryEvents.ResetAll();

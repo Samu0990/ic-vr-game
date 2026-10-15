@@ -226,8 +226,13 @@ namespace VRSurgery.Transplant
 
                 // Velocity as well as pose. A heart let go mid-throw and then teleported home
                 // keeps its momentum and sails straight back out of the chest.
+                //
+                // Só em corpo dinâmico: zerar velocidade de um cinemático é erro no console a
+                // cada reset, e o Unity ignora a atribuição de qualquer forma. Os órgãos nascem
+                // cinemáticos e o ToolReleasePhysics os solta ao serem largados, então os dois
+                // estados aparecem aqui.
                 Rigidbody body = organ.GetComponent<Rigidbody>();
-                if (body != null)
+                if (body != null && !body.isKinematic)
                 {
                     body.linearVelocity = Vector3.zero;
                     body.angularVelocity = Vector3.zero;
