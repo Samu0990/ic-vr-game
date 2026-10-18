@@ -1244,24 +1244,38 @@ namespace VRSurgery.EditorTools
             readout.color = new Color(0.4f, 1f, 0.6f);
             Rod("ConsolePole", m, new Vector3(-0.1f, 1.12f, -0.35f), 0.018f, 0.6f, steel);
 
-            // The lines: arterial out to the aorta, venous back from the atrium. They cross to the
-            // table and lie on the drape beside the operative window, where the cannulas go in.
+            // The lines: arterial out to the aorta, venous back from the atrium. Their long runs
+            // hang below the table edge. Only the short final sections climb onto the drape beside
+            // the operative window; the previous high arcs crossed the patient and looked as if
+            // they were floating in mid-air.
             Vector3 window = _window.Center + new Vector3(-_window.HalfWidth - 0.03f, 0f, 0f);
+            Vector3 arterialEnd = ArterialLineEnd();
+            Vector3 venousEnd = VenousLineEnd();
+            float outside = -TableHalfWidth - 0.08f;
+            float edge = -TableHalfWidth - 0.015f;
 
             Tube("ArterialLine", m, new[]
             {
                 origin + new Vector3(0.1f, 0.92f, -0.48f),
-                origin + new Vector3(0.45f, 1.18f, 0.1f),
-                new Vector3(-0.42f, TableTopY + 0.12f, window.z + 0.05f),
-                ArterialLineEnd(),
+                origin + new Vector3(0.32f, 0.78f, -0.2f),
+                new Vector3(outside, TableTopY - 0.12f, window.z - 0.22f),
+                new Vector3(outside, TableTopY - 0.08f, arterialEnd.z),
+                new Vector3(edge, TableTopY + 0.025f, arterialEnd.z),
+                new Vector3(-TableHalfWidth + 0.025f,
+                    SkinTopAt(-TableHalfWidth + 0.025f, arterialEnd.z) + 0.018f, arterialEnd.z),
+                arterialEnd,
             }, 0.0065f, arterial);
 
             Tube("VenousLine", m, new[]
             {
                 origin + new Vector3(0.1f, 0.92f, 0.46f),
-                origin + new Vector3(0.45f, 1.1f, 0.6f),
-                new Vector3(-0.44f, TableTopY + 0.1f, window.z - 0.02f),
-                VenousLineEnd(),
+                origin + new Vector3(0.28f, 0.76f, 0.36f),
+                new Vector3(outside - 0.025f, TableTopY - 0.15f, window.z - 0.3f),
+                new Vector3(outside - 0.025f, TableTopY - 0.1f, venousEnd.z),
+                new Vector3(edge - 0.012f, TableTopY + 0.015f, venousEnd.z),
+                new Vector3(-TableHalfWidth + 0.012f,
+                    SkinTopAt(-TableHalfWidth + 0.012f, venousEnd.z) + 0.014f, venousEnd.z),
+                venousEnd,
             }, 0.0085f, venous);
         }
 
@@ -2202,7 +2216,7 @@ namespace VRSurgery.EditorTools
             _slotNeedleHolder = new Pose(new Vector3(inner + 0.08f, top + 0.014f, z - 0.335f), toTable);
             _slotForceps = new Pose(new Vector3(inner + 0.07f, top + 0.01f, z - 0.38f), toTable);
             _slotBasin = new Vector3(inner + 0.09f, top, z - 0.475f);
-            _slotPaddles = new Pose(new Vector3(inner + 0.09f, top + 0.06f, z - 0.53f), towardFeet);
+            _slotPaddles = new Pose(new Vector3(inner + 0.09f, top + 0.06f, z - 0.63f), towardFeet);
 
             // Hidden from the projector like the rest of the operator's furniture: it frames the
             // patient on the mannequin, not the trays beside it.
@@ -2918,8 +2932,10 @@ namespace VRSurgery.EditorTools
             GameObject grip = new GameObject("GripPoint");
             grip.transform.SetParent(tool.transform, false);
             grip.transform.localPosition = gripLocal;
+            grip.transform.localRotation = GripRotationFor(id);
 
-            ToolDefinition definition = ToolDefinition.Create(id, label, type, capability);
+            ToolDefinition definition = ToolDefinition.Create(id, label, type, capability,
+                handHold: HandHoldFor(id));
             interactable = tool.AddComponent<SurgicalInteractable>();
             SetPrivateField(interactable, "toolDefinition", definition);
             SetPrivateField(interactable, "gripPoint", grip.transform);
@@ -2954,6 +2970,92 @@ namespace VRSurgery.EditorTools
             release.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f, InsideThePatient());
             return tool;
         }
+
+        /// <summary>
+        /// How each instrument sits in the hand. The old builder gave every tool the same
+        /// fallback pencil grip, including the saw, paddles and needle holder. Besides looking
+        /// wrong, that points their working end somewhere other than the player's natural hand
+        /// axis and makes a visibly touched target miss its small interaction radius.
+        /// </summary>
+        private static HandHold HandHoldFor(string id)
+        {
+            switch (id)
+            {
+                // A palmar precision grip: the index supports the back of the handle instead of
+                // lying almost straight along it like a writing pencil.
+                case "scalpel":
+                    return new HandHold
+                    {
+                        gripClosure = 0.52f,
+                        indexClosure = 0.42f,
+                        thumbClosure = 0.78f,
+                        handleRadius = 0.007f,
+                        pitchDegrees = 14f,
+                        precisionPinch = true,
+                        seatOffset = new Vector3(0.006f, 0.004f, 0.001f),
+                    };
+
+                case "cautery-pen":
+                    return new HandHold
+                    {
+                        gripClosure = 0.58f,
+                        indexClosure = 0.30f,
+                        thumbClosure = 0.72f,
+                        handleRadius = 0.006f,
+                        pitchDegrees = 28f,
+                    };
+
+                case "adson-forceps":
+                    return new HandHold
+                    {
+                        gripClosure = 0.52f,
+                        indexClosure = 0.36f,
+                        thumbClosure = 0.72f,
+                        handleRadius = 0.01f,
+                        pitchDegrees = 20f,
+                    };
+
+                case "needle-holder":
+                    return new HandHold
+                    {
+                        gripClosure = 0.68f,
+                        indexClosure = 0.56f,
+                        thumbClosure = 0.72f,
+                        handleRadius = 0.01f,
+                        pitchDegrees = 10f,
+                    };
+
+                case "sternal-saw":
+                    return new HandHold
+                    {
+                        gripClosure = 0.78f,
+                        indexClosure = 0.70f,
+                        thumbClosure = 0.78f,
+                        handleRadius = 0.017f,
+                        // The GripPoint's forward is the pistol handle (+Y in tool space).
+                        // -50 here plus its -90-degree local frame preserves the useful 40-degree
+                        // saw-body angle while the fingers finally close around the handle.
+                        pitchDegrees = -50f,
+                    };
+
+                case "internal-paddles":
+                    return new HandHold
+                    {
+                        gripClosure = 0.76f,
+                        indexClosure = 0.66f,
+                        thumbClosure = 0.76f,
+                        handleRadius = 0.009f,
+                        pitchDegrees = 8f,
+                    };
+
+                default:
+                    return HandHold.Default;
+            }
+        }
+
+        /// <summary>The saw is the one pistol-grip tool; its handle runs along local +Y.</summary>
+        private static Quaternion GripRotationFor(string id) =>
+            id == "sternal-saw" ? Quaternion.Euler(-90f, 0f, 0f) : Quaternion.identity;
 
         /// <summary>The real scalpel model, aligned so its blade points along +Z, with a tip at the belly of the blade.</summary>
         private static GameObject BuildScalpel(Vector3 position, Quaternion rotation, out Transform tip, out SurgicalInteractable interactable,

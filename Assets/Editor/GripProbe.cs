@@ -24,7 +24,10 @@ namespace VRSurgery.EditorTools
     public static class GripProbe
     {
         private const string ScenePath = "Assets/Scenes/TransplanteCardiaco.unity";
-        private static readonly string[] Instruments = { "Bisturi", "PincaDenteRato", "PortaAgulha" };
+        private static readonly string[] Instruments =
+        {
+            "Bisturi", "BisturiEletricoCaneta", "PincaDenteRato", "PortaAgulha", "SerraEsternal", "PasInternas",
+        };
 
         public static void RunFromCommandLine()
         {
@@ -76,13 +79,23 @@ namespace VRSurgery.EditorTools
                 }
 
                 HandHold hold = ControllerHand.HoldFor(instrument, HandHold.Default);
+                Vector3 restPosition = instrument.transform.position;
+                Quaternion restRotation = instrument.transform.rotation;
                 PoseFingers(hand, hold, HandleRadius(instrument, hold));
-                hand.PlaceGrabPoint();
+                // In Edit Mode no XRI selection exists, so ControllerHand would otherwise keep
+                // its fallback 40-degree pitch. Reproduce the held tool's own rotation directly.
+                hand.GrabPoint.SetPositionAndRotation(hand.HoldPosition(hold),
+                    hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f));
                 Attach(instrument, hand.GrabPoint);
 
                 report.AppendLine(Measure(instrumentName, hand, instrument, hold));
                 report.AppendLine(Sweep(hand, instrument));
+                // Sweep deliberately finishes at a fully closed fist. Restore the actual
+                // per-instrument pose before photographing it, otherwise every capture lies.
+                PoseFingers(hand, hold, HandleRadius(instrument, hold));
                 Shoot(folder, instrumentName, hand, instrument);
+
+                instrument.transform.SetPositionAndRotation(restPosition, restRotation);
             }
 
             string path = Path.Combine(folder, "pega.txt");
@@ -100,15 +113,23 @@ namespace VRSurgery.EditorTools
 
             // Mesmo caminho do jogo: resolve quanto cada dedo tem de fechar para alcançar o cabo,
             // e quem não alcança fica na pose que a ferramenta pediu.
-            Vector3 origin = hand.FistPosition;
+            Vector3 origin = hand.HoldPosition(hold);
             Vector3 axis = hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f) * Vector3.forward;
 
             for (int finger = 0; finger < HandPoser.FingerCount; finger++)
             {
+                if (hold.precisionPinch && finger > HandPoser.Middle)
+                {
+                    poser.SetFingerImmediate(finger, hold.gripClosure);
+                    continue;
+                }
+
                 float solved = poser.SolveClosure(finger, origin, axis, radius, out float error);
                 float declared = finger == HandPoser.Thumb ? hold.thumbClosure
                     : finger == HandPoser.Index ? hold.indexClosure : hold.gripClosure;
-                poser.SetFingerImmediate(finger, error <= 0.022f ? solved : declared);
+                float declaredDistance = Mathf.Abs(
+                    poser.DistanceAt(finger, declared, origin, axis) - radius);
+                poser.SetFingerImmediate(finger, error <= declaredDistance ? solved : declared);
             }
         }
 
@@ -140,7 +161,7 @@ namespace VRSurgery.EditorTools
         {
             Transform tool = instrument.transform;
             Vector3 axisOrigin = instrument.GripPoint.position;
-            Vector3 axis = tool.forward;
+            Vector3 axis = instrument.GripPoint.forward;
 
             BoxCollider box = tool.GetComponent<BoxCollider>();
             float handleRadius = HandleRadius(instrument, hold);
@@ -181,7 +202,7 @@ namespace VRSurgery.EditorTools
             if (poser == null) { return "    (sem HandPoser)"; }
 
             Vector3 origin = instrument.GripPoint.position;
-            Vector3 axis = instrument.transform.forward;
+            Vector3 axis = instrument.GripPoint.forward;
 
             StringBuilder s = new StringBuilder();
             s.AppendLine("    varredura de fechamento (mm da ponta ao eixo do cabo):");
@@ -214,8 +235,24 @@ namespace VRSurgery.EditorTools
 
         private static void Shoot(string folder, string name, ControllerHand hand, SurgicalInteractable instrument)
         {
-            Vector3 centre = hand.GrabPoint.position;
+            Bounds bounds = default;
+            bool hasBounds = false;
+            foreach (Renderer renderer in hand.Model.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!hasBounds) { bounds = renderer.bounds; hasBounds = true; }
+                else { bounds.Encapsulate(renderer.bounds); }
+            }
+            foreach (Renderer renderer in instrument.GetComponentsInChildren<Renderer>(true))
+            {
+                if (!hasBounds) { bounds = renderer.bounds; hasBounds = true; }
+                else { bounds.Encapsulate(renderer.bounds); }
+            }
+
+            Vector3 centre = hasBounds ? bounds.center : hand.GrabPoint.position;
             Transform model = hand.Model;
+            const float fov = 38f;
+            float radius = hasBounds ? Mathf.Max(0.12f, bounds.extents.magnitude) : 0.15f;
+            float distance = Mathf.Max(0.38f, radius / Mathf.Tan(fov * 0.5f * Mathf.Deg2Rad) * 1.25f);
 
             // Três ângulos em volta da mão, perto o bastante para ver dedo e cabo.
             (string tag, Vector3 dir)[] shots =
@@ -225,14 +262,35 @@ namespace VRSurgery.EditorTools
                 ("frente", model.forward),
             };
 
+            // Render only the hand and the current instrument. In the theatre, earlier probe
+            // iterations and nearby tray tools otherwise overlap the grip and make the evidence
+            // impossible to read.
+            const int probeLayer = 31;
+            Dictionary<GameObject, int> oldLayers = new Dictionary<GameObject, int>();
+            SetLayer(hand.Model, probeLayer, oldLayers);
+            SetLayer(instrument.transform, probeLayer, oldLayers);
+
             foreach ((string tag, Vector3 dir) in shots)
             {
-                Vector3 from = centre + dir.normalized * 0.22f + Vector3.up * 0.04f;
-                Render(Path.Combine(folder, $"{name}_{tag}.png"), from, centre, 34f);
+                Vector3 from = centre + dir.normalized * distance + Vector3.up * radius * 0.12f;
+                Render(Path.Combine(folder, $"{name}_{tag}.png"), from, centre, fov, 1 << probeLayer);
+            }
+
+            foreach (KeyValuePair<GameObject, int> entry in oldLayers) { entry.Key.layer = entry.Value; }
+        }
+
+        private static void SetLayer(Transform root, int layer, Dictionary<GameObject, int> oldLayers)
+        {
+            if (root == null) { return; }
+            foreach (Transform child in root.GetComponentsInChildren<Transform>(true))
+            {
+                if (oldLayers.ContainsKey(child.gameObject)) { continue; }
+                oldLayers.Add(child.gameObject, child.gameObject.layer);
+                child.gameObject.layer = layer;
             }
         }
 
-        private static void Render(string path, Vector3 from, Vector3 look, float fov)
+        private static void Render(string path, Vector3 from, Vector3 look, float fov, int cullingMask)
         {
             GameObject rig = new GameObject("GripProbeCam");
             Camera cam = rig.AddComponent<Camera>();
@@ -241,6 +299,7 @@ namespace VRSurgery.EditorTools
             cam.farClipPlane = 50f;
             cam.clearFlags = CameraClearFlags.SolidColor;
             cam.backgroundColor = new Color(0.08f, 0.09f, 0.11f);
+            cam.cullingMask = cullingMask;
             rig.transform.position = from;
             rig.transform.LookAt(look);
 

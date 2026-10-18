@@ -34,9 +34,17 @@ namespace VRSurgery.Data
         [Range(0f, 0.05f)] public float handleRadius;
 
         [Tooltip("Degrees the instrument is tipped forward in the fist. 0 lays it along the " +
-                 "handle out past the thumb; 40 is the angle a scalpel or a pen makes with the " +
-                 "hand that holds it.")]
-        [Range(0f, 80f)] public float pitchDegrees;
+                 "handle out past the thumb; positive values lower its working end. Negative " +
+                 "values support pistol grips whose attach frame is turned relative to the tool.")]
+        [Range(-80f, 80f)] public float pitchDegrees;
+
+        [Tooltip("Use a three-finger precision pinch: thumb, index and middle touch the handle; " +
+                 "ring and little keep the authored gripClosure instead of being pulled onto it.")]
+        public bool precisionPinch;
+
+        [Tooltip("Small local correction that seats this handle between the fingers. X is across " +
+                 "the palm, Y is up and Z follows the hand grip frame; X mirrors on the left hand.")]
+        public Vector3 seatOffset;
 
         /// <summary>
         /// A pencil grip on a slim instrument. Used when a tool declares no hold of its own,
@@ -49,6 +57,8 @@ namespace VRSurgery.Data
             thumbClosure = 0.5f,
             pitchDegrees = 40f,
             handleRadius = 0f,
+            precisionPinch = false,
+            seatOffset = Vector3.zero,
         };
 
         /// <summary>
@@ -57,7 +67,8 @@ namespace VRSurgery.Data
         /// set" — never "hold this with a flat open hand".
         /// </summary>
         public bool IsConfigured =>
-            gripClosure > 0f || indexClosure > 0f || thumbClosure > 0f || pitchDegrees > 0f;
+            gripClosure > 0f || indexClosure > 0f || thumbClosure > 0f || pitchDegrees != 0f ||
+            precisionPinch || seatOffset != Vector3.zero;
     }
 
     [CreateAssetMenu(fileName = "ToolDefinition", menuName = "VRSurgery/Data/Tool Definition")]

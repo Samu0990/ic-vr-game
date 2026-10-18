@@ -39,7 +39,10 @@ namespace VRSurgery.Interaction
         [Header("Bend at full squeeze (degrees): base, middle and tip joint")]
         [SerializeField] private Vector3 fingerCurl = new Vector3(68f, 92f, 58f);
         [SerializeField] private Vector3 indexCurl = new Vector3(58f, 82f, 50f);
-        [SerializeField] private Vector3 thumbCurl = new Vector3(22f, 32f, 38f);
+        // The original range stopped before this rig's thumb reached a slim handle: at full
+        // closure its tip was still 22.5 mm from a 7 mm scalpel. This opposition range leaves
+        // a small glove clearance without making the thumb fold through the instrument.
+        [SerializeField] private Vector3 thumbCurl = new Vector3(35f, 51f, 61f);
 
         [Tooltip("How curled a hand with nothing pressed stays: a relaxed hand is never flat.")]
         [SerializeField, Range(0f, 0.4f)] private float relaxed = 0.14f;
@@ -151,8 +154,10 @@ namespace VRSurgery.Interaction
         /// </summary>
         private static Vector3 ThumbClosing(Transform indexKnuckle, Transform littleKnuckle, Vector3 palm)
         {
-            // Across the palm, from the thumb's own side toward the little finger. That is the
-            // direction that carries the thumb tip onto whatever is being held.
+            // Across the palm, from the thumb's own side toward the little finger. The small
+            // inward component is opposite the outward palm normal: on this rig adding the palm
+            // normal sent the thumb behind the hand and made it move farther from the handle as
+            // it closed (33 mm open, 47 mm half closed).
             //
             // Closing it along the palm normal, the way the four fingers close, drives it the
             // wrong way: the thumb starts out wide of the grip axis, so moving it into the palm
@@ -160,7 +165,7 @@ namespace VRSurgery.Interaction
             // Running it down the hand (wrist toward the index knuckle) is no better, since that
             // is almost pure length and barely changes the offset at all.
             Vector3 across = (littleKnuckle.position - indexKnuckle.position).normalized;
-            return (across + palm * 0.4f).normalized;
+            return (across - palm * 0.4f).normalized;
         }
 
         /// <param name="closing">Direction the tip should travel as this finger closes.</param>
@@ -272,8 +277,21 @@ namespace VRSurgery.Interaction
                     bestClosure = closure;
                 }
 
-                // Past the closest approach the finger is curling back away from the handle.
-                if (distance > previousDistance && i > 0) { break; }
+                // The first outside-to-inside crossing is physical contact with the handle.
+                // Stop there so a later part of the curl cannot be selected after the fingertip
+                // has already passed through the steel. Do not stop on a small initial rise:
+                // several fingers in this rig move out before their knuckles turn them inward,
+                // and the old early-out consequently returned closure zero for different fingers.
+                if (i > 0 && previousDistance > targetRadius && distance <= targetRadius)
+                {
+                    float span = previousDistance - distance;
+                    float acrossStep = span > 1e-6f
+                        ? Mathf.Clamp01((previousDistance - targetRadius) / span)
+                        : 1f;
+                    bestClosure = (i - 1 + acrossStep) / steps;
+                    bestError = 0f;
+                    break;
+                }
 
                 previousDistance = distance;
             }

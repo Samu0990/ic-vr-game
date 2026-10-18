@@ -318,15 +318,31 @@ namespace VRSurgery.Tests
         [Test]
         public void CadaDedoFechaOQuantoPrecisa_NaoTodosOMesmoTanto()
         {
-            HandPoser poser = Poser(false, out GameObject hand);
+            GameObject hand = Skeleton(false);
 
-            // Um cabo fino passando rente à palma.
+            // The generic fixture originally authored every fingertip at exactly z=0.19, so
+            // middle and little were geometrically the same length along this test's handle
+            // axis. That contradicted the assertion below and forced any correct solver to
+            // return the same closure. Shorten the little finger like the real hand rig before
+            // calibration so this actually exercises different finger lengths.
+            Vector3 shorten = hand.transform.forward;
+            HandPoser.FindBone(hand.transform, "LittleIntermediate").position -= shorten * 0.005f;
+            HandPoser.FindBone(hand.transform, "LittleDistal").position -= shorten * 0.004f;
+            HandPoser.FindBone(hand.transform, "LittleTip").position -= shorten * 0.003f;
+
+            HandPoser poser = hand.AddComponent<HandPoser>();
+            poser.Bind(false);
+            poser.Calibrate();
+
+            // Um cabo alcançável passando rente à palma. O esqueleto mínimo desta fixture é
+            // mais comprido e abre mais do que a mão do jogo; 4 cm coloca a superfície do cabo
+            // no trecho de aproximação dos dois dedos que o teste quer comparar.
             Transform palm = HandPoser.FindBone(hand.transform, "Palm");
             Vector3 origin = palm.position;
             Vector3 axis = hand.transform.right;
 
-            float middle = poser.SolveClosure(HandPoser.Middle, origin, axis, 0.008f, out float _);
-            float little = poser.SolveClosure(HandPoser.Little, origin, axis, 0.008f, out float _);
+            float middle = poser.SolveClosure(HandPoser.Middle, origin, axis, 0.04f, out float _);
+            float little = poser.SolveClosure(HandPoser.Little, origin, axis, 0.04f, out float _);
 
             Assert.That(Mathf.Abs(middle - little), Is.GreaterThan(0.01f),
                 "Dedos de comprimentos diferentes não alcançam o mesmo cabo no mesmo fechamento.");
@@ -454,6 +470,27 @@ namespace VRSurgery.Tests
             // toda zero significaria segurar o instrumento com a palma aberta.
             Assert.That(default(HandHold).IsConfigured, Is.False);
             Assert.That(HandHold.Default.IsConfigured, Is.True);
+        }
+
+        [Test]
+        public void PegaDePrecisaoMantemAnelarEMinimoForaDoCabo()
+        {
+            HandHold scalpel = new HandHold
+            {
+                gripClosure = 0.52f,
+                indexClosure = 0.42f,
+                thumbClosure = 0.78f,
+                handleRadius = 0.007f,
+                pitchDegrees = 14f,
+                precisionPinch = true,
+                seatOffset = new Vector3(0.006f, 0.004f, 0.001f),
+            };
+
+            Assert.IsTrue(scalpel.precisionPinch);
+            Assert.That(scalpel.gripClosure, Is.LessThan(0.6f),
+                "Anelar e minimo devem ficar recolhidos, sem serem resolvidos contra o bisturi.");
+            Assert.That(scalpel.seatOffset.magnitude, Is.LessThan(0.01f),
+                "A correcao posiciona o cabo dentro da pinca; nao pode esconder um erro com um salto grande.");
         }
 
         [Test]

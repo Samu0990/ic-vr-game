@@ -110,6 +110,18 @@ namespace VRSurgery.Interaction
         public Vector3 FistPosition => transform.TransformPoint((_seatSolved ? _seatLocal : Vector3.zero) + fistOffset);
 
         /// <summary>
+        /// Where this particular instrument's handle is seated. A few millimetres matter on a
+        /// scalpel: the generic centre of the fist is suitable for a cylindrical grip, but a
+        /// precision pinch sits between thumb, index and middle instead.
+        /// </summary>
+        public Vector3 HoldPosition(in HandHold hold)
+        {
+            Vector3 offset = hold.seatOffset;
+            if (isLeftHand) { offset.x = -offset.x; }
+            return FistPosition + transform.TransformVector(offset);
+        }
+
+        /// <summary>
         /// How an instrument sits in this fist: the grip frame, tipped forward by
         /// <see cref="toolPitch"/>. A tool's own +Z — the blade, the nib, the needle — ends up
         /// pointing out past the thumb and down towards the fingers, which is how a hand holds
@@ -249,7 +261,11 @@ namespace VRSurgery.Interaction
             Vector3 sum = palmBone != null ? palmBone.position : (wrist != null ? wrist.position : transform.position);
             int count = 1;
 
-            foreach (int finger in new[] { HandPoser.Middle, HandPoser.Ring, HandPoser.Little })
+            // The seat has to lie between both sides of the grip. Averaging only the three
+            // curled fingers parked the handle against them and left the opposing thumb
+            // 18-40 mm away. Include thumb and index so a slim instrument rests in the actual
+            // hollow enclosed by the whole hand, not on one wall of it.
+            for (int finger = 0; finger < HandPoser.FingerCount; finger++)
             {
                 Vector3 tip = poser.TipPosition(finger);
                 if (tip != Vector3.zero) { sum += tip; count++; }
@@ -303,7 +319,12 @@ namespace VRSurgery.Interaction
                         _frame[finger] = _closures[finger];
                     }
 
-                    _frame[HandPoser.Index] = Mathf.Lerp(_closures[HandPoser.Index], 1f, trigger);
+                    // A scalpel is stabilised by the index finger; the controller trigger must
+                    // not suddenly clamp that finger through its thin handle. Hinged tools keep
+                    // the trigger response they already had.
+                    _frame[HandPoser.Index] = _hold.precisionPinch
+                        ? _closures[HandPoser.Index]
+                        : Mathf.Lerp(_closures[HandPoser.Index], 1f, trigger);
                     poser.TickFingers(Time.deltaTime, _frame);
                 }
                 else
@@ -373,12 +394,21 @@ namespace VRSurgery.Interaction
                 return;
             }
 
-            Vector3 origin = FistPosition;
+            Vector3 origin = HoldPosition(_hold);
             Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, 0f, 0f) * Vector3.forward;
             float radius = HandleRadiusFor(held);
 
             for (int finger = 0; finger < _closures.Length; finger++)
             {
+                // In a surgical precision grip only thumb, index and middle meet the scalpel.
+                // Solving ring and little against the same 7 mm axis twists the whole hand into
+                // the unnatural five-finger cage visible in the old capture.
+                if (_hold.precisionPinch && finger > HandPoser.Middle)
+                {
+                    _closures[finger] = DeclaredClosure(finger);
+                    continue;
+                }
+
                 float solved = poser.SolveClosure(finger, origin, axis, radius, out float solvedError);
                 float declared = DeclaredClosure(finger);
 
@@ -447,7 +477,7 @@ namespace VRSurgery.Interaction
         public void PlaceGrabPoint()
         {
             if (grabPoint == null) { return; }
-            grabPoint.SetPositionAndRotation(FistPosition, ToolHold);
+            grabPoint.SetPositionAndRotation(HoldPosition(CurrentHold), ToolHold);
         }
 
         private bool GripTracked()

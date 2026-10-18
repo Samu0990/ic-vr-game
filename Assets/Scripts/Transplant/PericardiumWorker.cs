@@ -44,15 +44,18 @@ namespace VRSurgery.Transplant
         [SerializeField] private float sag = 0.025f;
 
         [Tooltip("The part of the midline that has to be opened, as a fraction of the half length.")]
-        [SerializeField, Range(0.3f, 1f)] private float lineReach = 0.75f;
+        // Keep the required stroke inside the part of the opened thorax that a real controller
+        // can reach. The old 75% line put its end under the raised wound/retractor for shorter
+        // players even though the visual guide continued there.
+        [SerializeField, Range(0.3f, 1f)] private float lineReach = 0.62f;
 
         [Header("Tolerances")]
         [SerializeField, Min(4)] private int bins = 14;
-        [SerializeField, Min(0.002f)] private float lateralTolerance = 0.013f;
-        [SerializeField, Min(0.001f)] private float above = 0.008f;
-        [SerializeField, Min(0.001f)] private float below = 0.02f;
-        [SerializeField, Range(0.5f, 1f)] private float completeFraction = 0.85f;
-        [SerializeField, Min(1)] private int maxStrokeGap = 4;
+        [SerializeField, Min(0.002f)] private float lateralTolerance = 0.018f;
+        [SerializeField, Min(0.001f)] private float above = 0.012f;
+        [SerializeField, Min(0.001f)] private float below = 0.025f;
+        [SerializeField, Range(0.5f, 1f)] private float completeFraction = 0.78f;
+        [SerializeField, Min(1)] private int maxStrokeGap = 5;
 
         [Header("Opening")]
         [SerializeField, Range(30f, 170f)] private float foldDegrees = 115f;
