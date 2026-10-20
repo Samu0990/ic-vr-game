@@ -62,9 +62,9 @@ namespace VRSurgery.EditorTools
         /// The room monitor, in metres. Sized to be read from the far side of the patient — about
         /// 1.2m from the surgeon's eye — not to fill the view.
         /// </summary>
-        private const float MonitorWidth = 0.84f;
+        private const float MonitorWidth = 1.00f;
 
-        private const float MonitorHeight = 0.51f;
+        private const float MonitorHeight = 0.61f;
 
         /// <summary>0-based; index 0 is "Display 1", index 1 is "Display 2", and so on.</summary>
         private const int SpectatorDisplayIndex = 0;
@@ -834,8 +834,10 @@ namespace VRSurgery.EditorTools
         {
             Vector3 stance = Stance(thorax);
 
-            // Beyond the patient, a little past the far edge of the table, at standing eye height.
-            Vector3 position = new Vector3(thorax.x - 0.78f, 1.62f, thorax.z + 0.10f);
+            // Beyond the patient, a little past the far edge of the table, at standing eye
+            // height. Dead on the surgeon's gaze line: the old 10 cm of z put the panel just off
+            // centre, which on a screen this wide is a head turn rather than a glance.
+            Vector3 position = new Vector3(thorax.x - 0.78f, 1.62f, thorax.z);
 
             GameObject monitor = new GameObject("SurgeonMonitor");
             monitor.transform.position = position;
@@ -866,9 +868,9 @@ namespace VRSurgery.EditorTools
 
             // +Z is the surgeon's side of the panel, so the text sits in front of the quad rather
             // than behind it, or the panel occludes every word.
-            BuildScreenText(monitor.transform, "InstructionText", new Vector3(0f, 0.113f, 0.004f), 0.051f);
-            BuildScreenText(monitor.transform, "ClockText", new Vector3(0f, -0.008f, 0.004f), 0.078f);
-            BuildScreenText(monitor.transform, "ReasonText", new Vector3(0f, -0.158f, 0.004f), 0.033f);
+            BuildScreenText(monitor.transform, "InstructionText", new Vector3(0f, 0.135f, 0.004f), 0.061f);
+            BuildScreenText(monitor.transform, "ClockText", new Vector3(0f, -0.010f, 0.004f), 0.093f);
+            BuildScreenText(monitor.transform, "ReasonText", new Vector3(0f, -0.188f, 0.004f), 0.039f);
 
             TransplantHUD hud = monitor.AddComponent<TransplantHUD>();
             // The HUD paints the clock and the refusal itself, so leaving its defaults would put
