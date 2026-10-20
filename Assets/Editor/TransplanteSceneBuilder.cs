@@ -945,7 +945,7 @@ namespace VRSurgery.EditorTools
         /// of the time — <see cref="SurgeryEndScreen"/> switches the body off between rounds.
         /// </summary>
         private static void BuildEndScreen(Vector3 thorax, EventSessionController session,
-            NameEntryController nameEntry)
+            NameEntryController nameEntry, Heartbeat beat)
         {
             Vector3 stance = Stance(thorax);
             // Na mesma parede do monitor e um pouco a frente dele: quando o resultado sobe, o
@@ -962,8 +962,8 @@ namespace VRSurgery.EditorTools
             GameObject body = new GameObject("Corpo");
             body.transform.SetParent(screen.transform, false);
 
-            const float width = 0.92f;
-            const float height = 0.44f;
+            const float width = 0.98f;
+            const float height = 0.52f;
 
             GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
             quad.name = "Painel";
@@ -977,14 +977,16 @@ namespace VRSurgery.EditorTools
             panel.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
             panel.receiveShadows = false;
 
-            TextMesh headline = BuildScreenText(body.transform, "Headline", new Vector3(0f, 0.115f, 0.004f), 0.062f);
-            TextMesh detail = BuildScreenText(body.transform, "Detail", new Vector3(0f, 0.010f, 0.004f), 0.034f);
-            TextMesh prompt = BuildScreenText(body.transform, "Prompt", new Vector3(0f, -0.115f, 0.004f), 0.030f);
+            TextMesh headline = BuildScreenText(body.transform, "Headline", new Vector3(0f, 0.150f, 0.004f), 0.052f);
+            TextMesh subtitle = BuildScreenText(body.transform, "Subtitle", new Vector3(0f, 0.062f, 0.004f), 0.036f);
+            TextMesh detail = BuildScreenText(body.transform, "Detail", new Vector3(0f, -0.028f, 0.004f), 0.028f);
+            TextMesh prompt = BuildScreenText(body.transform, "Prompt", new Vector3(0f, -0.140f, 0.004f), 0.028f);
 
             SurgeryEndScreen end = screen.AddComponent<SurgeryEndScreen>();
-            end.Bind(session, nameEntry);
+            end.Bind(session, nameEntry, beat);
             SetPrivateField(end, "body", body);
             SetPrivateField(end, "headlineText", headline);
+            SetPrivateField(end, "subtitleText", subtitle);
             SetPrivateField(end, "detailText", detail);
             SetPrivateField(end, "promptText", prompt);
             SetPrivateField(end, "panel", panel);
@@ -1370,7 +1372,7 @@ namespace VRSurgery.EditorTools
                 monitor.transform.Find("ReasonText").GetComponent<TextMesh>(),
                 sewing, nameEntry);
 
-            BuildEndScreen(_thorax, session, nameEntry);
+            BuildEndScreen(_thorax, session, nameEntry, beat);
 
             // The scalpel opens the operation and the needle closes it.
             BuildSkinStages(systems, procedure, sternum, _thorax, out SkinIncisionWorker incision,

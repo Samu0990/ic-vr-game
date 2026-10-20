@@ -29,6 +29,8 @@ namespace VRSurgery.Tests
             body.transform.SetParent(_root.transform, false);
 
             headline = new GameObject("Headline").AddComponent<TextMesh>();
+            TextMesh subtitle = new GameObject("Subtitle").AddComponent<TextMesh>();
+            subtitle.transform.SetParent(body.transform, false);
             detail = new GameObject("Detail").AddComponent<TextMesh>();
             prompt = new GameObject("Prompt").AddComponent<TextMesh>();
             foreach (TextMesh t in new[] { headline, detail, prompt })
@@ -39,6 +41,7 @@ namespace VRSurgery.Tests
             SurgeryEndScreen screen = _root.AddComponent<SurgeryEndScreen>();
             Set(screen, "body", body);
             Set(screen, "headlineText", headline);
+            Set(screen, "subtitleText", subtitle);
             Set(screen, "detailText", detail);
             Set(screen, "promptText", prompt);
             return screen;
@@ -104,7 +107,8 @@ namespace VRSurgery.Tests
 
             Assert.IsTrue(screen.IsShown);
             Assert.IsTrue(body.activeSelf);
-            Assert.AreEqual("CIRURGIA CONCLUÍDA", headline.text);
+            Assert.AreEqual("O CORAÇÃO VOLTOU A BATER", headline.text);
+            Assert.AreEqual("O paciente está vivo.", screen.Subtitle);
             StringAssert.Contains("3:07", detail.text, "187 s tem de sair como 3:07.");
             StringAssert.Contains("428", detail.text);
             StringAssert.Contains("visor", prompt.text);
@@ -120,10 +124,32 @@ namespace VRSurgery.Tests
 
             screen.Refresh();
 
-            Assert.AreEqual("TEMPO ESGOTADO", headline.text);
+            Assert.AreEqual("O TEMPO ACABOU", headline.text);
+            StringAssert.Contains("equipe", screen.Subtitle);
             StringAssert.Contains("5:00", detail.text);
-            StringAssert.DoesNotContain("Pontos", detail.text,
+            StringAssert.DoesNotContain("pontos", detail.text,
                 "Quem perdeu não marca ponto; anunciar zero é esfregar na cara.");
+            Object.DestroyImmediate(session.gameObject);
+        }
+
+        [Test]
+        public void PerdendoNoRelogio_OPulsoViraLinhaReta()
+        {
+            SurgeryEndScreen screen = Screen(out _, out _, out _, out _);
+            EventSessionController session = Session(false, 300f, 0);
+            screen.Bind(session, null);
+            Set(screen, "flatlineSeconds", 0.5f);
+
+            // Varre alguns quadros: o pulso que existia tem de morrer, nao ficar batendo para
+            // sempre numa tela que anuncia que o tempo acabou.
+            float most = 0f;
+            for (int i = 0; i < 8; i++) { screen.Refresh(); most = Mathf.Max(most, screen.Beat); }
+
+            Set(screen, "_shownFor", 5f);
+            screen.Refresh();
+
+            Assert.That(screen.Beat, Is.EqualTo(0f).Within(1e-4f),
+                "Passado o tempo de esvaziamento o painel fica liso.");
             Object.DestroyImmediate(session.gameObject);
         }
 
