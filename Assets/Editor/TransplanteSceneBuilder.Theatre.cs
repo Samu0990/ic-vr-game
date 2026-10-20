@@ -2216,7 +2216,16 @@ namespace VRSurgery.EditorTools
             _slotNeedleHolder = new Pose(new Vector3(inner + 0.08f, top + 0.014f, z - 0.335f), toTable);
             _slotForceps = new Pose(new Vector3(inner + 0.07f, top + 0.01f, z - 0.38f), toTable);
             _slotBasin = new Vector3(inner + 0.09f, top, z - 0.475f);
-            _slotPaddles = new Pose(new Vector3(inner + 0.09f, top + 0.06f, z - 0.63f), towardFeet);
+            // Medido, nao escolhido no olho: no lugar antigo as pas ficavam 63 cm para a
+            // esquerda de quem opera, quase na linha dos ombros, e o ombro direito chegava a
+            // 0,741 m — faixa de esforco. Canhoto ou braco curto trabalharia em extensao maxima
+            // a sessao inteira. 12 cm na direcao do visitante poe os dois ombros em conforto
+            // (0,258 e 0,622) e mantem o desvio do olhar em 83 graus, dentro do limite de 90.
+            //
+            // Só em z de proposito: aproximar em x tambem alcanca, mas joga as pas para tras do
+            // ombro (medido, 105 graus), e ferramenta que o visitante nao acha e tao inutil
+            // quanto ferramenta que ele nao alcanca.
+            _slotPaddles = new Pose(new Vector3(inner + 0.09f, top + 0.06f, z - 0.51f), towardFeet);
 
             // Hidden from the projector like the rest of the operator's furniture: it frames the
             // patient on the mannequin, not the trays beside it.
