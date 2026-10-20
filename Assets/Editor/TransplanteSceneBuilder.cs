@@ -933,6 +933,104 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
+        /// The button that starts the operation over.
+        ///
+        /// On the near corner of the instrument tray, on the visitor's own side: within easy
+        /// reach, in plain view, and nowhere near the chest. Over the operative field it would
+        /// sit where a hand reaching for the heart passes through it every single time.
+        ///
+        /// Held rather than tapped — see <see cref="RestartButton"/> — so brushing it costs
+        /// nothing.
+        /// </summary>
+        private static void BuildRestartButton(Vector3 thorax, EventSessionController session)
+        {
+            // Resolvido contra o envelope de alcance, nao escolhido no olho. Perto do visitante
+            // (0,43 m e 0,52 m dos dois ombros) e a 20 graus do eixo do olhar: em cheio no campo
+            // de visao, e deslocado o bastante para nao tapar o painel de resultado atras dele.
+            // Flutuando 20 cm acima do esterno, no ar, nao pousado no campo cirurgico.
+            Vector3 position = thorax + new Vector3(0.16f, 0.20f, -0.12f);
+
+            GameObject root = new GameObject("BotaoRecomecar");
+            root.transform.position = position;
+
+            Vector3 stance = Stance(thorax);
+            Vector3 toSurgeon = new Vector3(stance.x - position.x, 0f, stance.z - position.z);
+            root.transform.rotation = toSurgeon.sqrMagnitude > 1e-6f
+                ? Quaternion.LookRotation(toSurgeon.normalized, Vector3.up)
+                : Quaternion.identity;
+
+            GameObject body = new GameObject("Corpo");
+            body.transform.SetParent(root.transform, false);
+
+            const float width = 0.30f;
+            const float height = 0.085f;
+
+            // Fundo opaco atras do holograma. Sozinho, um painel aditivo sobre o pano azul do
+            // campo simplesmente some: medido, so o texto sobrava boiando no lencol.
+            GameObject back = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            back.name = "Fundo";
+            back.transform.SetParent(body.transform, false);
+            back.transform.localScale = new Vector3(width * 1.04f, height * 1.08f, 1f);
+            back.transform.localPosition = new Vector3(0f, 0f, -0.003f);
+            back.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            Object.DestroyImmediate(back.GetComponent<Collider>());
+            MeshRenderer backRenderer = back.GetComponent<MeshRenderer>();
+            backRenderer.sharedMaterial = MakeMaterial(new Color(0.02f, 0.05f, 0.07f), 0f, 0.1f);
+            backRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            backRenderer.receiveShadows = false;
+
+            GameObject face = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            face.name = "Face";
+            face.transform.SetParent(body.transform, false);
+            face.transform.localScale = new Vector3(width, height, 1f);
+            face.transform.localPosition = new Vector3(0f, 0f, 0.001f);
+            face.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            Object.DestroyImmediate(face.GetComponent<Collider>());
+
+            MeshRenderer renderer = face.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = HologramMaterial();
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            // A carga cresce da borda esquerda, entao meio aperto parece meio aperto e nao um
+            // botao menor.
+            GameObject fillPivot = new GameObject("Carga");
+            fillPivot.transform.SetParent(body.transform, false);
+            fillPivot.transform.localPosition = new Vector3(-width * 0.5f, -height * 0.5f + 0.014f, 0.006f);
+
+            GameObject fill = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            fill.name = "Barra";
+            fill.transform.SetParent(fillPivot.transform, false);
+            fill.transform.localPosition = new Vector3(width * 0.5f, 0f, 0f);
+            fill.transform.localScale = new Vector3(width, 0.017f, 1f);
+            fill.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            Object.DestroyImmediate(fill.GetComponent<Collider>());
+
+            // Unlit: a barra tem de ser lida como carga enchendo, nao como uma tira de plastico
+            // que o foco cirurgico por acaso iluminou.
+            Material bar = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = HologramCyan };
+            MeshRenderer barRenderer = fill.GetComponent<MeshRenderer>();
+            barRenderer.sharedMaterial = bar;
+            barRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            barRenderer.receiveShadows = false;
+
+            TextMesh label = BuildScreenText(body.transform, "Rotulo", new Vector3(0f, 0.010f, 0.004f), 0.021f);
+            label.text = "SEGURE PARA RECOMEÇAR";
+
+            RestartButton button = root.AddComponent<RestartButton>();
+            button.Bind(session,
+                Object.FindObjectsByType<ControllerHand>(FindObjectsSortMode.None));
+            SetPrivateField(button, "fill", fillPivot.transform);
+            SetPrivateField(button, "label", label);
+            SetPrivateField(button, "face", renderer);
+            SetPrivateField(button, "body", body);
+
+            // Apagado ate a rodada acabar; o builder nao deixa nada aceso na sala.
+            body.SetActive(false);
+
+            Debug.Log($"[Transplante] botão de recomeçar em {position}");
+        }
+        /// <summary>
         /// The panel that closes a turn: what happened, how long it took, what to do next.
         ///
         /// Its own surface rather than another line on the monitor. At the stand the visitor
@@ -1373,6 +1471,7 @@ namespace VRSurgery.EditorTools
                 sewing, nameEntry);
 
             BuildEndScreen(_thorax, session, nameEntry, beat);
+            BuildRestartButton(_thorax, session);
 
             // The scalpel opens the operation and the needle closes it.
             BuildSkinStages(systems, procedure, sternum, _thorax, out SkinIncisionWorker incision,

@@ -149,6 +149,13 @@ namespace VRSurgery.Interaction
         public bool IsHolding => _holding;
 
         /// <summary>
+        /// How far the trigger is pulled, 0 to 1. Already read every frame to pose the index
+        /// finger; exposed so a control the hand cannot physically touch — a panel across the
+        /// room — can still be worked by pointing at it and squeezing.
+        /// </summary>
+        public float Trigger => inputs != null ? inputs.activateInput.ReadValue() : 0f;
+
+        /// <summary>
         /// The hold to use for something being held: the instrument's own if it authored one,
         /// otherwise the fallback. Pure and static so the choice can be tested without an
         /// interactor, a rig or a headset.
