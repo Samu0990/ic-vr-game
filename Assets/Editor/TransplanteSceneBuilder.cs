@@ -933,6 +933,77 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
+        /// The panel that closes a turn: what happened, how long it took, what to do next.
+        ///
+        /// Its own surface rather than another line on the monitor. At the stand the visitor
+        /// pulls the headset off within seconds of the round ending, and the queue behind them
+        /// reads the result off whatever is still lit. A line change on a busy monitor does not
+        /// survive that; a panel that takes over the view does.
+        ///
+        /// Placed between the monitor and the table, lower and nearer than the instruction
+        /// screen, so when it appears it is unmistakably the thing being shown. Hidden the rest
+        /// of the time — <see cref="SurgeryEndScreen"/> switches the body off between rounds.
+        /// </summary>
+        private static void BuildEndScreen(Vector3 thorax, EventSessionController session,
+            NameEntryController nameEntry)
+        {
+            Vector3 stance = Stance(thorax);
+            // Na mesma parede do monitor e um pouco a frente dele: quando o resultado sobe, o
+            // monitor sai, e o visitante ve uma tela virar a outra em vez de duas brigando.
+            Vector3 position = new Vector3(thorax.x - 0.70f, 1.56f, thorax.z);
+
+            GameObject screen = new GameObject("TelaDeFim");
+            screen.transform.position = position;
+            Vector3 toSurgeon = new Vector3(stance.x - position.x, 0f, stance.z - position.z);
+            screen.transform.rotation = toSurgeon.sqrMagnitude > 1e-6f
+                ? Quaternion.LookRotation(toSurgeon.normalized, Vector3.up)
+                : Quaternion.identity;
+
+            GameObject body = new GameObject("Corpo");
+            body.transform.SetParent(screen.transform, false);
+
+            const float width = 0.92f;
+            const float height = 0.44f;
+
+            GameObject quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+            quad.name = "Painel";
+            quad.transform.SetParent(body.transform, false);
+            quad.transform.localScale = new Vector3(width, height, 1f);
+            quad.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
+            Object.DestroyImmediate(quad.GetComponent<Collider>());
+
+            MeshRenderer panel = quad.GetComponent<MeshRenderer>();
+            panel.sharedMaterial = HologramMaterial();
+            panel.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            panel.receiveShadows = false;
+
+            TextMesh headline = BuildScreenText(body.transform, "Headline", new Vector3(0f, 0.115f, 0.004f), 0.062f);
+            TextMesh detail = BuildScreenText(body.transform, "Detail", new Vector3(0f, 0.010f, 0.004f), 0.034f);
+            TextMesh prompt = BuildScreenText(body.transform, "Prompt", new Vector3(0f, -0.115f, 0.004f), 0.030f);
+
+            SurgeryEndScreen end = screen.AddComponent<SurgeryEndScreen>();
+            end.Bind(session, nameEntry);
+            SetPrivateField(end, "body", body);
+            SetPrivateField(end, "headlineText", headline);
+            SetPrivateField(end, "detailText", detail);
+            SetPrivateField(end, "promptText", prompt);
+            SetPrivateField(end, "panel", panel);
+
+            GameObject monitor = GameObject.Find("SurgeonMonitor");
+            if (monitor != null)
+            {
+                List<GameObject> hide = new List<GameObject>();
+                foreach (Transform child in monitor.transform) { hide.Add(child.gameObject); }
+                SetPrivateField(end, "hideWhileShown", hide.ToArray());
+            }
+
+            // Off until a round actually ends; the builder leaves nothing lit in the room.
+            body.SetActive(false);
+
+            Debug.Log($"[Transplante] tela de fim em {position}, {width:F2}x{height:F2} m");
+        }
+
+        /// <summary>
         /// A line of text on the monitor. TextMesh rather than TextMeshPro on purpose: the HUD
         /// component already takes TextMesh, and a legacy mesh costs the Quest less than a
         /// world-space canvas for what is a handful of short lines.
@@ -1298,6 +1369,8 @@ namespace VRSurgery.EditorTools
                 monitor.transform.Find("ClockText").GetComponent<TextMesh>(),
                 monitor.transform.Find("ReasonText").GetComponent<TextMesh>(),
                 sewing, nameEntry);
+
+            BuildEndScreen(_thorax, session, nameEntry);
 
             // The scalpel opens the operation and the needle closes it.
             BuildSkinStages(systems, procedure, sternum, _thorax, out SkinIncisionWorker incision,
