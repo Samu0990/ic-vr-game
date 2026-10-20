@@ -2990,9 +2990,18 @@ namespace VRSurgery.EditorTools
                         indexClosure = 0.42f,
                         thumbClosure = 0.78f,
                         handleRadius = 0.007f,
-                        pitchDegrees = 14f,
+                        // Measured on this rig: at 14 degrees no seat offset let the index reach
+                        // the shank below 0.95 closure, so every pose was a fist. Tipping the
+                        // handle to 60 and seating it 12 mm to the thumb side puts thumb, index
+                        // and middle all at exactly 7.0 mm, the handle's own radius. The seat is
+                        // then slid 25 mm along the handle, which the solver cannot see since it
+                        // measures across the axis: that moves the hand off the blade and back
+                        // onto the handle without disturbing the contact.
+                        pitchDegrees = 45f,
                         precisionPinch = true,
-                        seatOffset = new Vector3(0.006f, 0.004f, 0.001f),
+                        seatOffset = new Vector3(-0.012f, -0.00725f, 0.00725f),
+                        pinchKnuckleShare = 0.15f,
+                        tuckClosure = 0.85f,
                     };
 
                 case "cautery-pen":

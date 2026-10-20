@@ -533,6 +533,61 @@ namespace VRSurgery.Tests
         }
 
         [Test]
+        public void OPesoDoNoEndireitaODedoSemSoltarAPonta()
+        {
+            HandPoser poser = Poser(false, out GameObject hand);
+            Transform knuckle = HandPoser.FindBone(hand.transform, "IndexProximal");
+
+            // Mesmo fechamento, dois repartos: com o no inteiro o dedo vira punho, com o no
+            // quase solto ele fica reto na mao e so dobra nas falanges. E o que separa uma
+            // pega em caneta de uma mao fechada.
+            poser.SetKnuckleShare(HandPoser.Index, 1f);
+            poser.SetFingerImmediate(HandPoser.Index, 0.9f);
+            Quaternion fist = knuckle.localRotation;
+
+            poser.SetKnuckleShare(HandPoser.Index, 0.15f);
+            poser.SetFingerImmediate(HandPoser.Index, 0.9f);
+            Quaternion pencil = knuckle.localRotation;
+
+            poser.SetFingerImmediate(HandPoser.Index, 0f);
+            Quaternion open = knuckle.localRotation;
+
+            Assert.That(Quaternion.Angle(open, pencil), Is.LessThan(Quaternion.Angle(open, fist)),
+                "Com peso baixo o no tem de ficar mais perto de aberto do que com peso cheio.");
+            Assert.That(Quaternion.Angle(open, pencil), Is.GreaterThan(0.5f),
+                "Peso 0,15 dobra pouco, mas nao e zero.");
+        }
+
+        [Test]
+        public void RestaurarDevolveOPesoDoNo()
+        {
+            HandPoser poser = Poser(false, out GameObject _);
+
+            poser.SetKnuckleShare(HandPoser.Index, 0.15f);
+            Assert.That(poser.KnuckleShare(HandPoser.Index), Is.EqualTo(0.15f).Within(1e-4f));
+
+            // Sem isto a pega em caneta de um instrumento vazaria para o proximo, e para a mao
+            // vazia, que fecha o dedo inteiro.
+            poser.Restore();
+            Assert.That(poser.KnuckleShare(HandPoser.Index), Is.EqualTo(1f).Within(1e-4f));
+        }
+
+        [Test]
+        public void PegaSemPesoNemRecolhimentoCaiNosPadroes()
+        {
+            // A armadilha de sempre: struct ausente do .asset desserializa como zeros. Zero aqui
+            // nao pode virar "no totalmente solto" nem "dedos esticados".
+            HandHold semAutoria = new HandHold { gripClosure = 0.5f };
+            Assert.That(semAutoria.KnuckleShare, Is.EqualTo(1f), "Zero significa nao definido.");
+            Assert.That(semAutoria.Tuck, Is.EqualTo(0.5f), "Sem recolhimento proprio, usa o gripClosure.");
+
+            HandHold caneta = new HandHold { gripClosure = 0.5f, pinchKnuckleShare = 0.15f, tuckClosure = 0.85f };
+            Assert.That(caneta.KnuckleShare, Is.EqualTo(0.15f).Within(1e-4f));
+            Assert.That(caneta.Tuck, Is.EqualTo(0.85f).Within(1e-4f));
+            Assert.That(caneta.IsConfigured, Is.True);
+        }
+
+        [Test]
         public void OnlyWhatTheHandsWouldTakeIsOutlined_AndTheRestGoesDark()
         {
             GrabOutlines outlines = Spawn("Contornos").AddComponent<GrabOutlines>();

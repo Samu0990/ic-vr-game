@@ -46,6 +46,18 @@ namespace VRSurgery.Data
                  "the palm, Y is up and Z follows the hand grip frame; X mirrors on the left hand.")]
         public Vector3 seatOffset;
 
+        [Tooltip("In a precision pinch, how much of the thumb and index closure goes to the " +
+                 "knuckle at the hand. 1 bends the whole finger together, which is a fist. A " +
+                 "pencil grip needs a low value: the knuckle stays nearly straight and only the " +
+                 "phalanges curl, which is the only way the fingertip reaches the shank without " +
+                 "clenching. 0 means unset and behaves as 1.")]
+        [Range(0f, 1f)] public float pinchKnuckleShare;
+
+        [Tooltip("Where the ring and little fingers rest in a precision pinch. They hold no " +
+                 "instrument, so they tuck into the palm instead of hanging half open beside " +
+                 "it. 0 means unset and falls back to gripClosure.")]
+        [Range(0f, 1f)] public float tuckClosure;
+
         /// <summary>
         /// A pencil grip on a slim instrument. Used when a tool declares no hold of its own,
         /// which is still far closer than a full fist.
@@ -59,7 +71,15 @@ namespace VRSurgery.Data
             handleRadius = 0f,
             precisionPinch = false,
             seatOffset = Vector3.zero,
+            pinchKnuckleShare = 0f,
+            tuckClosure = 0f,
         };
+
+        /// <summary>How much of a pinching finger's closure reaches its knuckle. See the field.</summary>
+        public float KnuckleShare => pinchKnuckleShare > 0f ? pinchKnuckleShare : 1f;
+
+        /// <summary>Where the two free fingers rest. See the field.</summary>
+        public float Tuck => tuckClosure > 0f ? tuckClosure : gripClosure;
 
         /// <summary>
         /// Whether this hold was actually authored. Unity deserialises a struct missing from a
@@ -68,7 +88,8 @@ namespace VRSurgery.Data
         /// </summary>
         public bool IsConfigured =>
             gripClosure > 0f || indexClosure > 0f || thumbClosure > 0f || pitchDegrees != 0f ||
-            precisionPinch || seatOffset != Vector3.zero;
+            precisionPinch || seatOffset != Vector3.zero || pinchKnuckleShare > 0f ||
+            tuckClosure > 0f;
     }
 
     [CreateAssetMenu(fileName = "ToolDefinition", menuName = "VRSurgery/Data/Tool Definition")]

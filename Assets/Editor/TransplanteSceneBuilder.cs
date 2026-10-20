@@ -62,9 +62,9 @@ namespace VRSurgery.EditorTools
         /// The room monitor, in metres. Sized to be read from the far side of the patient — about
         /// 1.2m from the surgeon's eye — not to fill the view.
         /// </summary>
-        private const float MonitorWidth = 0.56f;
+        private const float MonitorWidth = 0.84f;
 
-        private const float MonitorHeight = 0.34f;
+        private const float MonitorHeight = 0.51f;
 
         /// <summary>0-based; index 0 is "Display 1", index 1 is "Display 2", and so on.</summary>
         private const int SpectatorDisplayIndex = 0;
@@ -835,7 +835,7 @@ namespace VRSurgery.EditorTools
             Vector3 stance = Stance(thorax);
 
             // Beyond the patient, a little past the far edge of the table, at standing eye height.
-            Vector3 position = new Vector3(thorax.x - 0.78f, 1.45f, thorax.z + 0.10f);
+            Vector3 position = new Vector3(thorax.x - 0.78f, 1.62f, thorax.z + 0.10f);
 
             GameObject monitor = new GameObject("SurgeonMonitor");
             monitor.transform.position = position;
@@ -854,19 +854,80 @@ namespace VRSurgery.EditorTools
             // A Unity quad faces -Z, so it is turned to look back along the parent's +Z.
             screen.transform.localRotation = Quaternion.Euler(0f, 180f, 0f);
             Object.DestroyImmediate(screen.GetComponent<Collider>());
-            screen.GetComponent<MeshRenderer>().sharedMaterial =
-                MakeMaterial(new Color(0.06f, 0.08f, 0.11f), 0f, 0.1f);
+            screen.GetComponent<MeshRenderer>().sharedMaterial = HologramMaterial();
+
+            // A projected panel casts no shadow and receives no light; leaving these on makes it
+            // read as a painted board hanging in the room instead of an image in the air.
+            MeshRenderer screenRenderer = screen.GetComponent<MeshRenderer>();
+            screenRenderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            screenRenderer.receiveShadows = false;
+
+            BuildEmitter(monitor.transform);
 
             // +Z is the surgeon's side of the panel, so the text sits in front of the quad rather
             // than behind it, or the panel occludes every word.
-            BuildScreenText(monitor.transform, "InstructionText", new Vector3(0f, 0.075f, 0.004f), 0.034f);
-            BuildScreenText(monitor.transform, "ClockText", new Vector3(0f, -0.005f, 0.004f), 0.052f);
-            BuildScreenText(monitor.transform, "ReasonText", new Vector3(0f, -0.105f, 0.004f), 0.022f);
+            BuildScreenText(monitor.transform, "InstructionText", new Vector3(0f, 0.113f, 0.004f), 0.051f);
+            BuildScreenText(monitor.transform, "ClockText", new Vector3(0f, -0.008f, 0.004f), 0.078f);
+            BuildScreenText(monitor.transform, "ReasonText", new Vector3(0f, -0.158f, 0.004f), 0.033f);
 
-            monitor.AddComponent<TransplantHUD>();
+            TransplantHUD hud = monitor.AddComponent<TransplantHUD>();
+            // The HUD paints the clock and the refusal itself, so leaving its defaults would put
+            // two off-palette colours on an otherwise cyan panel.
+            SetPrivateField(hud, "clockCalm", HologramCyan);
+            SetPrivateField(hud, "clockUrgent", new Color(1f, 0.52f, 0.42f));
+            SetPrivateField(hud, "reasonColour", new Color(1f, 0.74f, 0.36f));
 
             Debug.Log($"[Transplante] monitor em {position}, virado para o cirurgião em {stance}");
             return monitor;
+        }
+
+        /// <summary>The one cyan the hologram, its frame and its text all share.</summary>
+        private static readonly Color HologramCyan = new Color(0.46f, 0.89f, 1f);
+
+        /// <summary>
+        /// The holographic panel material. Unlit and additive, so the screen is its own light
+        /// source: under the theatre lamp a lit material washes out and stops reading as a
+        /// projection. Falls back to the old dark panel if the shader ever goes missing, because
+        /// a monitor that silently renders magenta is worse than a plain one.
+        /// </summary>
+        private static Material HologramMaterial()
+        {
+            Shader shader = Shader.Find("VRSurgery/Hologram");
+            if (shader == null)
+            {
+                Debug.LogError("[Transplante] shader VRSurgery/Hologram ausente; o telão fica opaco.");
+                return MakeMaterial(new Color(0.06f, 0.08f, 0.11f), 0f, 0.1f);
+            }
+
+            Material m = new Material(shader);
+            m.SetColor("_BaseColor", HologramCyan);
+            // Deliberately stronger than the shader's own defaults: under the theatre lamp a
+            // faint panel disappears, and this screen has to be readable at a glance from the
+            // far side of the table.
+            m.SetFloat("_Opacity", 0.30f);
+            m.SetFloat("_ScanDepth", 0.48f);
+            m.SetFloat("_EdgeGlow", 3.4f);
+            m.SetFloat("_SweepWidth", 0.18f);
+            return m;
+        }
+
+        /// <summary>
+        /// The thin lit bar under the panel. A hologram with no emitter reads as a floating
+        /// decal; a visible source is what tells the eye the image is being projected.
+        /// </summary>
+        private static void BuildEmitter(Transform monitor)
+        {
+            GameObject bar = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            bar.name = "Emissor";
+            bar.transform.SetParent(monitor, false);
+            bar.transform.localPosition = new Vector3(0f, -(MonitorHeight * 0.5f) - 0.018f, 0f);
+            bar.transform.localScale = new Vector3(MonitorWidth * 0.55f, 0.012f, 0.03f);
+            Object.DestroyImmediate(bar.GetComponent<Collider>());
+
+            Material m = MakeMaterial(new Color(0.05f, 0.07f, 0.09f), 0.6f, 0.7f);
+            m.EnableKeyword("_EMISSION");
+            m.SetColor("_EmissionColor", HologramCyan * 0.45f);
+            bar.GetComponent<MeshRenderer>().sharedMaterial = m;
         }
 
         /// <summary>
@@ -885,7 +946,7 @@ namespace VRSurgery.EditorTools
             TextMesh text = go.AddComponent<TextMesh>();
             text.anchor = TextAnchor.MiddleCenter;
             text.alignment = TextAlignment.Center;
-            text.color = new Color(0.82f, 0.88f, 0.95f);
+            text.color = HologramCyan;
 
             // A TextMesh with no font renders nothing and logs no error, which is the single
             // easiest way to ship a monitor that is silently blank.

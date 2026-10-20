@@ -363,6 +363,14 @@ namespace VRSurgery.Interaction
             }
             else
             {
+                // An empty hand closes as a whole finger again. Leaving the pencil-grip share on
+                // would keep the knuckles straight after the instrument is gone.
+                if (_heldLast != null && poser != null)
+                {
+                    poser.SetKnuckleShare(HandPoser.Thumb, 1f);
+                    poser.SetKnuckleShare(HandPoser.Index, 1f);
+                }
+
                 _heldLast = null;
                 _closuresSolved = false;
             }
@@ -398,14 +406,23 @@ namespace VRSurgery.Interaction
             Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, 0f, 0f) * Vector3.forward;
             float radius = HandleRadiusFor(held);
 
+            // A pencil grip bends the thumb and index at the phalanges while their knuckles stay
+            // nearly straight. Without this the solver can only reach a 7 mm shank by curling the
+            // whole finger, and it measured index 1.00 and thumb 0.96 on the scalpel: a clenched
+            // fist with a blade poking out of it, not a hand holding a knife.
+            float share = _hold.precisionPinch ? _hold.KnuckleShare : 1f;
+            poser.SetKnuckleShare(HandPoser.Thumb, share);
+            poser.SetKnuckleShare(HandPoser.Index, share);
+
             for (int finger = 0; finger < _closures.Length; finger++)
             {
                 // In a surgical precision grip only thumb, index and middle meet the scalpel.
                 // Solving ring and little against the same 7 mm axis twists the whole hand into
-                // the unnatural five-finger cage visible in the old capture.
+                // the unnatural five-finger cage visible in the old capture. They tuck instead of
+                // hanging half open out to the side.
                 if (_hold.precisionPinch && finger > HandPoser.Middle)
                 {
-                    _closures[finger] = DeclaredClosure(finger);
+                    _closures[finger] = _hold.Tuck;
                     continue;
                 }
 

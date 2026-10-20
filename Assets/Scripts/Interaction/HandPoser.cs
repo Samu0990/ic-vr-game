@@ -58,12 +58,23 @@ namespace VRSurgery.Interaction
             public float Degrees;
             public int Group;
             public int Finger;
+
+            /// <summary>0 no no da mao, 1 na falange do meio, 2 na ponta.</summary>
+            public int Link;
         }
 
         private readonly List<Joint> _joints = new List<Joint>();
         private readonly float[] _curl = new float[FingerCount];
         private readonly float[] _targets = new float[FingerCount];
         private readonly Transform[] _tips = new Transform[FingerCount];
+
+        /// <summary>
+        /// Quanto do fechamento vai para o no da mao, por dedo. 1 dobra o dedo inteiro junto,
+        /// que e como se fecha um punho. Uma pega em caneta precisa do contrario: o no fica
+        /// quase reto e so as falanges dobram, senao a ponta do indicador so alcanca a haste
+        /// cerrando a mao toda.
+        /// </summary>
+        private readonly float[] _knuckleShare = new float[FingerCount];
         private bool _calibrated;
 
         public bool IsLeftHand => isLeftHand;
@@ -129,6 +140,7 @@ namespace VRSurgery.Interaction
             for (int i = 0; i < FingerCount; i++) { _tips[i] = FindBone(transform, FingerNames[i] + "Tip"); }
 
             for (int i = 0; i < _curl.Length; i++) { _curl[i] = relaxed; }
+            for (int i = 0; i < _knuckleShare.Length; i++) { _knuckleShare[i] = 1f; }
             _calibrated = _joints.Count > 0;
             Apply();
         }
@@ -196,6 +208,7 @@ namespace VRSurgery.Interaction
                     Degrees = i == 0 ? degrees.x : i == 1 ? degrees.y : degrees.z,
                     Group = group,
                     Finger = fingerIndex,
+                    Link = i,
                 });
             }
         }
@@ -336,7 +349,8 @@ namespace VRSurgery.Interaction
             {
                 Joint joint = _joints[i];
                 if (joint.Bone == null || joint.Finger != finger) { continue; }
-                joint.Bone.localRotation = joint.Rest * Quaternion.AngleAxis(joint.Degrees * _curl[finger], joint.Axis);
+                joint.Bone.localRotation = joint.Rest * Quaternion.AngleAxis(
+                    joint.Degrees * ShareAt(joint) * _curl[finger], joint.Axis);
             }
         }
 
@@ -369,7 +383,8 @@ namespace VRSurgery.Interaction
             {
                 Joint joint = _joints[i];
                 if (joint.Bone == null) { continue; }
-                joint.Bone.localRotation = joint.Rest * Quaternion.AngleAxis(joint.Degrees * _curl[joint.Finger], joint.Axis);
+                joint.Bone.localRotation = joint.Rest * Quaternion.AngleAxis(
+                    joint.Degrees * ShareAt(joint) * _curl[joint.Finger], joint.Axis);
             }
         }
 
@@ -388,7 +403,32 @@ namespace VRSurgery.Interaction
             }
 
             for (int i = 0; i < _curl.Length; i++) { _curl[i] = relaxed; }
+            for (int i = 0; i < _knuckleShare.Length; i++) { _knuckleShare[i] = 1f; }
         }
+
+        /// <summary>
+        /// How much of a finger's closure this joint takes. Only the knuckle is dialled down;
+        /// the two phalanges always bend fully, so a reduced share straightens the finger at the
+        /// hand while leaving it able to curl its tip onto a handle.
+        /// </summary>
+        private float ShareAt(Joint joint) =>
+            joint.Link == 0 ? _knuckleShare[joint.Finger] : 1f;
+
+        /// <summary>
+        /// Sets how much of one finger's closure goes to its knuckle, 0 straight to 1 whole
+        /// finger. Resets to 1 in <see cref="Restore"/>, so a hold never leaks into the next one.
+        /// </summary>
+        public void SetKnuckleShare(int finger, float share)
+        {
+            if (!_calibrated) { return; }
+
+            finger = Mathf.Clamp(finger, 0, FingerCount - 1);
+            _knuckleShare[finger] = Mathf.Clamp01(share);
+            Apply(finger);
+        }
+
+        /// <summary>How much of a finger's closure currently goes to its knuckle.</summary>
+        public float KnuckleShare(int finger) => _knuckleShare[Mathf.Clamp(finger, 0, FingerCount - 1)];
 
         /// <summary>A bone by its OpenXR joint name, whatever side prefix the model gives it.</summary>
         public static Transform FindBone(Transform root, string joint)

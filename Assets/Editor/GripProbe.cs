@@ -116,11 +116,15 @@ namespace VRSurgery.EditorTools
             Vector3 origin = hand.HoldPosition(hold);
             Vector3 axis = hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f) * Vector3.forward;
 
+            float share = hold.precisionPinch ? hold.KnuckleShare : 1f;
+            poser.SetKnuckleShare(HandPoser.Thumb, share);
+            poser.SetKnuckleShare(HandPoser.Index, share);
+
             for (int finger = 0; finger < HandPoser.FingerCount; finger++)
             {
                 if (hold.precisionPinch && finger > HandPoser.Middle)
                 {
-                    poser.SetFingerImmediate(finger, hold.gripClosure);
+                    poser.SetFingerImmediate(finger, hold.Tuck);
                     continue;
                 }
 
@@ -172,6 +176,18 @@ namespace VRSurgery.EditorTools
                          $"thumb={hold.thumbClosure:0.00} pitch={hold.pitchDegrees:0}");
             s.AppendLine($"    raio do cabo: {handleRadius * 1000f:0.0} mm");
 
+            if (box != null)
+            {
+                Vector3 c = tool.TransformPoint(box.center);
+                float half = 0f;
+                Vector3 e = box.size * 0.5f;
+                half += Mathf.Abs(Vector3.Dot(tool.TransformVector(new Vector3(e.x, 0f, 0f)), axis.normalized));
+                half += Mathf.Abs(Vector3.Dot(tool.TransformVector(new Vector3(0f, e.y, 0f)), axis.normalized));
+                half += Mathf.Abs(Vector3.Dot(tool.TransformVector(new Vector3(0f, 0f, e.z)), axis.normalized));
+                float mid = Vector3.Dot(c - axisOrigin, axis.normalized) * 1000f;
+                s.AppendLine($"    corpo da ferramenta ao longo do eixo: {mid - half * 1000f:0.0} .. {mid + half * 1000f:0.0} mm");
+            }
+
             Transform palm = HandPoser.FindBone(hand.Model, "Palm");
             if (palm != null)
             {
@@ -185,8 +201,13 @@ namespace VRSurgery.EditorTools
 
                 float d = DistanceToAxis(tip.position, axisOrigin, axis) * 1000f;
                 float gap = d - handleRadius * 1000f;
-                string verdict = gap < -3f ? "DENTRO do aço" : gap > 12f ? "LONGE, fecha no vazio" : "ok";
-                s.AppendLine($"    {finger,-7} ponta -> eixo: {d,6:0.0} mm   folga {gap,6:0.0} mm   {verdict}");
+                float station = Vector3.Dot(tip.position - axisOrigin, axis.normalized) * 1000f;
+                bool free = hold.precisionPinch && (finger == "Ring" || finger == "Little");
+                string verdict = free ? "livre (pinça)"
+                    : gap < -3f ? "DENTRO do aço"
+                    : gap > 12f ? "LONGE, fecha no vazio" : "ok";
+                s.AppendLine($"    {finger,-7} ponta -> eixo: {d,6:0.0} mm   folga {gap,6:0.0} mm   " +
+                             $"ao longo {station,7:0.0} mm   {verdict}");
             }
 
             return s.ToString();
