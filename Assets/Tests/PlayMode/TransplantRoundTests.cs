@@ -470,4 +470,52 @@ namespace VRSurgery.Tests
             Assert.IsEmpty(_hud.Reason, "A stale reason next to a new mistake is worse than none.");
         }
     }
+
+    public class BypassWorkerGestureTests
+    {
+        [Test]
+        public void MediumEntryGesture_CannulatesClampsAndArrestsTheHeart()
+        {
+            GameObject host = new GameObject("MediumBypassWorker");
+            GameObject point = new GameObject("MediumBypassSite");
+
+            try
+            {
+                TransplantProcedure procedure = host.AddComponent<TransplantProcedure>();
+                BypassGesture entry = BypassPlan.For(SurgicalDifficulty.Medio).Gestures[0];
+                procedure.SetDifficulty(SurgicalDifficulty.Medio);
+                procedure.Begin();
+                Assert.IsTrue(procedure.CompleteStage(TransplantStage.OpenChest));
+                Assert.AreEqual(TransplantStage.GoOnBypass, procedure.Stage);
+
+                host.transform.position = point.transform.position;
+                BypassWorker worker = host.AddComponent<BypassWorker>();
+                worker.Bind(host.transform, new System.Collections.Generic.List<BypassSite>
+                {
+                    new BypassSite
+                    {
+                        Step = entry.Anchor,
+                        Point = point.transform,
+                        Radius = 0.03f,
+                        Seconds = 1f,
+                        Chain = entry.Steps,
+                    },
+                }, procedure);
+
+                worker.Tick(1.01f);
+
+                Assert.IsTrue(procedure.Bypass.IsArrested,
+                    "O gesto agrupado do nível médio deve concluir canulação, clampe e cardioplegia.");
+                Assert.AreEqual(3, procedure.Bypass.CompletedSteps);
+                Assert.IsEmpty(worker.LastRefusal);
+                Assert.AreEqual(TransplantStage.RemoveNativeHeart, procedure.Stage,
+                    "Depois de entrar em bomba, a cirurgia deve liberar a retirada do coração.");
+            }
+            finally
+            {
+                Object.DestroyImmediate(host);
+                Object.DestroyImmediate(point);
+            }
+        }
+    }
 }

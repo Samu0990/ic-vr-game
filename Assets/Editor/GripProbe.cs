@@ -4,6 +4,7 @@ using System.Text;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
 using VRSurgery.Data;
 using VRSurgery.Interaction;
 
@@ -85,10 +86,15 @@ namespace VRSurgery.EditorTools
                 // In Edit Mode no XRI selection exists, so ControllerHand would otherwise keep
                 // its fallback 40-degree pitch. Reproduce the held tool's own rotation directly.
                 hand.GrabPoint.SetPositionAndRotation(hand.HoldPosition(hold),
-                    hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f));
+                    hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, hold.yawDegrees, 0f));
                 Attach(instrument, hand.GrabPoint);
 
                 report.AppendLine(Measure(instrumentName, hand, instrument, hold));
+                if (instrumentName == "Bisturi")
+                {
+                    report.AppendLine(PrecisionGeometry(hand));
+                    report.AppendLine(SearchPrecisionSeat(hand, hold, HandleRadius(instrument, hold)));
+                }
                 report.AppendLine(Sweep(hand, instrument));
                 // Sweep deliberately finishes at a fully closed fist. Restore the actual
                 // per-instrument pose before photographing it, otherwise every capture lies.
@@ -114,7 +120,7 @@ namespace VRSurgery.EditorTools
             // Mesmo caminho do jogo: resolve quanto cada dedo tem de fechar para alcançar o cabo,
             // e quem não alcança fica na pose que a ferramenta pediu.
             Vector3 origin = hand.HoldPosition(hold);
-            Vector3 axis = hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, 0f, 0f) * Vector3.forward;
+            Vector3 axis = hand.transform.rotation * Quaternion.Euler(hold.pitchDegrees, hold.yawDegrees, 0f) * Vector3.forward;
 
             float share = hold.precisionPinch ? hold.KnuckleShare : 1f;
             poser.SetKnuckleShare(HandPoser.Thumb, share);
@@ -122,6 +128,15 @@ namespace VRSurgery.EditorTools
 
             for (int finger = 0; finger < HandPoser.FingerCount; finger++)
             {
+                // A scalpel's index finger rests along the spine; its fingertip is not supposed
+                // to meet the axis. Mirror ControllerHand instead of turning the diagnostic pose
+                // back into the old claw grip.
+                if (hold.precisionPinch && finger == HandPoser.Index)
+                {
+                    poser.SetFingerImmediate(finger, hold.indexClosure);
+                    continue;
+                }
+
                 if (hold.precisionPinch && finger > HandPoser.Middle)
                 {
                     poser.SetFingerImmediate(finger, hold.Tuck);
@@ -173,7 +188,7 @@ namespace VRSurgery.EditorTools
             StringBuilder s = new StringBuilder();
             s.AppendLine($"--- {name}");
             s.AppendLine($"    pega declarada: grip={hold.gripClosure:0.00} index={hold.indexClosure:0.00} " +
-                         $"thumb={hold.thumbClosure:0.00} pitch={hold.pitchDegrees:0}");
+                         $"thumb={hold.thumbClosure:0.00} pitch={hold.pitchDegrees:0} yaw={hold.yawDegrees:0}");
             s.AppendLine($"    raio do cabo: {handleRadius * 1000f:0.0} mm");
 
             if (box != null)
@@ -254,6 +269,96 @@ namespace VRSurgery.EditorTools
             return (v - Vector3.Project(v, direction.normalized)).magnitude;
         }
 
+        /// <summary>
+        /// Searches the hand's local cross-section for the line that a pencil-gripped scalpel
+        /// should follow. This is diagnostic only: it measures the authored index pose and the
+        /// best reachable thumb/middle contacts instead of guessing an offset by eye.
+        /// </summary>
+        private static string SearchPrecisionSeat(ControllerHand hand, in HandHold hold, float radius)
+        {
+            HandPoser poser = hand.Poser;
+            if (poser == null || !poser.IsCalibrated) { return "    busca de assento: sem poser"; }
+
+            float best = float.MaxValue;
+            Vector3 bestOffset = Vector3.zero;
+            float bestPitch = 0f, bestThumb = 0f, bestMiddle = 0f;
+            float bestThumbDistance = 0f, bestIndexDistance = 0f, bestMiddleDistance = 0f;
+            float bestThumbStation = 0f, bestIndexStation = 0f, bestMiddleStation = 0f;
+
+            poser.SetKnuckleShare(HandPoser.Thumb, hold.KnuckleShare);
+            poser.SetKnuckleShare(HandPoser.Index, hold.KnuckleShare);
+            poser.SetFingerImmediate(HandPoser.Index, hold.indexClosure);
+
+            for (float pitch = 45f; pitch <= 65f; pitch += 2f)
+            {
+                Vector3 axis = hand.transform.rotation * Quaternion.Euler(pitch, -87f, 0f) * Vector3.forward;
+                for (float y = -0.04f; y <= 0.0201f; y += 0.002f)
+                {
+                    for (float z = -0.03f; z <= 0.0401f; z += 0.002f)
+                    {
+                        Vector3 offset = new Vector3(hold.seatOffset.x, y, z);
+                        Vector3 origin = hand.FistPosition + hand.transform.TransformVector(offset);
+
+                        float thumb = poser.SolveClosure(HandPoser.Thumb, origin, axis, radius, out _);
+                        float middle = poser.SolveClosure(HandPoser.Middle, origin, axis, radius, out _);
+                        poser.SetFingerImmediate(HandPoser.Thumb, thumb);
+                        poser.SetFingerImmediate(HandPoser.Middle, middle);
+
+                        float dt = DistanceToAxis(poser.TipPosition(HandPoser.Thumb), origin, axis);
+                        float di = DistanceToAxis(poser.TipPosition(HandPoser.Index), origin, axis);
+                        float dm = DistanceToAxis(poser.TipPosition(HandPoser.Middle), origin, axis);
+                        float st = Vector3.Dot(poser.TipPosition(HandPoser.Thumb) - origin, axis);
+                        float si = Vector3.Dot(poser.TipPosition(HandPoser.Index) - origin, axis);
+                        float sm = Vector3.Dot(poser.TipPosition(HandPoser.Middle) - origin, axis);
+
+                        // Thumb and middle must touch the handle. The straight index rides just
+                        // above its spine, with glove thickness rather than an exact steel contact.
+                        float indexTarget = radius + 0.004f;
+                        float score = Mathf.Abs(dt - radius) + Mathf.Abs(dm - radius) +
+                                      Mathf.Abs(di - indexTarget) * 1.25f +
+                                      Mathf.Abs(st - sm) * 0.35f +
+                                      Mathf.Abs((si - st) - 0.03f) * 0.2f;
+                        if (score >= best) { continue; }
+
+                        best = score;
+                        bestOffset = offset;
+                        bestPitch = pitch;
+                        bestThumb = thumb;
+                        bestMiddle = middle;
+                        bestThumbDistance = dt;
+                        bestIndexDistance = di;
+                        bestMiddleDistance = dm;
+                        bestThumbStation = st;
+                        bestIndexStation = si;
+                        bestMiddleStation = sm;
+                    }
+                }
+            }
+
+            return $"    busca de assento: pitch={bestPitch:0} offset={bestOffset * 1000f} mm " +
+                   $"closures T={bestThumb:0.00} M={bestMiddle:0.00} " +
+                   $"dist T/I/M={bestThumbDistance * 1000f:0.0}/{bestIndexDistance * 1000f:0.0}/{bestMiddleDistance * 1000f:0.0} mm " +
+                   $"estacoes={bestThumbStation * 1000f:0.0}/{bestIndexStation * 1000f:0.0}/{bestMiddleStation * 1000f:0.0} mm";
+        }
+
+        private static string PrecisionGeometry(ControllerHand hand)
+        {
+            Transform proximal = HandPoser.FindBone(hand.Model, "IndexProximal");
+            Transform tip = HandPoser.FindBone(hand.Model, "IndexTip");
+            Vector3 localDirection = proximal != null && tip != null
+                ? hand.transform.InverseTransformDirection((tip.position - proximal.position).normalized)
+                : Vector3.zero;
+
+            string Result(string finger)
+            {
+                Transform t = HandPoser.FindBone(hand.Model, finger + "Tip");
+                return t != null ? hand.transform.InverseTransformPoint(t.position).ToString("F4") : "ausente";
+            }
+
+            return $"    geometria local: eixo do indicador={localDirection:F4}; " +
+                   $"pontas T={Result("Thumb")} I={Result("Index")} M={Result("Middle")}";
+        }
+
         private static void Shoot(string folder, string name, ControllerHand hand, SurgicalInteractable instrument)
         {
             Bounds bounds = default;
@@ -324,9 +429,34 @@ namespace VRSurgery.EditorTools
             rig.transform.position = from;
             rig.transform.LookAt(look);
 
+            // The theatre lights are composed for the room, not for every diagnostic angle.
+            // In particular, the side view used to render as an almost black silhouette and
+            // could not prove whether a finger was above or below the scalpel. A camera-mounted
+            // key light makes all three evidence shots readable without changing the scene or
+            // any runtime material.
+            GameObject keyObject = new GameObject("GripProbeKey");
+            keyObject.transform.SetParent(rig.transform, false);
+            Light key = keyObject.AddComponent<Light>();
+            key.type = LightType.Point;
+            key.range = 4f;
+            key.intensity = 7f;
+            key.shadows = LightShadows.None;
+            key.cullingMask = cullingMask;
+            keyObject.transform.position = rig.transform.position;
+
             RenderTexture target = new RenderTexture(1200, 900, 24, RenderTextureFormat.ARGB32) { antiAliasing = 4 };
             cam.targetTexture = target;
+
+            AmbientMode oldAmbientMode = RenderSettings.ambientMode;
+            Color oldAmbientLight = RenderSettings.ambientLight;
+            float oldAmbientIntensity = RenderSettings.ambientIntensity;
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.72f, 0.75f, 0.8f);
+            RenderSettings.ambientIntensity = 1f;
             cam.Render();
+            RenderSettings.ambientMode = oldAmbientMode;
+            RenderSettings.ambientLight = oldAmbientLight;
+            RenderSettings.ambientIntensity = oldAmbientIntensity;
 
             RenderTexture previous = RenderTexture.active;
             RenderTexture.active = target;

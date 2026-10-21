@@ -135,5 +135,38 @@ namespace VRSurgery.Tests
 
             Object.DestroyImmediate(heart);
         }
+
+        [Test]
+        public void TheRetractorSpreadsBothSidesOfTheRibcageAndRestoresThemOnClose()
+        {
+            GameObject cage = new GameObject("Ribcage");
+            cage.transform.SetParent(_host.transform.parent, false);
+            Transform left = new GameObject("Costelas_E").transform;
+            Transform right = new GameObject("Costelas_D").transform;
+            left.SetParent(cage.transform, false);
+            right.SetParent(cage.transform, false);
+
+            RibcageSpreader spreader = cage.AddComponent<RibcageSpreader>();
+            spreader.Bind(_sternotomy, left, right);
+
+            _sternotomy.Open();
+            Step(3f);
+            spreader.Apply(_sternotomy.Openness01);
+
+            Assert.Less(left.localPosition.x, -0.05f,
+                "A metade esquerda das costelas precisa sair da passagem do coração.");
+            Assert.Greater(right.localPosition.x, 0.05f,
+                "A metade direita das costelas precisa sair da passagem do coração.");
+            Assert.Greater(right.localPosition.x - left.localPosition.x, 0.10f,
+                "O afastador deve criar pelo menos dez centímetros de abertura central.");
+
+            _sternotomy.Close();
+            Step(3f);
+            spreader.Apply(_sternotomy.Openness01);
+            Assert.That(left.localPosition.magnitude, Is.LessThan(0.0001f));
+            Assert.That(right.localPosition.magnitude, Is.LessThan(0.0001f));
+
+            Object.DestroyImmediate(cage);
+        }
     }
 }

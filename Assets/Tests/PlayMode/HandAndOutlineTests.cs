@@ -474,6 +474,8 @@ namespace VRSurgery.Tests
 
             Assert.That(chosen.pitchDegrees, Is.EqualTo(32f).Within(0.01f),
                 "A pinca inclina no proprio angulo, nao nos 40 graus globais do bisturi.");
+            Assert.That(chosen.yawDegrees, Is.Zero,
+                "A virada lateral da pega cirurgica pertence apenas ao bisturi que a declara.");
             Assert.That(chosen.gripClosure, Is.EqualTo(0.5f).Within(0.01f));
             Object.DestroyImmediate(definition);
         }
