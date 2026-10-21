@@ -378,6 +378,9 @@ namespace VRSurgery.Tests
         [UnityTest]
         public IEnumerator HeartThrownOutOfReachReturnsToItsStartingPose()
         {
+            Assert.IsNotNull(_nativeHeart.GetComponent<ReturnHomeOnRelease>(),
+                "O coração nativo também precisa da mesma recuperação das ferramentas.");
+
             ReturnHomeOnRelease returnHome = _donorHeart.GetComponent<ReturnHomeOnRelease>();
             Assert.IsNotNull(returnHome, "O coração doador precisa da mesma recuperação das ferramentas.");
             Assert.AreEqual(ReturnHomeOnRelease.ReleaseMode.DropAndRespawn, returnHome.Mode);
@@ -395,6 +398,7 @@ namespace VRSurgery.Tests
             Assert.AreEqual(homePosition, _donorHeart.transform.position);
             Assert.AreEqual(homeRotation, _donorHeart.transform.rotation);
             Assert.IsFalse(returnHome.IsLoose);
+            yield break;
         }
 
     }

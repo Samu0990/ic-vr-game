@@ -167,7 +167,7 @@ namespace VRSurgery.Surgery
                 ? "Digite seu nome no teclado"
                 : result.Succeeded
                     ? "Tire o visor para o próximo visitante"
-                    : "Tente de novo. O relógio é a parte mais difícil.";
+                    : "Voltando ao menu inicial...";
 
             Write(headlineText, Headline);
             Write(subtitleText, Subtitle);
