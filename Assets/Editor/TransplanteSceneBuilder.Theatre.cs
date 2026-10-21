@@ -3617,6 +3617,49 @@ namespace VRSurgery.EditorTools
             return popup;
         }
 
+        /// <summary>
+        /// The instruction card shown in front of the visitor at each step: a dark plate with a
+        /// cyan edge, a small heading and the instruction. Placed at runtime where the visitor is
+        /// looking, and hidden until a step begins.
+        /// </summary>
+        private static StageInstructionModal BuildInstructionModal(Transform parent, TransplantProcedure procedure,
+            EventSessionController session)
+        {
+            GameObject root = new GameObject("ModalInstrucao");
+            root.transform.SetParent(parent, false);
+
+            GameObject body = new GameObject("Corpo");
+            body.transform.SetParent(root.transform, false);
+
+            // Opaque on purpose: a see-through card lets the patient and the table show behind the
+            // words, and the transparent materials around the room sort unpredictably against it.
+            Transform plate = Box("Placa", body.transform, new Vector3(0f, 0f, 0.002f), new Vector3(0.4f, 0.2f, 0.002f),
+                MakeOpaqueUnlit(new Color(0.03f, 0.05f, 0.08f)), null, false).transform;
+            Transform edge = Box("Borda", body.transform, new Vector3(0f, 0.098f, 0.001f), new Vector3(0.4f, 0.004f, 0.001f),
+                MakeOpaqueUnlit(new Color(0.3f, 0.8f, 1f)), null, false).transform;
+
+            TextMesh heading = BuildScreenText(body.transform, "Titulo", new Vector3(0f, 0.07f, -0.001f), 0.026f);
+            heading.transform.localRotation = Quaternion.identity;
+            TextMesh instruction = BuildScreenText(body.transform, "Instrucao", new Vector3(0f, -0.012f, -0.001f), 0.034f);
+            instruction.transform.localRotation = Quaternion.identity;
+            instruction.color = Color.white;
+
+            // The component sizes the plate and places the lines to fit each instruction.
+            StageInstructionModal modal = root.AddComponent<StageInstructionModal>();
+            modal.Bind(body.transform, plate, edge, heading, instruction, procedure, session, null);
+            body.SetActive(false);
+            return modal;
+        }
+
+        private static Material MakeOpaqueUnlit(Color colour)
+        {
+            Material m = new Material(Shader.Find("Universal Render Pipeline/Unlit")) { color = colour };
+            m.SetFloat("_Surface", 0f);
+            m.renderQueue = 2000;
+            m.SetInt("_ZWrite", 1);
+            return m;
+        }
+
         /// <summary>A flat five-pointed star facing -Z, for the result card.</summary>
         private static Mesh StarMesh(float outer, float inner)
         {

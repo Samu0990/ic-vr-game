@@ -140,7 +140,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 32;
+        public const int BuildVersion = 34;
 
         private static Vector3 _thorax;
 
@@ -1513,6 +1513,10 @@ namespace VRSurgery.EditorTools
             feedback.Bind(procedure, worker, sewing, beat, indicator, tipObject.transform, RigHands());
             feedback.BindSkinStages(incision, suture, scalpel, needleHolder);
             feedback.BindResultPopup(resultPopup);
+
+            // The instruction for each step, in front of the visitor, so nobody has to look away
+            // from the work to the monitor on the wall.
+            BuildInstructionModal(systems.transform, procedure, session);
 
             // The bone is opened with a sternal saw from the tray, not a bare hand: the blade has
             // to be held on the gold mark, and it rasps and judders in the hand while it cuts.
