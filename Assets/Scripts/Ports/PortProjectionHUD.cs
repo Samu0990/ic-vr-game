@@ -40,10 +40,13 @@ namespace VRSurgery.Ports
         public string Headline { get; private set; } = string.Empty;
 
         private int _shownResolved = -1;
-        private int _shownCentis = -1;
+        private int _shownMillis = -1;
 
         private void OnEnable()
         {
+            // "90.000" is wider than the "90.00" the clock box was sized for.
+            if (clockText != null) { clockText.horizontalOverflow = HorizontalWrapMode.Overflow; }
+
             if (session != null) { session.StateChanged += HandleState; }
             if (leaderboard != null) { leaderboard.Changed += RefreshIdleMessage; }
 
@@ -71,14 +74,12 @@ namespace VRSurgery.Ports
         {
             float remaining = session.IsRunning ? session.RemainingSeconds : session.RoundSeconds;
 
-            // Hundredths on screen: fast enough to read as running, slow enough to actually read.
-            // The scoreboard still ranks on the full millisecond.
-            int centis = Mathf.CeilToInt(remaining * 100f);
-            if (centis != _shownCentis)
+            // Milliseconds on screen: it is the unit the scoreboard ranks on.
+            int millis = Mathf.CeilToInt(Mathf.Max(0f, remaining) * 1000f);
+            if (millis != _shownMillis)
             {
-                _shownCentis = centis;
-                int whole = centis / 100;
-                ClockLabel = $"{whole}.{centis % 100:00}";
+                _shownMillis = millis;
+                ClockLabel = $"{millis / 1000}.{millis % 1000:000}";
                 if (clockText != null) { clockText.text = ClockLabel; }
             }
 

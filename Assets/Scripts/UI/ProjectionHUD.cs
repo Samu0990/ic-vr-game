@@ -72,11 +72,15 @@ namespace VRSurgery.Surgery
 
         public string Headline { get; private set; } = string.Empty;
 
-        /// <summary>Last whole second put on the clock; -1 forces the first frame to draw.</summary>
-        private int _shownSecond = -1;
+        /// <summary>Last millisecond put on the clock; -1 forces the first frame to draw.</summary>
+        private int _shownMillis = -1;
 
         private void OnEnable()
         {
+            // m:ss.mmm is wider than the m:ss the clock box was sized for; wrapping would drop
+            // the milliseconds onto a second line.
+            if (clockText != null) { clockText.horizontalOverflow = HorizontalWrapMode.Overflow; }
+
             if (session != null)
             {
                 session.StateChanged += HandleStateChanged;
@@ -125,14 +129,13 @@ namespace VRSurgery.Surgery
 
             // Ceil, not round: a clock that shows 0 while the round is still winnable is a lie the
             // audience can see, and one that shows 1 for half a second at the end is not.
-            int whole = Mathf.CeilToInt(remaining);
+            int millis = Mathf.CeilToInt(Mathf.Max(0f, remaining) * 1000f);
 
-            // Only rebuild the string when the digits actually change. Formatting every frame
-            // allocated a new string ~90 times a second for a label that changes once.
-            if (whole != _shownSecond)
+            // Only rebuild the string when the digits actually change.
+            if (millis != _shownMillis)
             {
-                _shownSecond = whole;
-                ClockLabel = $"{whole / 60:0}:{whole % 60:00}";
+                _shownMillis = millis;
+                ClockLabel = ClockFormat.Countdown(remaining);
 
                 if (clockText != null)
                 {

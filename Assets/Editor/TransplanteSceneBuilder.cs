@@ -124,23 +124,16 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
-        /// Extra round time for the two skin stages: roughly ten seconds of incision, a few of
-        /// closure animation and five stitches. Added on top of the level's own round length so
-        /// the levels keep their meaning.
+        /// Total length of a transplant round. One fixed value: difficulty levels are not
+        /// implemented, so the plan's own per-level round length no longer drives the clock.
         /// </summary>
-        private const float SkinStageSeconds = 45f;
-
-        /// <summary>Time added to the round for opening the pericardium.</summary>
-        private const float PericardiumSeconds = 10f;
-
-        /// <summary>Time added to the round for the reperfusion fibrillation and its shocks.</summary>
-        private const float DefibrillationSeconds = 12f;
+        private const float RoundSeconds = 180f;
 
         /// <summary>
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 34;
+        public const int BuildVersion = 35;
 
         private static Vector3 _thorax;
 
@@ -746,7 +739,7 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[Transplante] nível {plan.Difficulty}: {sites.Count} ponto(s) de CEC, " +
                       $"{plan.GestureSeconds:F0}s de gestos, {plan.DoneByTeam.Count} etapa(s) " +
-                      $"já feitas pela equipe, rodada de {plan.RoundSeconds:F0}s");
+                      $"já feitas pela equipe, rodada de {RoundSeconds:F0}s");
             return sites;
         }
 
@@ -1477,11 +1470,7 @@ namespace VRSurgery.EditorTools
             procedure.SetDifficulty(plan.Difficulty);
 
             EventSessionDefinition definition = EventSessionDefinition.Create(
-                // From the level, not from a constant. Fácil is ninety seconds because there is
-                // a third less to do, not because ninety was typed somewhere — so the booth can
-                // run a fast queue or a faithful operation without the two numbers drifting apart.
-                round: plan.RoundSeconds + SkinStageSeconds + PericardiumSeconds +
-                       (HasOwnUnclamp(plan) ? DefibrillationSeconds : 0f),
+                round: RoundSeconds,
                 briefingTimeout: 45f, resultHold: 6f, scoreboardHold: 8f,
                 // The round starts on the sternotomy, not on a grab: this scene has no instrument
                 // to pick up, so the grab that starts the round in every other scene never happens.

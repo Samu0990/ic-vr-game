@@ -154,14 +154,17 @@ namespace VRSurgery.Tests
         }
 
         [Test]
-        public void ORelogioSaiEmMinutosESegundos()
+        public void ORelogioSaiEmMinutosSegundosEMilesimos()
         {
-            Assert.AreEqual("0:00", SurgeryEndScreen.Clock(0f));
-            Assert.AreEqual("0:09", SurgeryEndScreen.Clock(9f));
-            Assert.AreEqual("1:00", SurgeryEndScreen.Clock(60f));
-            Assert.AreEqual("3:07", SurgeryEndScreen.Clock(187f));
+            Assert.AreEqual("0:00.000", SurgeryEndScreen.Clock(0f));
+            Assert.AreEqual("0:09.000", SurgeryEndScreen.Clock(9f));
+            Assert.AreEqual("1:00.000", SurgeryEndScreen.Clock(60f));
+            Assert.AreEqual("3:07.250", SurgeryEndScreen.Clock(187.25f));
+            Assert.AreEqual("3:00.000", ClockFormat.Countdown(180f));
+            // Contagem regressiva arredonda para cima: 0:00.000 só quando o tempo acabou de fato.
+            Assert.AreEqual("0:00.001", ClockFormat.Countdown(0.0004f));
             // Tempo negativo não existe, mas um relógio que imprime "-1:-5" num estande sim.
-            Assert.AreEqual("0:00", SurgeryEndScreen.Clock(-5f));
+            Assert.AreEqual("0:00.000", SurgeryEndScreen.Clock(-5f));
         }
     }
 }

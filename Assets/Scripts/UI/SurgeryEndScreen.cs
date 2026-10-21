@@ -248,11 +248,7 @@ namespace VRSurgery.Surgery
             if (text != null && text.text != value) { text.text = value; }
         }
 
-        /// <summary>Seconds as m:ss. A visitor reads "3:07", not "187 s".</summary>
-        public static string Clock(float seconds)
-        {
-            int whole = Mathf.Max(0, Mathf.RoundToInt(seconds));
-            return $"{whole / 60}:{whole % 60:00}";
-        }
+        /// <summary>Seconds as m:ss.mmm. A visitor reads "3:07.250", not "187 s".</summary>
+        public static string Clock(float seconds) => ClockFormat.Elapsed(seconds);
     }
 }

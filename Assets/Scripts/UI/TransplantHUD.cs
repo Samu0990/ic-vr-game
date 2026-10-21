@@ -169,7 +169,7 @@ namespace VRSurgery.Surgery
         }
 
         /// <summary>
-        /// Minutes and seconds. Only while the round is running: a clock frozen at its full value
+        /// Minutes, seconds and milliseconds. Only while the round is running: a clock frozen at its full value
         /// during the briefing reads as a clock already counting, and rushes people who still have
         /// the headset in their hands.
         /// </summary>
@@ -180,8 +180,7 @@ namespace VRSurgery.Surgery
                 return string.Empty;
             }
 
-            int total = Mathf.CeilToInt(Mathf.Max(0f, session.RemainingSeconds));
-            return $"{total / 60:0}:{total % 60:00}";
+            return ClockFormat.Countdown(session.RemainingSeconds);
         }
 
         private void ShowReason(string reason)
