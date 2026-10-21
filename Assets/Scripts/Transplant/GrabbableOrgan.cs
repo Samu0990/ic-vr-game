@@ -35,7 +35,16 @@ namespace VRSurgery.Transplant
         [SerializeField] private Transform seat;
 
         [Tooltip("How close the donor heart has to sit to count as implanted, in metres.")]
-        [SerializeField, Min(0.005f)] private float seatTolerance = 0.035f;
+        //
+        // 3,5 cm era uma janela menor que um quarto do proprio orgao, que tem cerca de 16 cm. Em
+        // VR, com a caixa toracica em volta e sem peso nenhum na mao para dizer onde o coracao
+        // esta, acertar isso e sorte: o visitante solta, nada acontece, e ele nao tem como saber
+        // o que faltou. A janela agora e do tamanho do orgao.
+        [SerializeField, Min(0.005f)] private float seatTolerance = 0.09f;
+
+        [Tooltip("Ao soltar dentro da janela, o coracao assenta sozinho no lugar. Sem isto ele " +
+                 "fica onde a mao largou, meio torto, e o encaixe nao se le como encaixe.")]
+        [SerializeField] private bool snapIntoSeat = true;
 
         [Tooltip("How far the native heart has to travel from its seat to count as explanted.")]
         [SerializeField, Min(0.02f)] private float removalDistance = 0.20f;
@@ -45,6 +54,9 @@ namespace VRSurgery.Transplant
 
         private SurgicalInteractable _interactable;
         private bool _reported;
+        private Vector3 _seatedLocalPosition;
+        private Quaternion _seatedLocalRotation;
+        private bool _restCaptured;
 
         /// <summary>Distance from where this organ belongs, in metres. Negative with no seat.</summary>
         public float DistanceFromSeat =>
@@ -60,6 +72,20 @@ namespace VRSurgery.Transplant
         private void Awake()
         {
             _interactable = GetComponent<SurgicalInteractable>();
+            CaptureRest();
+        }
+
+        /// <summary>
+        /// Onde o orgao comeca. Para o coracao doente isso e o assento dele, e e para ca que ele
+        /// volta se for arrancado antes da hora.
+        /// </summary>
+        private void CaptureRest()
+        {
+            if (_restCaptured) { return; }
+
+            _seatedLocalPosition = transform.position;
+            _seatedLocalRotation = transform.rotation;
+            _restCaptured = true;
         }
 
         private void OnEnable()
@@ -91,8 +117,42 @@ namespace VRSurgery.Transplant
         {
             if (role == OrganRole.Native)
             {
+                // Antes da bomba o coracao doente nao sai, e o visitante precisa ouvir por que.
+                // Arrancar um coracao de um paciente que ainda circula o proprio sangue nao e um
+                // atalho, e o fim da operacao — e silenciosamente nao fazer nada ensina menos
+                // ainda do que recusar.
+                if (procedure != null && procedure.Stage != TransplantStage.RemoveNativeHeart)
+                {
+                    procedure.SetUrgentInstruction(
+                        "O coração ainda não pode sair: o paciente precisa estar na bomba primeiro");
+                    ReturnToRest();
+                    return;
+                }
+
                 Evaluate();
+                return;
             }
+
+            // O doador assenta ao ser solto perto o bastante, e assenta direito.
+            if (!Satisfied && seat != null && DistanceFromSeat <= seatTolerance)
+            {
+                SnapToSeat();
+            }
+        }
+
+        /// <summary>Poe o orgao exatamente no lugar dele, para o encaixe se ler como encaixe.</summary>
+        private void SnapToSeat()
+        {
+            if (!snapIntoSeat || seat == null) { return; }
+
+            transform.SetPositionAndRotation(seat.position, seat.rotation);
+        }
+
+        /// <summary>Devolve o orgao ao lugar de onde foi tirado fora de hora.</summary>
+        private void ReturnToRest()
+        {
+            CaptureRest();
+            transform.SetPositionAndRotation(_seatedLocalPosition, _seatedLocalRotation);
         }
 
         private void Evaluate()
@@ -112,6 +172,8 @@ namespace VRSurgery.Transplant
             {
                 return;
             }
+
+            if (role == OrganRole.Donor) { SnapToSeat(); }
 
             Satisfied = true;
             SatisfiedChanged?.Invoke(this);
@@ -136,6 +198,7 @@ namespace VRSurgery.Transplant
         {
             Satisfied = false;
             _reported = false;
+            ReturnToRest();
         }
 
         public void Bind(OrganRole organRole, Transform organSeat, TransplantProcedure transplant)

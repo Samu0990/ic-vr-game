@@ -47449,7 +47449,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Transplant.GrabbableOrgan
   role: 1
   seat: {fileID: 2024490291}
-  seatTolerance: 0.035
+  seatTolerance: 0.09
+  snapIntoSeat: 1
   removalDistance: 0.2
   procedure: {fileID: 782183663}
 --- !u!114 &803062539
@@ -85610,7 +85611,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: VRSurgery.Runtime::VRSurgery.Transplant.GrabbableOrgan
   role: 0
   seat: {fileID: 2024490291}
-  seatTolerance: 0.035
+  seatTolerance: 0.09
+  snapIntoSeat: 1
   removalDistance: 0.2
   procedure: {fileID: 782183663}
 --- !u!114 &1455543270
