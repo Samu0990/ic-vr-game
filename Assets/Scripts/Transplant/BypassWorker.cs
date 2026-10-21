@@ -141,11 +141,19 @@ namespace VRSurgery.Transplant
                 return;
             }
 
+            // A collapsed gesture is named/positioned by its final step, but it must be admitted
+            // by the first step it performs. Medium's "enter bypass" gesture, for example, is
+            // anchored at cardioplegia while the procedure is still waiting for cannulation.
+            // Comparing the anchor here made that valid gesture look out of order forever.
+            BypassStep firstStep = best.Chain != null && best.Chain.Length > 0
+                ? best.Chain[0]
+                : best.Step;
+
             // Working the wrong site is refused before any time is banked, so a visitor cannot
             // hold on the clamp for six seconds and only then be told it was the wrong move.
-            if (best.Step != expected)
+            if (firstStep != expected)
             {
-                BypassAttempt preview = procedure.Bypass.Why(best.Step, procedure.IsImplantComplete);
+                BypassAttempt preview = procedure.Bypass.Why(firstStep, procedure.IsImplantComplete);
                 if (!preview.Accepted)
                 {
                     Refuse(preview.Reason);
@@ -176,6 +184,18 @@ namespace VRSurgery.Transplant
 
                 LastRefusal = string.Empty;
                 StepPerformed?.Invoke(step);
+            }
+
+            // The pump owns the safety checks, but the hand gesture owns completion. Without
+            // this join the monitor moved on to "retire o clampe" while the operation remained
+            // stuck in GoOnBypass, so the native heart could never become removable.
+            if (procedure.Stage == TransplantStage.GoOnBypass && procedure.Bypass.IsArrested)
+            {
+                procedure.CompleteStage(TransplantStage.GoOnBypass);
+            }
+            else if (procedure.Stage == TransplantStage.Restart && procedure.Bypass.IsOff)
+            {
+                procedure.CompleteStage(TransplantStage.Restart);
             }
         }
 

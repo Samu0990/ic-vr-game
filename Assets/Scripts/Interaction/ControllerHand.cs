@@ -170,7 +170,16 @@ namespace VRSurgery.Interaction
             return definition != null && definition.Hold.IsConfigured ? definition.Hold : fallback;
         }
 
-        private void OnEnable() => Application.onBeforeRender += FollowDevice;
+        private void OnEnable()
+        {
+            Application.onBeforeRender += FollowDevice;
+
+            // This glove is driven by its own grip-pose TrackedPoseDriver. The XR template may
+            // deactivate the old controller GameObject when its input modality changes; that
+            // object is only an input/interactor reference and must not make this independent
+            // glove disappear with it.
+            SetShown(true);
+        }
 
         private void OnDisable()
         {
@@ -228,15 +237,6 @@ namespace VRSurgery.Interaction
             {
                 _closures[finger] = DeclaredClosure(finger);
             }
-        }
-
-        private void OnEnable()
-        {
-            // This glove is driven by its own grip-pose TrackedPoseDriver. The XR template may
-            // deactivate the old controller GameObject when its input modality changes; that
-            // object is only an input/interactor reference and must not make this independent
-            // glove disappear with it.
-            SetShown(true);
         }
 
         /// <summary>
