@@ -140,7 +140,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 35;
+        public const int BuildVersion = 36;
 
         private static Vector3 _thorax;
 
@@ -1593,7 +1593,10 @@ namespace VRSurgery.EditorTools
             systems.AddComponent<StageVisibility>().Bind(procedure,
                 new[] { TransplantStage.ConnectVessels, TransplantStage.Restart, TransplantStage.CloseSkin }, cuffs);
 
-            systems.AddComponent<BypassSiteMarkers>().Bind(procedure, worker, BuildBypassMarkers(bypass));
+            BypassSiteMarkers pumpMarkers = systems.AddComponent<BypassSiteMarkers>();
+            pumpMarkers.Bind(procedure, worker, BuildBypassMarkers(bypass));
+            BuildBypassBeacon(systems.transform, out Transform pumpArrow, out Transform pumpLabelRoot, out TextMesh pumpLabel);
+            pumpMarkers.BindBeacon(pumpArrow, pumpLabelRoot, pumpLabel);
 
             // What the pump puts in the chest, shown as each step puts it there.
             BuildBypassHardware(systems, _thorax, procedure);

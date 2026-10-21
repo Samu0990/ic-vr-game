@@ -261,15 +261,15 @@ namespace VRSurgery.Transplant
 
         /// <summary>What the room should be telling the surgeon to do, in pt-BR.</summary>
         public string CurrentInstruction => Step == BypassStep.Off
-            ? "Fora de bomba"
+            ? "Máquina desligada: o coração bate sozinho"
             : NextStep switch
             {
-                BypassStep.Cannulate => "Canule as cavas e a aorta",
-                BypassStep.ClampAorta => "Clampeie a aorta",
-                BypassStep.Cardioplegia => "Infunda a cardioplegia",
-                BypassStep.Unclamp => "Retire o clampe da aorta",
-                BypassStep.DeAir => "Desareje as câmaras",
-                BypassStep.Wean => "Saia de bomba",
+                BypassStep.Cannulate => "Conecte a máquina de circulação: segure a mão no anel âmbar que pulsa",
+                BypassStep.ClampAorta => "Feche o clampe na artéria principal (aorta): segure a mão no anel âmbar",
+                BypassStep.Cardioplegia => "Pare o coração com a solução especial: segure a mão no anel âmbar",
+                BypassStep.Unclamp => "Abra o clampe da aorta para o sangue chegar ao coração novo: segure a mão no anel âmbar",
+                BypassStep.DeAir => "Tire o ar de dentro do coração novo: segure a mão no anel âmbar",
+                BypassStep.Wean => "Desligue a máquina e deixe o coração bater sozinho: segure a mão no anel âmbar",
                 _ => "Aguardando",
             };
     }

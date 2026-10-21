@@ -3745,12 +3745,16 @@ namespace VRSurgery.EditorTools
         private static List<Renderer> BuildBypassMarkers(List<BypassSite> sites)
         {
             List<Renderer> rings = new List<Renderer>();
-            Mesh ring = MakeRing(0.018f, 0.028f, 28);
+            // Wider band than the 2.8cm hold radius needs, and fully opaque: a thin translucent
+            // ring was lost against the tissue.
+            Mesh ring = MakeRing(0.02f, 0.032f, 28);
 
             foreach (BypassSite site in sites)
             {
                 if (site?.Point == null) { rings.Add(null); continue; }
-                GameObject marker = MeshPart("MarcaCEC", site.Point, ring, MakeUnlit(new Color(1f, 0.82f, 0.25f, 0.8f)));
+                Material glow = MakeUnlit(new Color(1f, 0.82f, 0.25f, 1f));
+                glow.renderQueue = 3002;
+                GameObject marker = MeshPart("MarcaCEC", site.Point, ring, glow);
                 marker.transform.localPosition = Vector3.zero;
                 MeshRenderer renderer = marker.GetComponent<MeshRenderer>();
                 renderer.enabled = false;
@@ -3758,6 +3762,43 @@ namespace VRSurgery.EditorTools
             }
 
             return rings;
+        }
+
+        /// <summary>
+        /// The arrow and the label that float over the active pump ring: the arrow is the same
+        /// "take this one" cone the instruments use, the label a dark opaque plate with the step's
+        /// number and name. Both hidden until the pump has a step to do.
+        /// </summary>
+        private static void BuildBypassBeacon(Transform parent, out Transform arrow, out Transform labelRoot,
+            out TextMesh label)
+        {
+            arrow = BuildNextToolArrow();
+            arrow.name = "SetaCEC";
+            arrow.SetParent(parent, true);
+            arrow.localScale = Vector3.one * 1.5f;
+
+            GameObject root = new GameObject("RotuloCEC");
+            root.transform.SetParent(parent, false);
+
+            // Same card convention as the others: +Z away from the viewer, text on the -Z side.
+            Box("Placa", root.transform, new Vector3(0f, 0f, 0.002f), new Vector3(0.3f, 0.085f, 0.002f),
+                MakeOpaqueUnlit(new Color(0.03f, 0.05f, 0.08f)), null, false);
+            Box("Borda", root.transform, new Vector3(0f, 0.0405f, 0.001f), new Vector3(0.3f, 0.004f, 0.001f),
+                MakeOpaqueUnlit(new Color(1f, 0.82f, 0.25f)), null, false);
+
+            label = BuildScreenText(root.transform, "Texto", new Vector3(0f, -0.001f, -0.001f), 0.017f);
+            label.transform.localRotation = Quaternion.identity;
+            label.color = Color.white;
+
+            // For the visitor only: the projector frames the mannequin, and words would land on it.
+            int operatorLayer = LayerMask.NameToLayer(OperatorLayer);
+            if (operatorLayer >= 0)
+            {
+                foreach (Transform t in root.GetComponentsInChildren<Transform>(true)) { t.gameObject.layer = operatorLayer; }
+            }
+
+            root.SetActive(false);
+            labelRoot = root.transform;
         }
 
         /// <summary>

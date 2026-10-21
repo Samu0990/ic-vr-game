@@ -94,7 +94,7 @@ namespace VRSurgery.Tests
             StageInstructionModal modal = Modal(procedure, Viewer(new Vector3(0f, 1.6f, 0f), 0f, 0f), out Transform body);
             procedure.Begin();
 
-            Run(modal, 8f);
+            Run(modal, 10f);
 
             Assert.IsFalse(modal.IsShowing);
             Assert.IsFalse(body.gameObject.activeSelf);
@@ -216,14 +216,15 @@ namespace VRSurgery.Tests
             StageInstructionModal modal = Modal(procedure, Viewer(new Vector3(0f, 1.6f, 0f), 0f, 0f), out _);
 
             procedure.Begin();
+            procedure.SetUrgentInstruction("Vá!");
             modal.Tick(Step);
-            float first = modal.PlateSize.y;
+            float short1 = modal.PlateSize.y;
 
-            procedure.CompleteStage(TransplantStage.SkinIncision);
+            procedure.SetUrgentInstruction(null);
             modal.Tick(Step);
 
-            Assert.Greater(modal.PlateSize.y, first,
-                "The sternum instruction is the longer sentence and needs more lines.");
+            Assert.Greater(modal.PlateSize.y, short1,
+                "A full sentence needs more lines than a single word.");
         }
     }
 }

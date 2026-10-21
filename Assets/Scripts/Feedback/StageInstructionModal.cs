@@ -44,7 +44,7 @@ namespace VRSurgery.Feedback
         [SerializeField] private float heightBelowEyes = 0.08f;
 
         [Header("Timing")]
-        [SerializeField, Min(1f)] private float showSeconds = 6f;
+        [SerializeField, Min(1f)] private float showSeconds = 8f;
         [SerializeField, Min(0.05f)] private float popSeconds = 0.25f;
         [SerializeField, Min(0.05f)] private float fadeSeconds = 0.35f;
 

@@ -174,7 +174,7 @@ namespace VRSurgery.Transplant
 
             if (procedure != null)
             {
-                procedure.SetUrgentInstruction("Fibrilação ventricular! Pegue as pás internas e segure o coração entre elas");
+                procedure.SetUrgentInstruction("Fibrilação: o coração novo está tremendo! Pegue as PÁS sobre a bacia vazia e segure o coração entre elas");
             }
 
             SurgeryEvents.RaiseError(ErrorSeverity.Warning,

@@ -299,19 +299,23 @@ namespace VRSurgery.Transplant
         /// <summary>What the room should be telling the visitor to do right now, in pt-BR.</summary>
         public string CurrentInstruction => !string.IsNullOrEmpty(_urgent) ? _urgent : Stage switch
         {
-            TransplantStage.SkinIncision => "Pegue o bisturi e corte a pele sobre a linha roxa",
+            TransplantStage.SkinIncision => "Pegue o BISTURI na bandeja e deslize a lâmina em pé sobre a linha roxa",
             // The scene that adds the scalpel and the needle also puts a sternal saw on the tray.
+            // Only the saw is named: the cautery on the same tray is optional here, and naming it
+            // first sent visitors to the wrong instrument.
             TransplantStage.OpenChest => includeSkinStages
-                ? "Cauterize os pontos que sangram e abra o esterno com a serra na marca dourada"
-                : "Abra o esterno: pressione a mão sobre a marca dourada",
-            TransplantStage.OpenPericardium => "Abra o pericárdio: bisturi elétrico sobre a linha tracejada",
+                ? "Pegue a SERRA na bandeja e segure a lâmina na marca dourada até o osso abrir"
+                : "Abra o osso do peito: encoste a mão na marca dourada e segure",
+            TransplantStage.OpenPericardium =>
+                "Pegue o BISTURI ELÉTRICO (a caneta) e passe a ponta sobre a linha tracejada para abrir o pericárdio, a capa do coração",
             TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
             TransplantStage.RemoveNativeHeart => "Pegue o coração doente, levante-o pela abertura do esterno e solte longe do paciente",
-            TransplantStage.PlaceDonorHeart => "Posicione o coração do doador",
-            TransplantStage.ConnectVessels => $"Conecte os vasos — {VesselsConnected}/{vesselCount}",
+            TransplantStage.PlaceDonorHeart => "Pegue o coração novo na bandeja e coloque no espaço vazio do peito",
+            TransplantStage.ConnectVessels =>
+                $"Conecte os vasos: com o PORTA-AGULHA, encoste a ponta da agulha em cada anel — {VesselsConnected}/{vesselCount}",
             TransplantStage.Restart => Bypass.CurrentInstruction,
             TransplantStage.CloseSkin => "Coração batendo! O esterno é fechado com fios de aço; agora feche a pele com o PORTA-AGULHA, seguindo os pontos azuis",
-            TransplantStage.Complete => "Coração batendo",
+            TransplantStage.Complete => "Pronto! O coração novo está batendo",
             _ => "Aguardando",
         };
 
