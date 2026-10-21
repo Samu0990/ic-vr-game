@@ -375,5 +375,27 @@ namespace VRSurgery.Tests
             Assert.AreEqual(TransplantStage.ConnectVessels, _procedure.Stage);
         }
 
+        [UnityTest]
+        public IEnumerator HeartThrownOutOfReachReturnsToItsStartingPose()
+        {
+            ReturnHomeOnRelease returnHome = _donorHeart.GetComponent<ReturnHomeOnRelease>();
+            Assert.IsNotNull(returnHome, "O coração doador precisa da mesma recuperação das ferramentas.");
+            Assert.AreEqual(ReturnHomeOnRelease.ReleaseMode.DropAndRespawn, returnHome.Mode);
+
+            Vector3 homePosition = _donorHeart.transform.position;
+            Quaternion homeRotation = _donorHeart.transform.rotation;
+            SurgicalInteractable interactable = _donorHeart.GetComponent<SurgicalInteractable>();
+
+            interactable.OnGrabbed(null);
+            _donorHeart.transform.position = new Vector3(5f, 1.3f, 0.47f);
+            interactable.OnReleased();
+
+            returnHome.Tick(0.61f);
+
+            Assert.AreEqual(homePosition, _donorHeart.transform.position);
+            Assert.AreEqual(homeRotation, _donorHeart.transform.rotation);
+            Assert.IsFalse(returnHome.IsLoose);
+        }
+
     }
 }

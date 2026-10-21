@@ -224,6 +224,10 @@ namespace VRSurgery.Transplant
 
                 organ.ResetOrgan();
 
+                VRSurgery.Interaction.ReturnHomeOnRelease returnHome =
+                    organ.GetComponent<VRSurgery.Interaction.ReturnHomeOnRelease>();
+                if (returnHome != null) { returnHome.SendHomeNow(); }
+
                 // Velocity as well as pose. A heart let go mid-throw and then teleported home
                 // keeps its momentum and sails straight back out of the chest.
                 //
