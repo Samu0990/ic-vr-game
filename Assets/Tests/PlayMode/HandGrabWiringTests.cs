@@ -162,6 +162,11 @@ namespace VRSurgery.Tests
             // desativado e nenhuma mão o alcançaria — no jogo nem no teste.
             _nativeHeart.SetActive(true);
 
+            // Aberto de verdade: a saída do coração só existe com o esterno afastado.
+            SternotomyController sternotomy = Object.FindFirstObjectByType<SternotomyController>();
+            sternotomy.Open();
+            sternotomy.Tick(10f);
+
             for (int guard = 0; guard < 16; guard++)
             {
                 if (_procedure.Stage == TransplantStage.RemoveNativeHeart) { return; }
@@ -233,6 +238,23 @@ namespace VRSurgery.Tests
             Assert.IsFalse(organ.IsHeld, "Soltar tem que desfazer isso.");
         }
 
+        /// <summary>
+        /// Leva o coração para fora do peito pela abertura do esterno: sobe em linha reta por cima
+        /// do assento, que é por onde um cirurgião o tiraria, e só então segue para o destino.
+        /// Teletransportar direto para longe atravessaria as costelas, e é isso que a cena recusa.
+        /// </summary>
+        private IEnumerator CarryThroughOpening(Transform heart, Vector3 destination)
+        {
+            ChestExitGate gate = Object.FindFirstObjectByType<ChestExitGate>();
+            Assert.IsNotNull(gate, "Sem ChestExitGate na cena: o coração poderia atravessar as costelas.");
+
+            heart.position = gate.transform.position + Vector3.up * 0.05f;
+            yield return null;
+
+            heart.position = destination;
+            yield return null;
+        }
+
         [UnityTest]
         public IEnumerator ReleasingTheNativeHeartAwayFromTheChestCompletesTheExplant()
         {
@@ -247,8 +269,7 @@ namespace VRSurgery.Tests
             yield return null;
 
             // Carried well clear of the pericardium — further than the explant threshold.
-            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
-            yield return null;
+            yield return CarryThroughOpening(_nativeHeart.transform, _seat.position + new Vector3(0.6f, 0.1f, 0f));
 
             Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
                 "Carregar o coração não é explantar; ele ainda está na mão do cirurgião.");
@@ -315,8 +336,7 @@ namespace VRSurgery.Tests
             organ.OnGrabbed(null);
             yield return null;
 
-            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
-            yield return null;
+            yield return CarryThroughOpening(_nativeHeart.transform, _seat.position + new Vector3(0.6f, 0.1f, 0f));
 
             Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
                 "Carregar o coração não é explantar; ele ainda está na mão do cirurgião.");
@@ -327,6 +347,33 @@ namespace VRSurgery.Tests
             Assert.IsTrue(_nativeHeart.GetComponent<GrabbableOrgan>().Satisfied);
             Assert.AreEqual(TransplantStage.PlaceDonorHeart, _procedure.Stage,
                 "Com o coração doente fora e pousado, a operação avança para o doador.");
+        }
+
+        [UnityTest]
+        public IEnumerator OCoracaoNaoAtravessaAsCostelas_VoltaParaOAssento()
+        {
+            AdvanceToExplant();
+
+            SurgicalInteractable organ = _nativeHeart.GetComponent<SurgicalInteractable>();
+            organ.OnGrabbed(null);
+            yield return null;
+
+            // De lado, sob a gaiola: o centro do coração cruza o plano longe da abertura.
+            _nativeHeart.transform.position = _seat.position + new Vector3(0.25f, 0.5f, 0f);
+            yield return null;
+            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
+            yield return null;
+
+            organ.OnReleased();
+            yield return null;
+            yield return null;
+            yield return null;
+
+            Assert.IsFalse(_nativeHeart.GetComponent<GrabbableOrgan>().Satisfied,
+                "Um coração que passou pelas costelas não foi retirado pela abertura do esterno.");
+            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage);
+            Assert.AreEqual(0f, Vector3.Distance(_nativeHeart.transform.position, _seat.position), 0.001f,
+                "Barrado pelas costelas, o coração volta ao assento.");
         }
 
         [UnityTest]

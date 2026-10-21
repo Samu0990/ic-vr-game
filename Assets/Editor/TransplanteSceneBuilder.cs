@@ -140,7 +140,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 34;
+        public const int BuildVersion = 35;
 
         private static Vector3 _thorax;
 
@@ -1409,6 +1409,36 @@ namespace VRSurgery.EditorTools
             return false;
         }
 
+        /// <summary>
+        /// The opening the sick heart has to leave through: the gap between the two halves of the
+        /// ribcage once the retractor has spread them, on a plane just over the top of the heart.
+        /// Without it the heart could be carried straight through the ribs.
+        /// </summary>
+        private static ChestExitGate BuildChestExitGate(GameObject systems, GameObject sternum, GameObject heart)
+        {
+            Transform cage = sternum.transform.parent != null ? sternum.transform.parent.Find("Ribcage") : null;
+            RibcageSpreader spreader = cage != null ? cage.GetComponent<RibcageSpreader>() : null;
+
+            // A little narrower than the gap the ribs actually leave, so a heart is not refused
+            // for grazing the edge of an opening it plainly came out of.
+            float halfWidth = spreader != null ? spreader.SpreadPerSide * 0.9f : 0.05f;
+
+            float heartTop = WorldBounds(heart).max.y;
+            float planeY = Mathf.Max(heartTop + 0.01f, SkinTopAt(_window.Center.x, _window.Center.z) - 0.02f);
+
+            GameObject gate = new GameObject("ChestExitGate");
+            gate.transform.SetParent(systems.transform, true);
+            gate.transform.SetPositionAndRotation(
+                new Vector3(_window.Center.x, planeY, _window.Center.z), Quaternion.identity);
+
+            ChestExitGate exit = gate.AddComponent<ChestExitGate>();
+            exit.Bind(sternum.GetComponent<SternotomyController>(), halfWidth, _window.IncisionHalfLength);
+
+            Debug.Log($"[Transplante] saída do coração: {halfWidth * 200f:F0} x " +
+                      $"{_window.IncisionHalfLength * 200f:F0} cm em y={planeY:F3}");
+            return exit;
+        }
+
         private static void WireProcedure(GameObject systems, GameObject sternum, GameObject heart,
             GameObject donor, VesselAnastomosis[] vessels, List<BypassSite> bypass, BypassPlan plan,
             GameObject monitor)
@@ -1449,7 +1479,8 @@ namespace VRSurgery.EditorTools
             seat.transform.SetParent(systems.transform, true);
             seat.transform.position = heart.transform.position;
 
-            heart.GetComponent<GrabbableOrgan>().Bind(OrganRole.Native, seat.transform, procedure);
+            heart.GetComponent<GrabbableOrgan>().Bind(OrganRole.Native, seat.transform, procedure,
+                BuildChestExitGate(systems, sternum, heart));
             donor.GetComponent<GrabbableOrgan>().Bind(OrganRole.Donor, seat.transform, procedure);
 
             foreach (VesselAnastomosis vessel in vessels)

@@ -306,11 +306,11 @@ namespace VRSurgery.Transplant
                 : "Abra o esterno: pressione a mão sobre a marca dourada",
             TransplantStage.OpenPericardium => "Abra o pericárdio: bisturi elétrico sobre a linha tracejada",
             TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
-            TransplantStage.RemoveNativeHeart => "Retire o coração doente",
+            TransplantStage.RemoveNativeHeart => "Pegue o coração doente, levante-o pela abertura do esterno e solte longe do paciente",
             TransplantStage.PlaceDonorHeart => "Posicione o coração do doador",
             TransplantStage.ConnectVessels => $"Conecte os vasos — {VesselsConnected}/{vesselCount}",
             TransplantStage.Restart => Bypass.CurrentInstruction,
-            TransplantStage.CloseSkin => "Coração batendo! Feche a pele: porta-agulha nos pontos azuis",
+            TransplantStage.CloseSkin => "Coração batendo! O esterno é fechado com fios de aço; agora feche a pele com o PORTA-AGULHA, seguindo os pontos azuis",
             TransplantStage.Complete => "Coração batendo",
             _ => "Aguardando",
         };

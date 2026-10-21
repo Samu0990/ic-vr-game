@@ -1,6 +1,7 @@
 using System;
 using UnityEngine;
 using VRSurgery.Interaction;
+using VRSurgery.Surgery;
 
 namespace VRSurgery.Transplant
 {
@@ -43,8 +44,20 @@ namespace VRSurgery.Transplant
         [Tooltip("Optional. Told when this organ's stage is finished.")]
         [SerializeField] private TransplantProcedure procedure;
 
+        [Tooltip("Optional, native heart only. When set, the heart only counts as explanted if it " +
+                 "left the chest through this opening; one carried through the ribs is sent back.")]
+        [SerializeField] private ChestExitGate exitGate;
+
+        private const int BounceDelayFrames = 2;
+
         private SurgicalInteractable _interactable;
         private bool _reported;
+        private bool _sideKnown;
+        private bool _outside;
+        private bool _cleared;
+        private int _bounceFrames;
+        private Vector3 _homePosition;
+        private Quaternion _homeRotation;
 
         /// <summary>Distance from where this organ belongs, in metres. Negative with no seat.</summary>
         public float DistanceFromSeat =>
@@ -55,11 +68,16 @@ namespace VRSurgery.Transplant
 
         public bool IsHeld => _interactable != null && _interactable.IsHeld;
 
+        /// <summary>True when this organ may count as out: no gate, or it came out through the opening.</summary>
+        public bool LeftThroughOpening => exitGate == null || _cleared;
+
         public event Action<GrabbableOrgan> SatisfiedChanged;
 
         private void Awake()
         {
             _interactable = GetComponent<SurgicalInteractable>();
+            _homePosition = transform.position;
+            _homeRotation = transform.rotation;
         }
 
         private void OnEnable()
@@ -80,6 +98,64 @@ namespace VRSurgery.Transplant
             {
                 Evaluate();
             }
+
+            if (role == OrganRole.Native)
+            {
+                TrackExit();
+                TickBounce();
+            }
+        }
+
+        /// <summary>
+        /// Watches which way the heart crosses the plane over the chest. Coming out inside the
+        /// opening clears it; coming out anywhere else is the ribs, and going back in starts over.
+        /// </summary>
+        private void TrackExit()
+        {
+            if (exitGate == null || Satisfied) { return; }
+
+            Vector3 position = transform.position;
+            bool outside = exitGate.HeightAbove(position) >= 0f;
+
+            // First look after being placed or reset: nothing has crossed anything yet.
+            if (!_sideKnown)
+            {
+                _sideKnown = true;
+                _outside = outside;
+                _cleared = outside;
+                return;
+            }
+
+            if (outside == _outside) { return; }
+            _outside = outside;
+
+            if (!outside)
+            {
+                _cleared = false;
+                return;
+            }
+
+            _cleared = exitGate.Admits(position);
+            if (!_cleared)
+            {
+                SurgeryEvents.RaiseError(ErrorSeverity.Warning, ChestExitGate.BlockedMessage);
+            }
+        }
+
+        private void TickBounce()
+        {
+            if (_bounceFrames <= 0) { return; }
+            if (--_bounceFrames > 0) { return; }
+
+            Rigidbody body = GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                body.isKinematic = true;
+                body.useGravity = false;
+            }
+
+            transform.SetPositionAndRotation(_homePosition, _homeRotation);
+            _sideKnown = false;
         }
 
         /// <summary>
@@ -91,6 +167,14 @@ namespace VRSurgery.Transplant
         {
             if (role == OrganRole.Native)
             {
+                // Out beyond reach but not through the opening: back to the seat, a couple of
+                // frames on so the release has finished dropping it first.
+                if (exitGate != null && !_cleared && DistanceFromSeat >= removalDistance)
+                {
+                    _bounceFrames = BounceDelayFrames;
+                    return;
+                }
+
                 Evaluate();
             }
         }
@@ -106,7 +190,7 @@ namespace VRSurgery.Transplant
 
             bool done = role == OrganRole.Donor
                 ? distance <= seatTolerance && !IsHeld
-                : distance >= removalDistance;
+                : distance >= removalDistance && LeftThroughOpening;
 
             if (!done)
             {
@@ -136,13 +220,18 @@ namespace VRSurgery.Transplant
         {
             Satisfied = false;
             _reported = false;
+            _sideKnown = false;
+            _cleared = false;
+            _bounceFrames = 0;
         }
 
-        public void Bind(OrganRole organRole, Transform organSeat, TransplantProcedure transplant)
+        public void Bind(OrganRole organRole, Transform organSeat, TransplantProcedure transplant,
+            ChestExitGate gate = null)
         {
             role = organRole;
             seat = organSeat;
             procedure = transplant;
+            exitGate = gate;
         }
     }
 }
