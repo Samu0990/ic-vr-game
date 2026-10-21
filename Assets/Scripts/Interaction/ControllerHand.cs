@@ -87,6 +87,7 @@ namespace VRSurgery.Interaction
         private bool _seatSolved;
         private SurgicalInteractable _heldLast;
         private bool _closuresSolved;
+        private bool _deviceDriven;
 
         /// <summary>Closure the fingers are put at while working out where a handle would sit.</summary>
         private const float SeatReferenceClosure = 0.72f;
@@ -164,6 +165,48 @@ namespace VRSurgery.Interaction
         {
             ToolDefinition definition = held != null ? held.ToolDefinition : null;
             return definition != null && definition.Hold.IsConfigured ? definition.Hold : fallback;
+        }
+
+        private void OnEnable() => Application.onBeforeRender += FollowDevice;
+
+        private void OnDisable()
+        {
+            Application.onBeforeRender -= FollowDevice;
+            _deviceDriven = false;
+        }
+
+        /// <summary>
+        /// Puts the hand on the controller's real grip pose, read straight from the XR device.
+        ///
+        /// The TrackedPoseDriver is meant to do this, but it only moves what it is told is
+        /// tracked, and its tracking state is decided once, when the driver starts, and again
+        /// on device changes. On a Quest the controllers often appear after that moment, and
+        /// the glove then stayed where it was built, low in front of the visitor, instead of
+        /// following the hand. Reading the device each frame cannot get stuck that way. While a
+        /// controller is reporting a pose the driver is switched off so the two never fight;
+        /// with no XR device (the Editor, the simulator) the driver works as before.
+        /// </summary>
+        private void FollowDevice()
+        {
+            UnityEngine.XR.InputDevice device = UnityEngine.XR.InputDevices.GetDeviceAtXRNode(
+                isLeftHand ? UnityEngine.XR.XRNode.LeftHand : UnityEngine.XR.XRNode.RightHand);
+
+            Vector3 position = default;
+            Quaternion rotation = Quaternion.identity;
+            bool driven = device.isValid
+                && (device.characteristics & UnityEngine.XR.InputDeviceCharacteristics.Controller) != 0
+                && device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.isTracked, out bool tracked) && tracked
+                && device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.devicePosition, out position)
+                && device.TryGetFeatureValue(UnityEngine.XR.CommonUsages.deviceRotation, out rotation);
+
+            if (driven != _deviceDriven)
+            {
+                _deviceDriven = driven;
+                if (gripDriver != null) { gripDriver.enabled = !driven; }
+                Debug.Log($"[Mão] '{name}': {(driven ? "seguindo o controle direto pelo dispositivo XR" : "sem pose do dispositivo XR; volta ao TrackedPoseDriver")}");
+            }
+
+            if (driven) { transform.SetLocalPositionAndRotation(position, rotation); }
         }
 
         private void Awake()
@@ -300,8 +343,10 @@ namespace VRSurgery.Interaction
             bool active = controller == null || controller.gameObject.activeInHierarchy;
             SetShown(active);
 
+            FollowDevice();
+
             // No grip pose from this device: ride on the controller instead.
-            if (!GripTracked() && controller != null)
+            if (!_deviceDriven && !GripTracked() && controller != null)
             {
                 transform.SetPositionAndRotation(controller.position, controller.rotation);
             }
