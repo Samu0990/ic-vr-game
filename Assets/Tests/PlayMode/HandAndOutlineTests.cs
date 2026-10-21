@@ -179,6 +179,32 @@ namespace VRSurgery.Tests
         // ------------------------------------------------------------------ hand on the controller
 
         [Test]
+        public void ALuvaContinuaVisivelQuandoOTemplateDesligaOControleAntigo()
+        {
+            GameObject root = Spawn("Mao");
+            GameObject controller = Spawn("ControleDoTemplate");
+            GameObject model = Skeleton(false, root.transform);
+
+            GameObject skin = GameObject.CreatePrimitive(PrimitiveType.Cube);
+            _spawned.Add(skin);
+            skin.name = "PeleDaLuva";
+            skin.transform.SetParent(model.transform, false);
+            Renderer renderer = skin.GetComponent<Renderer>();
+
+            ControllerHand hand = root.AddComponent<ControllerHand>();
+            hand.Bind(false, controller.transform, model.transform, null, null, null, null);
+
+            // This is what XRInputModalityManager does when it swaps the template's modality.
+            // The glove is a sibling with its own pose driver, so it must not vanish with the
+            // obsolete controller visual/interactor object.
+            controller.SetActive(false);
+            renderer.enabled = false;
+            hand.SendMessage("Update");
+
+            Assert.IsTrue(renderer.enabled, "A luva deve continuar desenhada com o controle-base inativo.");
+        }
+
+        [Test]
         public void TheModelIsTurnedToWrapTheHandle_PalmInFingersDownPalmOffTheAxis()
         {
             foreach (bool left in new[] { false, true })

@@ -77,7 +77,6 @@ namespace VRSurgery.Interaction
         [SerializeField, HideInInspector] private bool _restStored;
 
         private Renderer[] _renderers = new Renderer[0];
-        private bool _shown = true;
         private HandHold _hold;
         private bool _holding;
         private float _pitchNow = float.NaN;
@@ -182,6 +181,15 @@ namespace VRSurgery.Interaction
             {
                 _closures[finger] = DeclaredClosure(finger);
             }
+        }
+
+        private void OnEnable()
+        {
+            // This glove is driven by its own grip-pose TrackedPoseDriver. The XR template may
+            // deactivate the old controller GameObject when its input modality changes; that
+            // object is only an input/interactor reference and must not make this independent
+            // glove disappear with it.
+            SetShown(true);
         }
 
         /// <summary>
@@ -297,7 +305,10 @@ namespace VRSurgery.Interaction
 
         private void Update()
         {
-            bool active = controller == null || controller.gameObject.activeInHierarchy;
+            // Keep the custom glove visible while this component is active. In particular, do
+            // not copy the active state of the template controller: XRInputModalityManager can
+            // turn that object off even though the grip-pose driver still has a valid device.
+            bool active = isActiveAndEnabled;
             SetShown(active);
 
             // No grip pose from this device: ride on the controller instead.
@@ -513,8 +524,6 @@ namespace VRSurgery.Interaction
 
         private void SetShown(bool shown)
         {
-            if (shown == _shown) { return; }
-            _shown = shown;
             for (int r = 0; r < _renderers.Length; r++)
             {
                 if (_renderers[r] != null) { _renderers[r].enabled = shown; }
