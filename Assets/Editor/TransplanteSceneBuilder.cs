@@ -179,6 +179,12 @@ namespace VRSurgery.EditorTools
             GameObject ribcage = BuildRibcage(patient, thorax);
             GameObject heart = BuildHeart(patient, thorax);
             GameObject sternum = BuildSternum(patient, thorax, heart, WorldBounds(ribcage));
+            RibcageSpreader cageSpreader = ribcage.GetComponent<RibcageSpreader>();
+            if (cageSpreader != null)
+            {
+                cageSpreader.Bind(sternum.GetComponent<SternotomyController>(),
+                    ribcage.transform.Find("Costelas_E"), ribcage.transform.Find("Costelas_D"));
+            }
             _window = WindowFor(thorax, sternum);
 
             GameObject donor = BuildDonorHeart(thorax);
@@ -377,12 +383,70 @@ namespace VRSurgery.EditorTools
             root.transform.localScale = RibcageProportionFix;
             root.transform.position = thorax;
 
-            Bounds bounds = WorldBounds(model);
+            // The imported cage is one mesh, but a median sternotomy must create a real central
+            // gap. Make two visually identical copies and retain triangles by side of the
+            // midline; RibcageSpreader then moves those halves with the retractor. The posterior
+            // seam is below the patient and never visible, while the anterior opening becomes
+            // wide enough to see and grab the heart.
+            GameObject left = new GameObject("Costelas_E");
+            left.transform.SetParent(root.transform, false);
+            GameObject right = new GameObject("Costelas_D");
+            right.transform.SetParent(root.transform, false);
+
+            GameObject leftModel = Object.Instantiate(model, left.transform);
+            leftModel.name = "RibcageModel_E";
+            GameObject rightModel = Object.Instantiate(model, right.transform);
+            rightModel.name = "RibcageModel_D";
+            KeepRibcageSide(leftModel, root.transform, -1f);
+            KeepRibcageSide(rightModel, root.transform, 1f);
+            Object.DestroyImmediate(model);
+
+            RibcageSpreader spreader = root.AddComponent<RibcageSpreader>();
+            spreader.Bind(null, left.transform, right.transform);
+
+            Bounds bounds = WorldBounds(root);
             Debug.Log($"[Transplante] gradil: {bounds.size.x * 100f:F1} x {bounds.size.y * 100f:F1} x " +
                       $"{bounds.size.z * 100f:F1} cm" +
                       (RibcageProportionFix == Vector3.one ? " (escala uniforme, sem distorção)"
                                                            : $" (CORRIGIDO {RibcageProportionFix})"));
             return root;
+        }
+
+        /// <summary>Keeps only triangles whose centre lies on one side of the cage midline.</summary>
+        private static void KeepRibcageSide(GameObject copy, Transform cage, float side)
+        {
+            foreach (MeshFilter filter in copy.GetComponentsInChildren<MeshFilter>(true))
+            {
+                Mesh source = filter.sharedMesh;
+                if (source == null || !source.isReadable) { continue; }
+
+                Mesh split = Object.Instantiate(source);
+                split.name = source.name + (side < 0f ? "_E" : "_D");
+                Vector3[] vertices = source.vertices;
+
+                for (int sub = 0; sub < source.subMeshCount; sub++)
+                {
+                    int[] triangles = source.GetTriangles(sub);
+                    List<int> kept = new List<int>(triangles.Length / 2);
+                    for (int i = 0; i + 2 < triangles.Length; i += 3)
+                    {
+                        Vector3 centre = (vertices[triangles[i]] + vertices[triangles[i + 1]] +
+                                          vertices[triangles[i + 2]]) / 3f;
+                        float x = cage.InverseTransformPoint(filter.transform.TransformPoint(centre)).x;
+                        if (x * side >= 0f)
+                        {
+                            kept.Add(triangles[i]);
+                            kept.Add(triangles[i + 1]);
+                            kept.Add(triangles[i + 2]);
+                        }
+                    }
+
+                    split.SetTriangles(kept, sub, false);
+                }
+
+                split.RecalculateBounds();
+                filter.sharedMesh = split;
+            }
         }
 
         /// <summary>

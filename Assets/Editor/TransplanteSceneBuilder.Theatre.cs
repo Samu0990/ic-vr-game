@@ -2990,27 +2990,25 @@ namespace VRSurgery.EditorTools
         {
             switch (id)
             {
-                // A palmar precision grip: the index supports the back of the handle instead of
-                // lying almost straight along it like a writing pencil.
+                // Fingertip/pencil grip used for a scalpel: thumb and middle support the handle,
+                // the index lies nearly straight over its spine, and the cutting end sits only
+                // slightly below the hand rather than crossing diagonally through the palm.
                 case "scalpel":
                     return new HandHold
                     {
-                        gripClosure = 0.52f,
-                        indexClosure = 0.42f,
-                        thumbClosure = 0.78f,
+                        gripClosure = 0.92f,
+                        indexClosure = 0.18f,
+                        thumbClosure = 0.54f,
                         handleRadius = 0.007f,
-                        // Measured on this rig: at 14 degrees no seat offset let the index reach
-                        // the shank below 0.95 closure, so every pose was a fist. Tipping the
-                        // handle to 60 and seating it 12 mm to the thumb side puts thumb, index
-                        // and middle all at exactly 7.0 mm, the handle's own radius. The seat is
-                        // then slid 25 mm along the handle, which the solver cannot see since it
-                        // measures across the axis: that moves the hand off the blade and back
-                        // onto the handle without disturbing the contact.
-                        pitchDegrees = 45f,
+                        pitchDegrees = 65f,
+                        yawDegrees = -87f,
                         precisionPinch = true,
-                        seatOffset = new Vector3(-0.012f, -0.00725f, 0.00725f),
+                        // Slide along the handle so the blade projects past the index fingertip;
+                        // this changes no finger-to-steel distance, only which part of the
+                        // scalpel sits between them.
+                        seatOffset = new Vector3(-0.0151f, -0.0613f, 0.0211f),
                         pinchKnuckleShare = 0.15f,
-                        tuckClosure = 0.85f,
+                        tuckClosure = 0.70f,
                     };
 
                 case "cautery-pen":

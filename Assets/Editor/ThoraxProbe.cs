@@ -2,6 +2,8 @@ using System.IO;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
+using UnityEngine.Rendering;
+using VRSurgery.Transplant;
 
 namespace VRSurgery.EditorTools
 {
@@ -27,19 +29,59 @@ namespace VRSurgery.EditorTools
             GameObject ribcage = GameObject.Find("Ribcage");
             GameObject sternum = GameObject.Find("Sternum");
             GameObject heart = GameObject.Find("Heart");
+            SternotomyController opening = sternum != null
+                ? sternum.GetComponent<SternotomyController>()
+                : null;
+            SternalRetractor retractor = Object.FindFirstObjectByType<SternalRetractor>();
+            RibcageSpreader cageSpreader = ribcage != null
+                ? ribcage.GetComponent<RibcageSpreader>()
+                : null;
+            ChestSkinPatch skinPatch = Object.FindFirstObjectByType<ChestSkinPatch>();
+            if (skinPatch != null)
+            {
+                skinPatch.Open();
+                skinPatch.Tick(10f);
+            }
 
             Vector3 focus = heart != null ? heart.transform.position : new Vector3(0f, 1.15f, 0.47f);
 
             if (skin != null) { skin.SetActive(false); }
 
-            Shot(Path.Combine(output, "a_torax_sem_pele.png"), focus + new Vector3(0.45f, 0.30f, -0.30f), focus, 950, 700);
-            Shot(Path.Combine(output, "b_torax_lateral.png"), focus + new Vector3(0.60f, 0.06f, 0.02f), focus, 950, 700);
+            if (opening != null)
+            {
+                opening.Bind(sternum.transform, heart != null ? new[] { heart } : new GameObject[0]);
+                opening.ResetClosed();
+            }
+            if (retractor != null) { retractor.Apply(0f); }
+            if (cageSpreader != null) { cageSpreader.Apply(0f); }
+
+            Shot(Path.Combine(output, "a_torax_fechado.png"), focus + new Vector3(0.45f, 0.30f, -0.30f), focus, 950, 700);
+
+            if (opening != null)
+            {
+                opening.Open();
+                opening.Tick(10f);
+            }
+            if (retractor != null) { retractor.Apply(1f); }
+            if (cageSpreader != null) { cageSpreader.Apply(1f); }
+
+            Shot(Path.Combine(output, "b_torax_aberto.png"), focus + new Vector3(0.45f, 0.34f, -0.26f), focus, 950, 700);
+            Shot(Path.Combine(output, "c_torax_aberto_lateral.png"), focus + new Vector3(0.60f, 0.10f, 0.02f), focus, 950, 700);
+            Shot(Path.Combine(output, "d_torax_aberto_de_cima.png"), focus + new Vector3(0f, 0.58f, -0.03f), focus, 950, 700);
+
+            GameObject pericardium = GameObject.Find("Pericardio");
+            if (pericardium != null) { pericardium.SetActive(false); }
+            Shot(Path.Combine(output, "e_acesso_ao_coracao.png"), focus + new Vector3(0f, 0.52f, -0.10f), focus, 950, 700);
 
             if (sternum != null) { sternum.SetActive(false); }
-            Shot(Path.Combine(output, "c_sem_esterno.png"), focus + new Vector3(0.30f, 0.40f, -0.15f), focus, 950, 700);
+            Shot(Path.Combine(output, "f_sem_esterno.png"), focus + new Vector3(0.30f, 0.40f, -0.15f), focus, 950, 700);
 
             if (ribcage != null) { ribcage.SetActive(false); }
-            Shot(Path.Combine(output, "d_so_coracao.png"), focus + new Vector3(0.22f, 0.14f, -0.16f), focus, 950, 700);
+            Shot(Path.Combine(output, "g_so_coracao.png"), focus + new Vector3(0.22f, 0.14f, -0.16f), focus, 950, 700);
+
+            Debug.Log($"@@THORAX_STATE open={opening != null && opening.IsOpen} " +
+                      $"heartVisible={heart != null && heart.activeInHierarchy} " +
+                      $"retractor={retractor != null} cageSpreader={cageSpreader != null}");
 
             Debug.Log("@@THORAX_OK");
             EditorApplication.Exit(0);
@@ -57,9 +99,22 @@ namespace VRSurgery.EditorTools
             holder.transform.position = from;
             holder.transform.rotation = Quaternion.LookRotation((look - from).normalized, Vector3.up);
 
+            GameObject lightObject = new GameObject("ProbeLight");
+            Light key = lightObject.AddComponent<Light>();
+            key.type = LightType.Directional;
+            key.intensity = 1.6f;
+            key.shadows = LightShadows.None;
+            lightObject.transform.rotation = holder.transform.rotation;
+
             RenderTexture rt = new RenderTexture(w, h, 24) { antiAliasing = 4 };
             cam.targetTexture = rt;
+            AmbientMode oldMode = RenderSettings.ambientMode;
+            Color oldLight = RenderSettings.ambientLight;
+            RenderSettings.ambientMode = AmbientMode.Flat;
+            RenderSettings.ambientLight = new Color(0.7f, 0.73f, 0.78f);
             cam.Render();
+            RenderSettings.ambientMode = oldMode;
+            RenderSettings.ambientLight = oldLight;
 
             RenderTexture.active = rt;
             Texture2D img = new Texture2D(w, h, TextureFormat.RGB24, false);
@@ -71,6 +126,7 @@ namespace VRSurgery.EditorTools
             cam.targetTexture = null;
             Object.DestroyImmediate(rt);
             Object.DestroyImmediate(img);
+            Object.DestroyImmediate(lightObject);
             Object.DestroyImmediate(holder);
         }
     }

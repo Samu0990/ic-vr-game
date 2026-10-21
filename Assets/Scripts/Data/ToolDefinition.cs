@@ -38,6 +38,10 @@ namespace VRSurgery.Data
                  "values support pistol grips whose attach frame is turned relative to the tool.")]
         [Range(-80f, 80f)] public float pitchDegrees;
 
+        [Tooltip("Degrees the working end turns sideways in the hand. A pen-like scalpel follows " +
+                 "the extended index finger instead of the controller's forward axis.")]
+        [Range(-180f, 180f)] public float yawDegrees;
+
         [Tooltip("Use a three-finger precision pinch: thumb, index and middle touch the handle; " +
                  "ring and little keep the authored gripClosure instead of being pulled onto it.")]
         public bool precisionPinch;
@@ -68,6 +72,7 @@ namespace VRSurgery.Data
             indexClosure = 0.24f,
             thumbClosure = 0.5f,
             pitchDegrees = 40f,
+            yawDegrees = 0f,
             handleRadius = 0f,
             precisionPinch = false,
             seatOffset = Vector3.zero,
@@ -87,7 +92,7 @@ namespace VRSurgery.Data
         /// set" — never "hold this with a flat open hand".
         /// </summary>
         public bool IsConfigured =>
-            gripClosure > 0f || indexClosure > 0f || thumbClosure > 0f || pitchDegrees != 0f ||
+            gripClosure > 0f || indexClosure > 0f || thumbClosure > 0f || pitchDegrees != 0f || yawDegrees != 0f ||
             precisionPinch || seatOffset != Vector3.zero || pinchKnuckleShare > 0f ||
             tuckClosure > 0f;
     }

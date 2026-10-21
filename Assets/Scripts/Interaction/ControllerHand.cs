@@ -80,6 +80,7 @@ namespace VRSurgery.Interaction
         private HandHold _hold;
         private bool _holding;
         private float _pitchNow = float.NaN;
+        private float _yawNow = float.NaN;
         private readonly float[] _closures = new float[HandPoser.FingerCount];
         private readonly float[] _frame = new float[HandPoser.FingerCount];
         private Vector3 _seatLocal;
@@ -127,13 +128,16 @@ namespace VRSurgery.Interaction
         /// pointing out past the thumb and down towards the fingers, which is how a hand holds
         /// one.
         /// </summary>
-        public Quaternion ToolHold => transform.rotation * Quaternion.Euler(CurrentPitch, 0f, 0f);
+        public Quaternion ToolHold => transform.rotation * Quaternion.Euler(CurrentPitch, CurrentYaw, 0f);
 
         /// <summary>
         /// The angle in use right now: the held instrument's own, eased in, or this hand's
         /// default when nothing is held.
         /// </summary>
         public float CurrentPitch => float.IsNaN(_pitchNow) ? toolPitch : _pitchNow;
+
+        /// <summary>Sideways turn authored by the held instrument.</summary>
+        public float CurrentYaw => float.IsNaN(_yawNow) ? 0f : _yawNow;
 
         /// <summary>The hold driving the fingers right now. Empty-handed this is the default.</summary>
         public HandHold CurrentHold => _holding ? _hold : SafeDefaultHold;
@@ -442,6 +446,12 @@ namespace VRSurgery.Interaction
             _pitchNow = float.IsNaN(_pitchNow)
                 ? target
                 : Mathf.Lerp(_pitchNow, target, deltaTime <= 0f ? 1f : Mathf.Clamp01(deltaTime * holdBlendSpeed));
+
+            float yawTarget = _holding ? _hold.yawDegrees : 0f;
+            _yawNow = float.IsNaN(_yawNow)
+                ? yawTarget
+                : Mathf.LerpAngle(_yawNow, yawTarget,
+                    deltaTime <= 0f ? 1f : Mathf.Clamp01(deltaTime * holdBlendSpeed));
         }
 
         /// <summary>
@@ -466,7 +476,7 @@ namespace VRSurgery.Interaction
             }
 
             Vector3 origin = HoldPosition(_hold);
-            Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, 0f, 0f) * Vector3.forward;
+            Vector3 axis = transform.rotation * Quaternion.Euler(_hold.pitchDegrees, _hold.yawDegrees, 0f) * Vector3.forward;
             float radius = HandleRadiusFor(held);
 
             // A pencil grip bends the thumb and index at the phalanges while their knuckles stay
@@ -479,6 +489,17 @@ namespace VRSurgery.Interaction
 
             for (int finger = 0; finger < _closures.Length; finger++)
             {
+                // In the fingertip/pencil grip used for a scalpel the index does not hook its
+                // fingertip around the handle. It lies almost straight along the spine and
+                // guides the blade. Solving the index by fingertip distance therefore produces
+                // exactly the wrong silhouette: a claw wrapped across the palm. Keep the
+                // authored index pose and only solve the opposing thumb and middle finger.
+                if (_hold.precisionPinch && finger == HandPoser.Index)
+                {
+                    _closures[finger] = _hold.indexClosure;
+                    continue;
+                }
+
                 // In a surgical precision grip only thumb, index and middle meet the scalpel.
                 // Solving ring and little against the same 7 mm axis twists the whole hand into
                 // the unnatural five-finger cage visible in the old capture. They tuck instead of
