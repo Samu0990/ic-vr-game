@@ -2465,6 +2465,38 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
+        /// A seta do "é aqui": mesmo formato da seta de instrumento, em verde e um pouco maior,
+        /// com uma frase pendurada embaixo. Cor diferente de propósito — a amarela diz COM O QUÊ
+        /// e esta diz ONDE, e duas setas iguais apontando para coisas diferentes ao mesmo tempo
+        /// ensinariam o visitante a não olhar para nenhuma das duas.
+        /// </summary>
+        private static Transform BuildNextStepArrow(out TextMesh label)
+        {
+            GameObject arrow = new GameObject("SetaProximoPasso");
+            Material bright = MakeUnlit(new Color(0.35f, 1f, 0.55f, 0.95f));
+            bright.renderQueue = 3002;
+
+            Mesh body = LatheMesh(new[]
+            {
+                new Vector2(0f, 0f), new Vector2(0.024f, 0.038f), new Vector2(0.009f, 0.038f),
+                new Vector2(0.009f, 0.082f), new Vector2(0f, 0.082f),
+            }, 20);
+            MeshPart("Corpo", arrow.transform, body, bright);
+
+            GameObject halo = MeshPart("Halo", arrow.transform, MakeRing(0.032f, 0.040f, 32),
+                MakeUnlit(new Color(0.4f, 1f, 0.6f, 0.45f)));
+            halo.transform.localPosition = new Vector3(0f, -0.052f, 0f);
+
+            // Acima da seta, não abaixo: embaixo fica dentro do tórax, em cima fica no ar livre.
+            label = BuildScreenText(arrow.transform, "Frase", new Vector3(0f, 0.125f, 0f), 0.022f);
+            label.color = new Color(0.72f, 1f, 0.8f);
+            label.anchor = TextAnchor.LowerCenter;
+
+            arrow.SetActive(false);
+            return arrow.transform;
+        }
+
+        /// <summary>
         /// The "take this one" arrow: a fat cone pointing down with a short shaft and a halo,
         /// bright and unlit so it reads over any instrument. Hidden until there is something to
         /// point at.

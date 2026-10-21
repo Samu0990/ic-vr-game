@@ -76,6 +76,34 @@ namespace VRSurgery.Transplant
         private SurgicalInteractable _interactable;
 
         /// <summary>The site being worked, if any. Drives the surgeon's prompt.</summary>
+        /// <summary>
+        /// Where the step the operation is waiting for has to be performed, or null when the
+        /// pump is done. Reads the gesture's own chain, so on the easier levels it points at the
+        /// one hold that performs three steps rather than at a site the player never touches.
+        /// </summary>
+        public Transform NextPoint
+        {
+            get
+            {
+                if (procedure == null || sites == null) { return null; }
+
+                BypassStep expected = procedure.Bypass.NextStep;
+                for (int i = 0; i < sites.Count; i++)
+                {
+                    BypassSite site = sites[i];
+                    if (site?.Point == null) { continue; }
+
+                    BypassStep first = site.Chain != null && site.Chain.Length > 0
+                        ? site.Chain[0]
+                        : site.Step;
+
+                    if (first == expected) { return site.Point; }
+                }
+
+                return null;
+            }
+        }
+
         public BypassSite ActiveSite { get; private set; }
 
         /// <summary>Last clinical refusal, for the room to show. Cleared when a step succeeds.</summary>

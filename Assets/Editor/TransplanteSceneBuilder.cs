@@ -1095,6 +1095,64 @@ namespace VRSurgery.EditorTools
             Debug.Log($"[Transplante] botão de recomeçar em {position}");
         }
         /// <summary>
+        /// O invólucro que acende em volta do alvo: uma esfera transparente e sem luz própria,
+        /// que o <see cref="StepHighlight"/> redimensiona para o tamanho do que estiver apontando.
+        /// Sem escrever no depth buffer, senão ela apagaria o próprio objeto que deveria mostrar.
+        /// </summary>
+        private static Transform BuildGlow(string name, Color colour)
+        {
+            GameObject glow = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+            glow.name = name;
+            Object.DestroyImmediate(glow.GetComponent<Collider>());
+
+            Material m = MakeUnlit(new Color(colour.r, colour.g, colour.b, 0.3f));
+            m.renderQueue = 3001;
+            MeshRenderer renderer = glow.GetComponent<MeshRenderer>();
+            renderer.sharedMaterial = m;
+            renderer.shadowCastingMode = UnityEngine.Rendering.ShadowCastingMode.Off;
+            renderer.receiveShadows = false;
+
+            glow.SetActive(false);
+            return glow.transform;
+        }
+
+        /// <summary>
+        /// Liga a seta de "é aqui" ao que já está montado na cena. Procura as peças em vez de
+        /// recebê-las por parâmetro: elas nascem em três métodos diferentes, e passar sete
+        /// transforms por essa corrente toda só para chegar aqui deixaria as assinaturas piores
+        /// do que a busca.
+        /// </summary>
+        private static void BuildStepArrow(TransplantProcedure procedure)
+        {
+            Transform arrow = BuildNextStepArrow(out TextMesh label);
+
+            GameObject midline = GameObject.Find("SternalMidline");
+            GameObject seat = GameObject.Find("PericardialSeat");
+            GameObject sick = GameObject.Find("Heart");
+            GameObject donor = GameObject.Find("DonorHeart");
+            BypassWorker pump = Object.FindFirstObjectByType<BypassWorker>();
+            VesselAnastomosis[] vessels = Object.FindObjectsByType<VesselAnastomosis>(FindObjectsSortMode.None);
+
+            NextStepArrow step = procedure.gameObject.AddComponent<NextStepArrow>();
+            step.Bind(procedure, pump, vessels,
+                midline != null ? midline.transform : null,
+                sick != null ? sick.transform : null,
+                donor != null ? donor.transform : null,
+                seat != null ? seat.transform : null,
+                arrow, label);
+
+            // E o brilho pulsante por cima do objeto em si. A seta diz onde olhar; isto não
+            // precisa nem ser lido.
+            StepHighlight highlight = procedure.gameObject.AddComponent<StepHighlight>();
+            highlight.Bind(Object.FindFirstObjectByType<NextToolHint>(), step,
+                BuildGlow("BrilhoInstrumento", new Color(1f, 0.85f, 0.2f)),
+                BuildGlow("BrilhoLugar", new Color(0.35f, 1f, 0.55f)));
+
+            Debug.Log($"[Transplante] seta de passo: linha={(midline != null)}, assento={(seat != null)}, " +
+                      $"bomba={(pump != null)}, vasos={vessels.Length}");
+        }
+
+        /// <summary>
         /// The panel that closes a turn: what happened, how long it took, what to do next.
         ///
         /// Its own surface rather than another line on the monitor. At the stand the visitor
@@ -1632,6 +1690,10 @@ namespace VRSurgery.EditorTools
             // A bouncing arrow over whichever instrument the step needs, until it is picked up.
             systems.AddComponent<NextToolHint>().Bind(procedure, BuildNextToolArrow(), scalpel, cauteryPen, saw,
                 needleHolder, paddles, cautery, _defibrillation);
+
+            // E outra sobre o LUGAR do passo, com a frase do que fazer ali. Saber que é o bisturi
+            // não ensina onde encostar o bisturi, e no estande não há a quem perguntar.
+            BuildStepArrow(procedure);
 
             // The drapes answer the fingertips and every instrument's working end.
             WireDrapeCloth(scalpel.transform.Find("BladeTip"), needleHolder.transform.Find("NeedleTip"), sawBlade, penTip);
