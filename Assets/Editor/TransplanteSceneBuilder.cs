@@ -580,6 +580,9 @@ namespace VRSurgery.EditorTools
             grab.movementType = XRBaseInteractable.MovementType.VelocityTracking;
 
             organ.AddComponent<ToolReleasePhysics>();
+            ReturnHomeOnRelease returnHome = organ.AddComponent<ReturnHomeOnRelease>();
+            returnHome.Bind(interactable);
+            returnHome.UseDropAndRespawn(ReachCentre(), 0.85f, TableTopY - 0.3f);
             organ.AddComponent<GrabbableOrgan>();
         }
 
