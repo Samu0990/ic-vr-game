@@ -5,7 +5,8 @@ using VRSurgery.Session;
 namespace VRSurgery.Surgery
 {
     /// <summary>
-    /// The button that starts a visitor's session from the attract menu.
+    /// The button that puts the operation back at the top, for the next visitor or for the
+    /// person testing the room.
     ///
     /// Hold, not tap. A one-touch reset within arm's reach of the operating field is a reset
     /// that will eventually be hit with an elbow halfway through somebody's turn, and there is
@@ -18,9 +19,11 @@ namespace VRSurgery.Surgery
     /// introduce the first one.
     ///
     /// It drives the session, never the patient directly: <see cref="EventSessionController"/>
-    /// going to Briefing is what the whole room already listens to in order to reset itself.
+    /// going to Briefing is what the whole room already listens to in order to reset itself, and
+    /// a button that resets the organs behind the session's back would leave the clock and the
+    /// scoreboard describing a round that no longer exists.
     /// </summary>
-    public class StartGameButton : MonoBehaviour
+    public class RestartButton : MonoBehaviour
     {
         [Header("Sources")]
         [SerializeField] private EventSessionController session;
@@ -58,8 +61,13 @@ namespace VRSurgery.Surgery
                  "restart and not a stutter of them.")]
         [SerializeField, Min(0f)] private float cooldownSeconds = 1.5f;
 
-        [Header("Menu")]
-        [Tooltip("Everything hidden outside attract mode.")]
+        [Header("Quando aparece")]
+        [Tooltip("Hidden until the round is over. The button then exists only when there is " +
+                 "nothing left to interrupt, which is a stronger guarantee than any amount of " +
+                 "hold time: during the operation there is simply nothing there to hit.")]
+        [SerializeField] private bool onlyAfterRound = true;
+
+        [Tooltip("Everything hidden while the button is not available.")]
         [SerializeField] private GameObject body;
 
         [Header("Screen")]
@@ -85,7 +93,7 @@ namespace VRSurgery.Surgery
         public bool IsPressed { get; private set; }
 
         /// <summary>How many restarts this button has fired. For tests and telemetry.</summary>
-        public int StartCount { get; private set; }
+        public int RestartCount { get; private set; }
 
         /// <summary>Whether the button is there to be pressed at all right now.</summary>
         public bool IsAvailable { get; private set; }
@@ -107,7 +115,9 @@ namespace VRSurgery.Surgery
         {
             if (deltaTime <= 0f) { return; }
 
-            IsAvailable = session != null && session.State == SessionState.Attract;
+            IsAvailable = !onlyAfterRound ||
+                          (session != null && session.HasResult &&
+                           session.State is SessionState.Success or SessionState.Failure);
 
             if (body != null && body.activeSelf != IsAvailable) { body.SetActive(IsAvailable); }
 
@@ -175,9 +185,10 @@ namespace VRSurgery.Surgery
             Charge = 0f;
             IsPressed = false;
             _cooldown = cooldownSeconds;
-            StartCount++;
+            RestartCount++;
 
-            // BeginSession resets the patient and opens the briefing before the round starts.
+            // Briefing, not Running: the visitor still has to pick up an instrument to start
+            // their own clock, exactly as they would arriving at an untouched room.
             if (session != null) { session.BeginSession(); }
         }
 

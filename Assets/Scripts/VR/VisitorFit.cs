@@ -40,7 +40,7 @@ namespace VRSurgery.VR
         [SerializeField] private bool lockEyeHeight = true;
 
         [Tooltip("Camera height above the stance in metres. Match the Main Camera Y when pressing Play without a headset.")]
-        [SerializeField] private float lockedEyeHeight = 1.36144f;
+        [SerializeField] private float lockedEyeHeight = 1.46144f;
 
         [Header("Short mode")]
         [SerializeField] private bool shortMode = true;

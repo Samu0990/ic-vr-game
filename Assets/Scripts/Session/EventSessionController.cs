@@ -67,7 +67,6 @@ namespace VRSurgery.Session
         private const float DefaultResultHold = 5f;
         private const float DefaultScoreboardHold = 8f;
         private const float DefaultPointsPerSecond = 100f;
-        private const float FailureMenuReturnSeconds = 3f;
 
         [SerializeField] private EventSessionDefinition definition;
 
@@ -175,19 +174,11 @@ namespace VRSurgery.Session
                     break;
 
                 case SessionState.Success:
+                case SessionState.Failure:
                     _stateElapsed += deltaTime;
                     if (_stateElapsed >= ResultHoldSeconds)
                     {
                         SetState(SessionState.Scoreboard);
-                    }
-
-                    break;
-
-                case SessionState.Failure:
-                    _stateElapsed += deltaTime;
-                    if (_stateElapsed >= FailureMenuReturnSeconds)
-                    {
-                        ReturnToAttract();
                     }
 
                     break;

@@ -990,15 +990,16 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
-        /// The button that starts the operation from the attract menu.
+        /// The button that starts the operation over.
         ///
         /// On the near corner of the instrument tray, on the visitor's own side: within easy
         /// reach, in plain view, and nowhere near the chest. Over the operative field it would
         /// sit where a hand reaching for the heart passes through it every single time.
         ///
-        /// Held rather than tapped, so brushing it while looking around does not start a session.
+        /// Held rather than tapped — see <see cref="RestartButton"/> — so brushing it costs
+        /// nothing.
         /// </summary>
-        private static void BuildStartGameButton(Vector3 thorax, EventSessionController session)
+        private static void BuildRestartButton(Vector3 thorax, EventSessionController session)
         {
             // Resolvido contra o envelope de alcance, nao escolhido no olho. Perto do visitante
             // (0,43 m e 0,52 m dos dois ombros) e a 20 graus do eixo do olhar: em cheio no campo
@@ -1006,7 +1007,7 @@ namespace VRSurgery.EditorTools
             // Flutuando 20 cm acima do esterno, no ar, nao pousado no campo cirurgico.
             Vector3 position = thorax + new Vector3(0.16f, 0.20f, -0.12f);
 
-            GameObject root = new GameObject("BotaoIniciarJogo");
+            GameObject root = new GameObject("BotaoRecomecar");
             root.transform.position = position;
 
             Vector3 stance = Stance(thorax);
@@ -1071,9 +1072,9 @@ namespace VRSurgery.EditorTools
             barRenderer.receiveShadows = false;
 
             TextMesh label = BuildScreenText(body.transform, "Rotulo", new Vector3(0f, 0.010f, 0.004f), 0.021f);
-            label.text = "MetaHealth\nINICIAR JOGO";
+            label.text = "SEGURE PARA RECOMEÇAR";
 
-            StartGameButton button = root.AddComponent<StartGameButton>();
+            RestartButton button = root.AddComponent<RestartButton>();
             button.Bind(session,
                 Object.FindObjectsByType<ControllerHand>(FindObjectsSortMode.None));
             SetPrivateField(button, "fill", fillPivot.transform);
@@ -1081,9 +1082,10 @@ namespace VRSurgery.EditorTools
             SetPrivateField(button, "face", renderer);
             SetPrivateField(button, "body", body);
 
-            body.SetActive(true);
+            // Apagado ate a rodada acabar; o builder nao deixa nada aceso na sala.
+            body.SetActive(false);
 
-            Debug.Log($"[Transplante] menu inicial em {position}");
+            Debug.Log($"[Transplante] botão de recomeçar em {position}");
         }
         /// <summary>
         /// O invólucro que acende em volta do alvo: uma esfera transparente e sem luz própria,
@@ -1580,7 +1582,7 @@ namespace VRSurgery.EditorTools
                 sewing, nameEntry);
 
             BuildEndScreen(_thorax, session, nameEntry, beat);
-            BuildStartGameButton(_thorax, session);
+            BuildRestartButton(_thorax, session);
 
             // The scalpel opens the operation and the needle closes it.
             BuildSkinStages(systems, procedure, sternum, _thorax, out SkinIncisionWorker incision,
