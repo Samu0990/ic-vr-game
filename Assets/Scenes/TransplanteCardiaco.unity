@@ -1593,7 +1593,7 @@ MonoBehaviour:
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
-    m_MaxSize: 40
+    m_MaxSize: 220
     m_Alignment: 1
     m_AlignByGeometry: 0
     m_RichText: 1
@@ -6763,18 +6763,22 @@ MonoBehaviour:
     Point: {fileID: 953643631}
     Radius: 0.028
     Seconds: 9
+    Chain: 010000000200000003000000
   - Step: 5
     Point: {fileID: 1080201249}
     Radius: 0.028
     Seconds: 5.5
+    Chain: 05000000
   - Step: 6
     Point: {fileID: 690721879}
     Radius: 0.028
     Seconds: 7
+    Chain: 06000000
   - Step: 7
     Point: {fileID: 1823614086}
     Radius: 0.028
     Seconds: 4
+    Chain: 07000000
   procedure: {fileID: 158277482}
   requireHeldInstrument: 0
   gates:
@@ -6939,6 +6943,7 @@ MonoBehaviour:
   vesselCount: 5
   includeSkinStages: 1
   includePericardium: 1
+  difficulty: 1
 --- !u!114 &158277483
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13522,7 +13527,7 @@ MonoBehaviour:
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
-    m_MaxSize: 40
+    m_MaxSize: 110
     m_Alignment: 4
     m_AlignByGeometry: 0
     m_RichText: 1
@@ -26450,7 +26455,7 @@ MonoBehaviour:
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
-    m_MaxSize: 40
+    m_MaxSize: 64
     m_Alignment: 1
     m_AlignByGeometry: 0
     m_RichText: 1
@@ -41513,6 +41518,7 @@ MonoBehaviour:
     thumbClosure: 0.5
     handleRadius: 0
     pitchDegrees: 40
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -47302,6 +47308,7 @@ MonoBehaviour:
     thumbClosure: 0.5
     handleRadius: 0
     pitchDegrees: 40
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -63488,6 +63495,7 @@ MonoBehaviour:
     thumbClosure: 0.72
     handleRadius: 0.01
     pitchDegrees: 10
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -73015,6 +73023,7 @@ MonoBehaviour:
     thumbClosure: 0.78
     handleRadius: 0.017
     pitchDegrees: -50
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -92460,6 +92469,7 @@ MonoBehaviour:
     thumbClosure: 0.72
     handleRadius: 0.01
     pitchDegrees: 20
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -106412,6 +106422,7 @@ MonoBehaviour:
     thumbClosure: 0.76
     handleRadius: 0.009
     pitchDegrees: 8
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -107426,7 +107437,7 @@ MonoBehaviour:
     m_FontStyle: 0
     m_BestFit: 0
     m_MinSize: 10
-    m_MaxSize: 40
+    m_MaxSize: 52
     m_Alignment: 1
     m_AlignByGeometry: 0
     m_RichText: 1
@@ -108514,6 +108525,7 @@ MonoBehaviour:
     thumbClosure: 0.72
     handleRadius: 0.006
     pitchDegrees: 28
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -127538,6 +127550,7 @@ MonoBehaviour:
     thumbClosure: 0.5
     handleRadius: 0
     pitchDegrees: 40
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0
@@ -131937,6 +131950,7 @@ MonoBehaviour:
     thumbClosure: 0.5
     handleRadius: 0
     pitchDegrees: 40
+    yawDegrees: 0
     precisionPinch: 0
     seatOffset: {x: 0, y: 0, z: 0}
     pinchKnuckleShare: 0

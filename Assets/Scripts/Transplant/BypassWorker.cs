@@ -27,7 +27,15 @@ namespace VRSurgery.Transplant
 
         [Tooltip("Steps this one hold performs, in order. More than one on the easier levels, " +
                  "where several steps collapse into a single gesture.")]
-        [NonSerialized] public BypassStep[] Chain;
+        //
+        // Serialized, and that is the whole point. The scene is generated in the Editor and
+        // saved; a [NonSerialized] chain is rebuilt at build time and then thrown away when the
+        // file is written. Opening the saved scene brought the site back with an empty chain, so
+        // the collapsed Médio gesture — cannulate, cross-clamp, cardioplegia in one hold —
+        // degraded to its single Step, cardioplegia. The procedure was still waiting on
+        // cannulation, refused it, and kept refusing it: the operation could not be finished at
+        // all from the saved scene, only from one freshly built in the Editor.
+        public BypassStep[] Chain = Array.Empty<BypassStep>();
 
         [NonSerialized] public float Held;
 

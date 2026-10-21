@@ -92,6 +92,16 @@ namespace VRSurgery.Transplant
         [Tooltip("Adds opening the pericardium, with the cautery pen, after the sternotomy.")]
         [SerializeField] private bool includePericardium;
 
+        [Tooltip("The level this scene was built at. It decides which bypass steps the team has " +
+                 "already done before the visitor arrives, and how long the round lasts.")]
+        //
+        // The level has to be stored, not just the rules derived from it. BypassPlan is a plain
+        // C# object on purpose — it has no Unity in it — which also means Unity does not write it
+        // to the scene. Without this field the saved scene came back as Difícil whatever it was
+        // built as, and a Médio scene then expected a cannulation the player's single gesture no
+        // longer performed.
+        [SerializeField] private SurgicalDifficulty difficulty = SurgicalDifficulty.Dificil;
+
         private static readonly TransplantStage[] CoreOrder =
         {
             TransplantStage.OpenChest,
@@ -140,7 +150,12 @@ namespace VRSurgery.Transplant
             if (includeSkinStages) { _order.Add(TransplantStage.CloseSkin); }
         }
 
-        private void Awake() => RebuildOrder();
+        private void Awake()
+        {
+            // Rebuilt from the stored level, because the plan itself does not survive the scene.
+            Plan = BypassPlan.For(difficulty);
+            RebuildOrder();
+        }
 
         public TransplantStage Stage { get; private set; } = TransplantStage.Idle;
 
@@ -207,6 +222,10 @@ namespace VRSurgery.Transplant
 
         public void Begin()
         {
+            // Again here, not only in Awake: another component's Awake may have read Plan before
+            // ours ran, and a round that starts on the wrong plan refuses a step the player can
+            // actually perform.
+            Plan = BypassPlan.For(difficulty);
             RebuildOrder();
             _urgent = string.Empty;
             VesselsConnected = 0;
@@ -228,9 +247,10 @@ namespace VRSurgery.Transplant
         }
 
         /// <summary>Sets the level. Takes effect at the next Begin.</summary>
-        public void SetDifficulty(SurgicalDifficulty difficulty)
+        public void SetDifficulty(SurgicalDifficulty level)
         {
-            Plan = BypassPlan.For(difficulty);
+            difficulty = level;
+            Plan = BypassPlan.For(level);
         }
 
         public void ResetProcedure()
