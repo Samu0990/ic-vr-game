@@ -105,10 +105,33 @@ namespace VRSurgery.Tests
             SurgeryEvents.ResetAll();
             InstallRenderSuppression();
 
-            yield return SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
+            yield return LoadAsync(sceneName);
 
             SuppressRendering();
             yield return null;
+        }
+
+        /// <summary>
+        /// The build's scene list holds only the transplant — the stand ships one scene. The
+        /// legacy scenes stay in the repository with their tests, and in the Editor they are
+        /// loaded by path, which does not need them in the list.
+        /// </summary>
+        private static AsyncOperation LoadAsync(string sceneName)
+        {
+#if UNITY_EDITOR
+            if (!Application.CanStreamedLevelBeLoaded(sceneName))
+            {
+                foreach (string guid in UnityEditor.AssetDatabase.FindAssets("t:Scene " + sceneName))
+                {
+                    string path = UnityEditor.AssetDatabase.GUIDToAssetPath(guid);
+                    if (System.IO.Path.GetFileNameWithoutExtension(path) != sceneName) { continue; }
+
+                    return UnityEditor.SceneManagement.EditorSceneManager.LoadSceneAsyncInPlayMode(
+                        path, new LoadSceneParameters(LoadSceneMode.Single));
+                }
+            }
+#endif
+            return SceneManager.LoadSceneAsync(sceneName, LoadSceneMode.Single);
         }
     }
 }

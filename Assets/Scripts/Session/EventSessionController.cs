@@ -96,6 +96,9 @@ namespace VRSurgery.Session
 
         public bool IsRunning => State == SessionState.Running;
 
+        /// <summary>What the visitor would score if the operation finished right now.</summary>
+        public int PointsNow => Mathf.RoundToInt(RemainingSeconds * PointsPerSecondRemaining);
+
         public SessionResult LastResult { get; private set; }
         public bool HasResult { get; private set; }
 

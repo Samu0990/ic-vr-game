@@ -2,50 +2,63 @@ using System;
 using System.IO;
 using UnityEditor;
 using UnityEditor.Build.Reporting;
+using UnityEditor.SceneManagement;
 using UnityEngine;
+using VRSurgery.Transplant;
 
 namespace VRSurgery.EditorTools
 {
     /// <summary>
-    /// Builds the transplant scene for desktop.
+    /// Builds Meta Health for the stand: one Windows build that runs on the PC with the Quest on
+    /// a Link cable, the queue's monitor on Display 1 and the projector over the mannequin on
+    /// Display 2. One scene, the transplant, at the level chosen in the VRSurgery menu (Médio
+    /// until another is chosen).
     ///
-    /// Separate from <see cref="AndroidBuildScript"/>, which builds the MVP scene for the Quest
-    /// and is kept as it is. The scenes here are independent — nothing in the project calls
-    /// LoadScene — so a build is one scene, and the one that matters is the transplant.
-    ///
-    /// Uso:
+    /// Uso por linha de comando:
+    ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildWindowsFromCommandLine [-nivel Facil|Medio|Dificil]
     ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildLinuxFromCommandLine
-    ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildWindowsFromCommandLine
+    ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildQuestFromCommandLine
+    /// The Linux and Quest builds are kept for the command line only: the stand is the PC.
     /// </summary>
     public static class TransplantBuildScript
     {
         private const string Scene = "Assets/Scenes/TransplanteCardiaco.unity";
+        private const string WindowsPath = "Builds/Windows/MetaHealth.exe";
 
-        [MenuItem("Build/Transplante — Linux 64")]
-        public static void BuildLinux() => Build(BuildTarget.StandaloneLinux64, "Builds/Linux/Transplante.x86_64");
+        /// <summary>Where the level picked in the VRSurgery menu is remembered for the next build.</summary>
+        public const string LevelPreference = "VRSurgery.NivelDaBuild";
 
-        [MenuItem("Build/Transplante — Windows 64")]
-        public static void BuildWindows() => Build(BuildTarget.StandaloneWindows64, "Builds/Windows/Transplante.exe");
+        /// <summary>The level the build uses: the last one built from the VRSurgery menu, Médio if none.</summary>
+        public static SurgicalDifficulty ChosenLevel() =>
+            (SurgicalDifficulty)EditorPrefs.GetInt(LevelPreference, (int)SurgicalDifficulty.Medio);
 
-        /// <summary>
-        /// O alvo de verdade do projeto: APK do Quest rodando sozinho. O AndroidBuildScript que
-        /// já existia builda a cena do MVP, não esta.
-        /// </summary>
-        [MenuItem("Build/Transplante — APK do Quest")]
-        public static void BuildQuest() => Build(BuildTarget.Android, "Builds/Quest/Transplante.apk");
+        [MenuItem("Build/Meta Health — Windows (PC + Quest no cabo)")]
+        public static void BuildWindowsFromMenu()
+        {
+            SurgicalDifficulty level = ChosenLevel();
+            bool ok = BuildWindows(level);
+            EditorUtility.DisplayDialog("Meta Health — Windows",
+                ok ? $"Build pronta no nível {level}:\n{Path.GetFullPath(WindowsPath)}"
+                   : "A build falhou. O motivo está no Console ([Build]).", "OK");
+        }
 
-        public static void BuildQuestFromCommandLine() => RunFromCommandLine(BuildQuest);
+        public static void BuildWindowsFromCommandLine() => RunFromCommandLine(() => BuildWindows(LevelFromArgs() ?? ChosenLevel()));
 
-        public static void BuildLinuxFromCommandLine() => RunFromCommandLine(BuildLinux);
+        public static void BuildLinuxFromCommandLine() => RunFromCommandLine(() => Build(BuildTarget.StandaloneLinux64, "Builds/Linux/MetaHealth.x86_64"));
 
-        public static void BuildWindowsFromCommandLine() => RunFromCommandLine(BuildWindows);
+        public static void BuildQuestFromCommandLine() => RunFromCommandLine(() => Build(BuildTarget.Android, "Builds/Quest/MetaHealth.apk"));
 
-        private static void RunFromCommandLine(Action build)
+        public static bool BuildWindows(SurgicalDifficulty level)
+        {
+            EnsureSceneLevel(level);
+            return Build(BuildTarget.StandaloneWindows64, WindowsPath);
+        }
+
+        private static void RunFromCommandLine(Func<bool> build)
         {
             try
             {
-                build();
-                EditorApplication.Exit(0);
+                EditorApplication.Exit(build() ? 0 : 1);
             }
             catch (Exception exception)
             {
@@ -54,13 +67,55 @@ namespace VRSurgery.EditorTools
             }
         }
 
-        private static void Build(BuildTarget target, string path)
+        private static SurgicalDifficulty? LevelFromArgs()
+        {
+            string[] args = Environment.GetCommandLineArgs();
+            for (int i = 0; i < args.Length - 1; i++)
+            {
+                if (args[i] != "-nivel") { continue; }
+                if (Enum.TryParse(args[i + 1], true, out SurgicalDifficulty level)) { return level; }
+                Debug.LogError($"[Build] nível desconhecido '{args[i + 1]}': use Facil, Medio ou Dificil.");
+            }
+
+            return null;
+        }
+
+        /// <summary>The level the saved scene was generated at, read from its TransplantProcedure.</summary>
+        private static SurgicalDifficulty? SceneLevel()
+        {
+            EditorSceneManager.OpenScene(Scene, OpenSceneMode.Single);
+            TransplantProcedure procedure = UnityEngine.Object.FindFirstObjectByType<TransplantProcedure>();
+            if (procedure == null) { return null; }
+
+            SerializedProperty difficulty = new SerializedObject(procedure).FindProperty("difficulty");
+            return difficulty != null ? (SurgicalDifficulty)difficulty.enumValueIndex : (SurgicalDifficulty?)null;
+        }
+
+        /// <summary>Regenerates the scene when it was last built at another level.</summary>
+        private static void EnsureSceneLevel(SurgicalDifficulty level)
+        {
+            SurgicalDifficulty? current = SceneLevel();
+            if (current == level)
+            {
+                Debug.Log($"[Build] cena já está no nível {level}");
+                return;
+            }
+
+            Debug.Log($"[Build] cena no nível {current?.ToString() ?? "desconhecido"}; reconstruindo no nível {level}");
+            switch (level)
+            {
+                case SurgicalDifficulty.Facil: TransplanteSceneBuilder.BuildEasy(); break;
+                case SurgicalDifficulty.Dificil: TransplanteSceneBuilder.BuildHard(); break;
+                default: TransplanteSceneBuilder.BuildMedium(); break;
+            }
+        }
+
+        private static bool Build(BuildTarget target, string path)
         {
             if (!File.Exists(Scene))
             {
                 Debug.LogError($"[Build] TRANSPLANT_BUILD_FAILED cena ausente: {Scene}");
-                EditorApplication.Exit(1);
-                return;
+                return false;
             }
 
             Directory.CreateDirectory(Path.GetDirectoryName(path));
@@ -83,7 +138,7 @@ namespace VRSurgery.EditorTools
             {
                 Debug.Log($"[Build] TRANSPLANT_BUILD_OK {target} -> {path} " +
                           $"({summary.totalSize / 1024 / 1024} MB, {summary.totalTime})");
-                return;
+                return true;
             }
 
             // Sem isto o motivo real some no meio do log.
@@ -100,6 +155,8 @@ namespace VRSurgery.EditorTools
                     }
                 }
             }
+
+            return false;
         }
     }
 }

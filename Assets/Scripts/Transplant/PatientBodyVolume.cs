@@ -82,6 +82,36 @@ namespace VRSurgery.Transplant
         public bool InsideClosedBody(Vector3 point, float windowMargin) =>
             UnderSkin(point, 0.015f) && !InWindow(point, windowMargin);
 
+        public Vector2 WindowCentre => windowCentre;
+        public Vector2 WindowHalfSize => windowHalfSize;
+
+        private bool HasSkin(int ix, int iz) =>
+            ix >= 0 && iz >= 0 && ix < columns && iz < rows && skinTop[iz * columns + ix] > NoSkin;
+
+        /// <summary>
+        /// Every edge of the body's outline seen from above, as pairs of world points (X, Z; Y is
+        /// the table top). Drawn on the projector while it is being lined up with the mannequin.
+        /// </summary>
+        public void ForEachOutlineEdge(System.Action<Vector3, Vector3> visit)
+        {
+            if (visit == null || skinTop == null || skinTop.Length < columns * rows) { return; }
+
+            for (int iz = 0; iz < rows; iz++)
+            {
+                for (int ix = 0; ix < columns; ix++)
+                {
+                    if (!HasSkin(ix, iz)) { continue; }
+
+                    float x0 = origin.x + ix * cell, x1 = x0 + cell;
+                    float z0 = origin.y + iz * cell, z1 = z0 + cell;
+                    if (!HasSkin(ix - 1, iz)) { visit(new Vector3(x0, tableTop, z0), new Vector3(x0, tableTop, z1)); }
+                    if (!HasSkin(ix + 1, iz)) { visit(new Vector3(x1, tableTop, z0), new Vector3(x1, tableTop, z1)); }
+                    if (!HasSkin(ix, iz - 1)) { visit(new Vector3(x0, tableTop, z0), new Vector3(x1, tableTop, z0)); }
+                    if (!HasSkin(ix, iz + 1)) { visit(new Vector3(x0, tableTop, z1), new Vector3(x1, tableTop, z1)); }
+                }
+            }
+        }
+
         /// <summary>Stores the baked body. Used by the scene builder and by tests.</summary>
         public void Bake(Vector2 firstCellCorner, float cellSize, int columnCount, int rowCount, float[] heights,
             float tableTopY, Vector2 window, Vector2 windowHalf, float openChestFloorY)

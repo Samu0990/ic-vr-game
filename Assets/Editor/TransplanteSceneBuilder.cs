@@ -91,13 +91,21 @@ namespace VRSurgery.EditorTools
         private static SurgicalDifficulty _difficulty = SurgicalDifficulty.Medio;
 
         [MenuItem("VRSurgery/Transplante — nível Fácil")]
-        public static void BuildEasy() { _difficulty = SurgicalDifficulty.Facil; Build(); }
+        public static void BuildEasy() => BuildAt(SurgicalDifficulty.Facil);
 
         [MenuItem("VRSurgery/Transplante — nível Médio")]
-        public static void BuildMedium() { _difficulty = SurgicalDifficulty.Medio; Build(); }
+        public static void BuildMedium() => BuildAt(SurgicalDifficulty.Medio);
 
         [MenuItem("VRSurgery/Transplante — nível Difícil")]
-        public static void BuildHard() { _difficulty = SurgicalDifficulty.Dificil; Build(); }
+        public static void BuildHard() => BuildAt(SurgicalDifficulty.Dificil);
+
+        /// <summary>Builds the scene at a level, and remembers it as the level the Windows build uses.</summary>
+        private static void BuildAt(SurgicalDifficulty level)
+        {
+            _difficulty = level;
+            EditorPrefs.SetInt(TransplantBuildScript.LevelPreference, (int)level);
+            Build();
+        }
 
         /// <summary>
         /// Where the thorax sits, as a fraction of stature measured from the soles. The heart
@@ -192,6 +200,8 @@ namespace VRSurgery.EditorTools
             WireHeadsetPostProcessing();
             WireGrabOutlines();
             WireBodyIntrusionWarning(systems);
+            FrameProjectionOnPatient();
+            WireStandScreens(systems);
             ApplyStaticAndShadowFlags();
             BakeRoomReflections(thorax);
 
@@ -1976,18 +1986,24 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
-        /// Overhead camera feeding the projector on Display 2, framed on the patient, the table
-        /// and the donor stand, so spectators see the operative field without a headset.
+        /// Where the projected picture starts, measured toward the feet from the operative
+        /// window's centre, in metres. The mannequin at the stand is a torso: the picture covers
+        /// the trunk from about the waist to the top of the head, and on-site calibration
+        /// (C) scales it to the real body.
+        /// </summary>
+        private const float ProjectedBelowWindow = 0.40f;
+
+        /// <summary>
+        /// Overhead camera feeding the projector on Display 2, framed on the patient's trunk and
+        /// nothing else: no table, no donor stand, no text, black around the body.
         ///
-        /// Position and framing carried over from SurgeryMVP's validated projection camera, not
-        /// re-measured against this scene's own patient — like the anastomosis offsets, this
-        /// needs to be checked against the real room before the stand opens.
+        /// It draws into a texture that ProjectionOutput shows on the projector, moved, scaled and
+        /// mirrored by the calibration done on site — the virtual patient and the real mannequin
+        /// never line up by themselves.
         /// </summary>
         private static void BuildProjectionCamera(Vector3 thoraxCenter)
         {
             GameObject go = new GameObject("ProjectionCamera");
-            go.transform.position = new Vector3(0f, 2.62f, thoraxCenter.z);
-            go.transform.rotation = Quaternion.Euler(90f, 90f, 0f);
 
             Camera cam = go.AddComponent<Camera>();
             cam.targetDisplay = ProjectionDisplayIndex;
@@ -2000,7 +2016,8 @@ namespace VRSurgery.EditorTools
             cam.orthographic = true;
             cam.nearClipPlane = 0.05f;
             cam.farClipPlane = 12f;
-            cam.orthographicSize = ProjectionSizeFor(cam);
+            cam.aspect = 16f / 9f;
+            FrameTrunk(cam);
 
             UnityEngine.Rendering.Universal.UniversalAdditionalCameraData data =
                 go.AddComponent<UnityEngine.Rendering.Universal.UniversalAdditionalCameraData>();
@@ -2013,49 +2030,119 @@ namespace VRSurgery.EditorTools
                       $"-> Display {ProjectionDisplayIndex + 1}, tamanho ortográfico {cam.orthographicSize:F3}");
         }
 
-        /// <summary>Frames the patient, the table and the donor stand in the projection camera's view.</summary>
-        private static float ProjectionSizeFor(Camera cam)
+        /// <summary>
+        /// Looks straight down at the trunk: from <see cref="ProjectedBelowWindow"/> under the
+        /// window to the top of the head, across the body's width. The picture's long side runs
+        /// along the body, so a 16:9 projector covers it with the least empty black.
+        /// </summary>
+        private static void FrameTrunk(Camera cam)
         {
-            Bounds subject = default;
-            bool any = false;
+            float feetEnd = _window.Center.z - ProjectedBelowWindow;
+            float headEnd = _bodyBounds.max.z;
+            float halfAlong = (headEnd - feetEnd) * 0.5f;
+            float halfAcross = _bodyBounds.extents.x;
 
-            foreach (string name in new[] { "Patient", "OperatingTable", "DonorStand" })
+            cam.transform.position = new Vector3(_bodyBounds.center.x, 2.62f, (headEnd + feetEnd) * 0.5f);
+            cam.transform.rotation = Quaternion.Euler(90f, 90f, 0f);
+
+            const float margin = 1.04f;
+            cam.orthographicSize = Mathf.Max(halfAcross, halfAlong / cam.aspect) * margin;
+
+            Debug.Log($"[Transplante] projeção enquadra o tronco: z de {feetEnd:F2} a {headEnd:F2}, " +
+                      $"largura {halfAcross * 200f:F0} cm, tamanho ortográfico {cam.orthographicSize:F3}");
+        }
+
+        /// <summary>
+        /// Leaves on the projector only the patient and what happens on it — skin, drapes, the
+        /// open chest, the hearts, the instruments and the gloved hands over the body — and moves
+        /// everything else out of its sight: table, donor stand, removal basin, room, trays,
+        /// screens, arrows and every line of text.
+        ///
+        /// Out of sight by layer where it can be (the projection camera never draws OperatorOnly).
+        /// Anything with a collider keeps its layer — the hands find grabbable and pressable things
+        /// on Default only — and is switched off just for the projector's render (ProjectionView).
+        /// Runs last, once the room and every piece of UI exist.
+        /// </summary>
+        private static void FrameProjectionOnPatient()
+        {
+            GameObject camera = GameObject.Find("ProjectionCamera");
+            int layer = EnsureLayer(OperatorLayer);
+            if (camera == null || layer < 0) { return; }
+
+            HashSet<Transform> shown = new HashSet<Transform>();
+            foreach (string name in new[] { "Patient", "CampoOperatorio", "Anastomoses", "BypassSites", "SternalMidline", "CanulasEClampe" })
             {
-                GameObject go = GameObject.Find(name);
-                if (go == null) { continue; }
+                GameObject root = GameObject.Find(name);
+                if (root != null) { shown.Add(root.transform); }
+            }
 
-                foreach (Renderer r in go.GetComponentsInChildren<Renderer>())
+            foreach (SurgicalInteractable item in Object.FindObjectsByType<SurgicalInteractable>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                shown.Add(item.transform);
+            }
+
+            foreach (ControllerHand hand in Object.FindObjectsByType<ControllerHand>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                shown.Add(hand.transform);
+            }
+
+            List<Renderer> switchedOff = new List<Renderer>();
+            int moved = 0, kept = 0;
+            foreach (Renderer renderer in Object.FindObjectsByType<Renderer>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID))
+            {
+                bool text = renderer.GetComponent<TextMesh>() != null || renderer.GetComponentInParent<Canvas>(true) != null;
+                if (!text && UnderAny(renderer.transform, shown))
                 {
-                    if (!any) { subject = r.bounds; any = true; } else { subject.Encapsulate(r.bounds); }
+                    // The gloves live under the rig, which the old rule moved off the projector.
+                    if (renderer.gameObject.layer == layer && renderer.GetComponentInParent<ControllerHand>(true) != null)
+                    {
+                        renderer.gameObject.layer = 0;
+                    }
+
+                    kept++;
+                    continue;
                 }
+
+                if (renderer.GetComponent<Collider>() == null) { renderer.gameObject.layer = layer; moved++; }
+                else if (renderer.gameObject.layer != layer) { switchedOff.Add(renderer); }
             }
 
-            if (!any)
+            camera.AddComponent<ProjectionView>().Bind(switchedOff.ToArray());
+            Debug.Log($"[Transplante] projetor só com o paciente: {kept} renderer(s) do corpo/instrumentos/luvas, " +
+                      $"{moved} fora por camada, {switchedOff.Count} desligado(s) só para a câmera de cima");
+        }
+
+        private static bool UnderAny(Transform t, HashSet<Transform> roots)
+        {
+            for (Transform walk = t; walk != null; walk = walk.parent)
             {
-                Debug.LogWarning("[Transplante] Nada para enquadrar; usando 1m de tamanho ortográfico.");
-                return 1f;
+                if (roots.Contains(walk)) { return true; }
             }
 
-            float halfWidth = 0f;
-            float halfHeight = 0f;
-            for (int i = 0; i < 8; i++)
+            return false;
+        }
+
+        /// <summary>
+        /// The projector's output with on-site calibration (ProjectionOutput), and the queue's
+        /// HUD over the surgeon's view on the stand's monitor (SpectatorHud).
+        /// </summary>
+        private static void WireStandScreens(GameObject systems)
+        {
+            GameObject camera = GameObject.Find("ProjectionCamera");
+            ProjectionOutput output = null;
+            if (camera != null)
             {
-                Vector3 corner = new Vector3(
-                    (i & 1) == 0 ? subject.min.x : subject.max.x,
-                    (i & 2) == 0 ? subject.min.y : subject.max.y,
-                    (i & 4) == 0 ? subject.min.z : subject.max.z);
-
-                Vector3 local = cam.transform.InverseTransformPoint(corner);
-                halfWidth = Mathf.Max(halfWidth, Mathf.Abs(local.x));
-                halfHeight = Mathf.Max(halfHeight, Mathf.Abs(local.y));
+                GameObject holder = new GameObject("SaidaProjetor");
+                output = holder.AddComponent<ProjectionOutput>();
+                output.Bind(camera.GetComponent<Camera>(), systems.GetComponent<PatientBodyVolume>());
             }
 
-            const float margin = 1.06f;
-            float size = Mathf.Max(halfHeight, halfWidth) * margin;
+            GameObject hud = new GameObject("HudMonitorFila", typeof(RectTransform));
+            hud.AddComponent<SpectatorHud>().Bind(systems.GetComponent<EventSessionController>(),
+                systems.GetComponent<TransplantProcedure>(), output);
 
-            Debug.Log($"[Transplante] enquadrando sujeito {subject.size} -> meia-largura {halfWidth:F3}, " +
-                      $"meia-altura {halfHeight:F3}, tamanho ortográfico {size:F3}");
-            return size;
+            Debug.Log("[Transplante] monitor da fila (Display 1): visão do cirurgião + tempo, pontos, etapa e ±s; " +
+                      "projetor (Display 2) com calibração C, troca de tela P, ajuda H");
         }
 
         private static Image BuildHudImage(Transform parent, string name, Vector2 anchorMin,
