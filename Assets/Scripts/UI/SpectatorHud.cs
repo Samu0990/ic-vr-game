@@ -239,7 +239,8 @@ namespace VRSurgery.Surgery
                 SessionState.Attract => "TRANSPLANTE DE CORAÇÃO\nPróximo visitante: coloque o óculos",
                 SessionState.Briefing => "Pegue o bisturi para começar",
                 SessionState.Success => session.HasResult
-                    ? $"CORAÇÃO BATENDO!\n{session.LastResult.Score:N0} pontos".Replace(',', '.')
+                    ? $"CORAÇÃO BATENDO!\n{session.LastResult.ElapsedWithMillis}  ·  " +
+                      $"{session.LastResult.Score:N0} pontos".Replace(',', '.')
                     : "CORAÇÃO BATENDO!",
                 SessionState.Failure => "TEMPO ESGOTADO",
                 _ => string.Empty,

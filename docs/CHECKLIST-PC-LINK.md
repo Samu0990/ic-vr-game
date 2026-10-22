@@ -23,6 +23,11 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
        Um terceiro monitor (opcional) mostra o relógio grande para a plateia (Display 3).
 4. [ ] Teste de cabo do app (Dispositivos → o óculos → Teste de conexão USB) sem aviso.
 
+Num notebook: placa de vídeo dedicada (NVIDIA GTX 1060 ou mais nova, RTX 20 em diante, ou AMD RX 400
+em diante; RTX 2050 e Intel Arc não servem), Windows 10/11 e notebook **ligado na tomada**. A tela
+do próprio notebook tem de ser a principal (Configurações → Sistema → Tela) para ser o Display 1;
+o projetor no HDMI vira o Display 2 com o Windows em Estender.
+
 ## No óculos
 
 5. [ ] **Quest Link ligado** (Configurações → Sistema → Quest Link), cabo conectado,
@@ -34,7 +39,9 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
 7. [ ] Conferir as três telas:
        - óculos: a sala de cirurgia, mãos de luva;
        - monitor: a visão do cirurgião com tempo, pontos, etapa e os ±segundos;
-       - projetor: só o corpo do paciente, fundo preto, sem mesa e sem texto.
+       - projetor: só o corpo do paciente, fundo preto, sem mesa e sem texto. No fim da vez,
+         o tempo que a pessoa levou aparece grande, com milésimos (ex.: 3:12,457), sobre o
+         corpo escurecido, e fica até o próximo visitante começar.
 8. [ ] **Calibrar o projetor** com o manequim (tecla `C`): aparece um contorno do corpo e uma grade
        de 10 cm. Setas movem, `+` e `−` mudam a escala, `[` e `]` giram, `X` e `Y` espelham,
        `Enter` **salva**. `C` sai. A calibração fica em

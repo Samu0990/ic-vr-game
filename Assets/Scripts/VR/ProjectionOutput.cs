@@ -3,6 +3,7 @@ using System.IO;
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using VRSurgery.Session;
 using VRSurgery.Transplant;
 
 namespace VRSurgery.VR
@@ -69,6 +70,11 @@ namespace VRSurgery.VR
     ///   arrows move, + and − scale, [ and ] turn, X and Y mirror, Enter saves — while calibrating;
     ///   P — swaps what the main monitor shows, the surgeon's view or this overhead view. With
     ///       Windows set to "Duplicate" there is one screen for both, and this is how to choose.
+    ///
+    /// When a turn ends, the time it took goes on the picture in large figures, to the
+    /// thousandth, over a dimmed body, and stays until the next visitor starts: the whole queue
+    /// reads it off the mannequin. It sits inside the calibrated picture, so it lands where the
+    /// body does.
     /// </summary>
     public class ProjectionOutput : MonoBehaviour
     {
@@ -92,10 +98,22 @@ namespace VRSurgery.VR
         [Tooltip("Spacing of the test grid, in metres on the patient.")]
         [SerializeField, Min(0.02f)] private float gridMetres = 0.1f;
 
+        [Header("Finishing time")]
+        [Tooltip("Optional: the stand's session, for the time a turn took.")]
+        [SerializeField] private EventSessionController session;
+
+        [SerializeField] private Color finishColour = new Color(1f, 0.85f, 0.2f);
+
+        [Tooltip("How bright the body stays behind the time, so the figures stand out.")]
+        [SerializeField, Range(0f, 1f)] private float bodyBehindTime = 0.3f;
+
         private RenderTexture _texture;
         private Vector2 _size = new Vector2(1920f, 1080f);
         private Canvas _canvas;
         private RectTransform _picture;
+        private RawImage _pictureImage;
+        private Text _finish;
+        private Text _finishTitle;
         private GameObject _pattern;
         private Camera _clear;
         private string _path;
@@ -113,6 +131,9 @@ namespace VRSurgery.VR
 
         /// <summary>Raised whenever calibration or the monitor swap changes, for the operator's HUD.</summary>
         public event Action Changed;
+
+        /// <summary>The large line on the picture right now ("3:12,457"), or empty while a turn runs.</summary>
+        public string FinishShown => _finish != null && _finish.gameObject.activeSelf ? _finish.text : string.Empty;
 
         private void Start()
         {
@@ -193,7 +214,15 @@ namespace VRSurgery.VR
             picture.texture = _texture;
             picture.raycastTarget = false;
             _picture = picture.rectTransform;
+            _pictureImage = picture;
             Stretch(_picture);
+
+            Font font = Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            _finishTitle = FinishLine("TempoFinalTitulo", font, new Vector2(0.1f, 0.68f), new Vector2(0.9f, 0.84f), 220);
+            _finishTitle.color = Color.white;
+            _finish = FinishLine("TempoFinal", font, new Vector2(0.03f, 0.28f), new Vector2(0.97f, 0.70f), 700);
+            _finish.color = finishColour;
+            RefreshFinish();
 
             RawImage pattern = new GameObject("PadraoDeTeste", typeof(RectTransform)).AddComponent<RawImage>();
             pattern.transform.SetParent(_picture, false);
@@ -211,8 +240,56 @@ namespace VRSurgery.VR
             rect.offsetMax = Vector2.zero;
         }
 
+        /// <summary>One line of the finishing time, as large as its box allows, inside the picture.</summary>
+        private Text FinishLine(string name, Font font, Vector2 anchorMin, Vector2 anchorMax, int largest)
+        {
+            Text text = new GameObject(name, typeof(RectTransform)).AddComponent<Text>();
+            text.transform.SetParent(_picture, false);
+            text.rectTransform.anchorMin = anchorMin;
+            text.rectTransform.anchorMax = anchorMax;
+            text.rectTransform.offsetMin = Vector2.zero;
+            text.rectTransform.offsetMax = Vector2.zero;
+            text.font = font;
+            text.fontStyle = FontStyle.Bold;
+            text.alignment = TextAnchor.MiddleCenter;
+            text.resizeTextForBestFit = true;
+            text.resizeTextMinSize = 40;
+            text.resizeTextMaxSize = largest;
+            text.raycastTarget = false;
+            text.gameObject.SetActive(false);
+            return text;
+        }
+
+        /// <summary>
+        /// The time the last turn took, from the moment it ends until the next visitor starts
+        /// (the session forgets its result only then). A turn that ran out of time has no time
+        /// to show, only that it ran out.
+        /// </summary>
+        private void RefreshFinish()
+        {
+            if (_finish == null) { return; }
+
+            bool ended = session != null && session.HasResult;
+            bool won = ended && session.LastResult.Succeeded;
+            string big = !ended ? string.Empty : won ? session.LastResult.ElapsedWithMillis : "TEMPO ESGOTADO";
+
+            if (_finish.text != big) { _finish.text = big; }
+            if (_finish.gameObject.activeSelf != ended) { _finish.gameObject.SetActive(ended); }
+
+            if (_finishTitle.text != "TEMPO") { _finishTitle.text = "TEMPO"; }
+            if (_finishTitle.gameObject.activeSelf != won) { _finishTitle.gameObject.SetActive(won); }
+
+            if (_pictureImage != null)
+            {
+                float light = ended ? bodyBehindTime : 1f;
+                _pictureImage.color = new Color(light, light, light, 1f);
+            }
+        }
+
         private void Update()
         {
+            RefreshFinish();
+
             Keyboard keys = Keyboard.current;
             if (keys == null) { return; }
 
@@ -380,5 +457,7 @@ namespace VRSurgery.VR
             projection = overhead;
             body = patient;
         }
+
+        public void BindSession(EventSessionController stand) => session = stand;
     }
 }

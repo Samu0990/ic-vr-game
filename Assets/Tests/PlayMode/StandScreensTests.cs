@@ -254,6 +254,62 @@ namespace VRSurgery.Tests
             StringAssert.Contains("N ", SpectatorHud.HelpText);
         }
 
+        // ------------------------------------------------------------------ tempo final no projetor
+
+        [Test]
+        public void OTempoFinal_VemEmMinutosSegundosEMilesimos()
+        {
+            Assert.AreEqual("3:12,457", SessionResult.WithMillis(192.457f));
+            Assert.AreEqual("0:05,000", SessionResult.WithMillis(5f));
+            Assert.AreEqual("1:00,001", SessionResult.WithMillis(60.001f));
+            Assert.AreEqual("0:00,000", SessionResult.WithMillis(-1f));
+        }
+
+        [UnityTest]
+        public IEnumerator NoFimDaVez_OTempoComMilesimosApareceGrandeNoProjetor_AteOProximoComecar()
+        {
+            // Built inactive so the definition is in place before Awake reads the round length.
+            GameObject host = Spawn("Sessao");
+            host.SetActive(false);
+            EventSessionController session = host.AddComponent<EventSessionController>();
+            session.Bind(EventSessionDefinition.Create(round: 150f), null);
+            host.SetActive(true);
+
+            Camera overhead = Spawn("CameraDeCima").AddComponent<Camera>();
+            overhead.orthographic = true;
+            overhead.cullingMask = 0;
+            ProjectionOutput output = Spawn("Saida").AddComponent<ProjectionOutput>();
+            output.Bind(overhead, null);
+            output.BindSession(session);
+            yield return null;
+            Assert.IsEmpty(output.FinishShown, "Antes de alguém terminar, o projetor mostra só o paciente.");
+
+            session.BeginSession();
+            session.StartRound();
+            for (int i = 0; i < 8; i++) { session.Tick(0.25f); }
+            SurgeryEvents.RaiseSurgeryCompleted();
+            yield return null;
+
+            Assert.AreEqual(session.LastResult.ElapsedWithMillis, output.FinishShown,
+                "O tempo que a pessoa levou, com milésimos.");
+            StringAssert.IsMatch(@"^\d+:\d\d,\d\d\d$", output.FinishShown);
+
+            RectTransform picture = output.transform.Find("ProjetorSaida/Imagem") as RectTransform;
+            RectTransform big = output.transform.Find("ProjetorSaida/Imagem/TempoFinal") as RectTransform;
+            Assert.IsNotNull(big);
+            Assert.IsTrue(big.IsChildOf(picture), "Dentro da imagem calibrada: cai sobre o manequim junto com o corpo.");
+            Assert.GreaterOrEqual(big.anchorMax.x - big.anchorMin.x, 0.8f, "Quase a largura toda: a fila inteira lê.");
+
+            // Não some quando a sessão volta à espera: fica para a fila ver enquanto o óculos troca de mão.
+            for (int i = 0; i < 80; i++) { session.Tick(0.25f); }
+            yield return null;
+            Assert.AreEqual(session.LastResult.ElapsedWithMillis, output.FinishShown);
+
+            session.BeginSession();
+            yield return null;
+            Assert.IsEmpty(output.FinishShown, "Quando o próximo visitante começa, o tempo sai.");
+        }
+
         // ------------------------------------------------------------------ sem placar
 
         [UnityTest]

@@ -2054,6 +2054,7 @@ namespace VRSurgery.EditorTools
                 GameObject holder = new GameObject("SaidaProjetor");
                 output = holder.AddComponent<ProjectionOutput>();
                 output.Bind(camera.GetComponent<Camera>(), systems.GetComponent<PatientBodyVolume>());
+                output.BindSession(systems.GetComponent<EventSessionController>());
             }
 
             GameObject hud = new GameObject("HudMonitorFila", typeof(RectTransform));

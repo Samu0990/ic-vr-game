@@ -46,6 +46,15 @@ namespace VRSurgery.Session
             Score = score;
         }
 
+        /// <summary>The time taken, to the thousandth, the way the stand shows it: "3:12,457".</summary>
+        public string ElapsedWithMillis => WithMillis(ElapsedSeconds);
+
+        public static string WithMillis(float seconds)
+        {
+            long ms = (long)Math.Round(Math.Max(0f, seconds) * 1000.0);
+            return $"{ms / 60000}:{ms / 1000 % 60:00},{ms % 1000:000}";
+        }
+
         public override string ToString() =>
             Succeeded
                 ? $"controlled in {ElapsedSeconds:F1}s — {Score} pts"
