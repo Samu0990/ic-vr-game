@@ -26,7 +26,9 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
 Num notebook: placa de vídeo dedicada (NVIDIA GTX 1060 ou mais nova, RTX 20 em diante, ou AMD RX 400
 em diante; RTX 2050 e Intel Arc não servem), Windows 10/11 e notebook **ligado na tomada**. A tela
 do próprio notebook tem de ser a principal (Configurações → Sistema → Tela) para ser o Display 1;
-o projetor no HDMI vira o Display 2 com o Windows em Estender.
+o projetor no HDMI vira o Display 2 com o Windows em Estender. Se o notebook só alimentar o
+projetor (`Win+P → Somente segunda tela`, ou tampa fechada), o projetor é a única tela e o jogo já
+abre nele com a visão de cima; `P` alterna para a primeira pessoa se precisar.
 
 ## No óculos
 
@@ -36,6 +38,9 @@ o projetor no HDMI vira o Display 2 com o Windows em Estender.
 ## Rodando
 
 6. [ ] Abrir `MetaHealth.exe` (pasta copiada). Se o Windows perguntar, permitir.
+       O óculos abre no **menu inicial** (logo e botão INICIAR): o visitante encosta a mão no botão
+       (ou mira e puxa o gatilho) e segura um instante. No fim de cada vez o menu volta sozinho.
+       A tecla `I` começa a vez pelo operador.
 7. [ ] Conferir as três telas:
        - óculos: a sala de cirurgia, mãos de luva;
        - monitor: a visão do cirurgião com tempo, pontos, etapa e os ±segundos;
@@ -57,7 +62,7 @@ o projetor no HDMI vira o Display 2 com o Windows em Estender.
 - **Óculos preto, jogo rodando no monitor:** o runtime OpenXR ativo não é o Link (passo 2), ou o
   Quest Link não está ligado (passo 5). Fechar o jogo, corrigir, abrir de novo.
 - **Projetor mostra o mesmo que o monitor:** o Windows está em "Duplicar". `Win+P → Estender` e
-  reabrir o jogo. Sem segunda tela, `P` escolhe o que aparece na única tela.
+  reabrir o jogo. Com uma tela só, o jogo abre nela com a visão de cima e `P` alterna.
 - **Imagem do projetor torta ou espelhada:** calibrar de novo com `C` e salvar com `Enter`.
 - **Mãos/controle não aparecem:** conferir se os controles estão ligados e pareados no óculos.
 

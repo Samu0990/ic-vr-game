@@ -139,6 +139,11 @@ namespace VRSurgery.VR
         {
             _path = ProjectionCalibration.FilePath;
             Calibration = ProjectionCalibration.Load(_path);
+
+            // At the stand the notebook may drive the projector alone ("second screen only", or
+            // the lid closed): the one screen there is then the projector, and it shows the
+            // patient from above. P still swaps. Not in the Editor, whose Game view is one screen.
+            if (!Application.isEditor && !ProjectorConnected) { OnMainMonitor = true; }
             Build();
             Apply();
         }
