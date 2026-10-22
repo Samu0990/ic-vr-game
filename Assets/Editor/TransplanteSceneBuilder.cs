@@ -215,6 +215,9 @@ namespace VRSurgery.EditorTools
             ApplyStaticAndShadowFlags();
             BakeRoomReflections(thorax);
 
+            // Last: a room of its own, away from the theatre, so nothing above counts it in.
+            BuildStartMenu(systems);
+
             ReportFit(ribcage, heart);
 
             EditorSceneManager.SaveScene(EditorSceneManager.GetActiveScene(), TargetScene, true);

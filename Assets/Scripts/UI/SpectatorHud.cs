@@ -60,6 +60,7 @@ namespace VRSurgery.Surgery
         /// <summary>The keys the operator has on the PC, as shown with H.</summary>
         public const string HelpText =
             "TECLAS DO OPERADOR\n\n" +
+            "I   iniciar a vez (no menu inicial)\n" +
             "R   recentralizar a mesa em quem está de óculos\n" +
             "N   encerrar a vez e preparar o próximo\n" +
             "↑ ↓  altura do visitante ±2 cm (fora da rodada)\n" +

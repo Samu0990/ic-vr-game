@@ -91,6 +91,12 @@ namespace VRSurgery.VR
         /// <summary>Raised when the operator changes the correction.</summary>
         public event System.Action<float> OperatorOffsetChanged;
 
+        /// <summary>
+        /// Where the head goes instead of the operating stance while it is set: the start menu's
+        /// own room. R, the arrows and the headset being put on all fit there meanwhile.
+        /// </summary>
+        public Transform StanceOverride { get; set; }
+
         public int Fits { get; private set; }
 
         private void OnEnable()
@@ -178,7 +184,8 @@ namespace VRSurgery.VR
         /// <summary>Moves the rig so the head is over the stance, facing the patient, lifted if short.</summary>
         public void Fit()
         {
-            if (rig == null || head == null || stance == null) { return; }
+            Transform target = StanceOverride != null ? StanceOverride : stance;
+            if (rig == null || head == null || target == null) { return; }
 
             // Height above the real floor, which is where the rig stands in floor tracking. A
             // camera offset means device tracking, where the height is a guess: no lift then.
@@ -197,7 +204,7 @@ namespace VRSurgery.VR
                 Lift = shortMode && floorTracking ? LiftFor(eye) : 0f;
             }
 
-            Solve(head.position, head.forward, rig.position, rig.rotation, stance.position, stance.forward,
+            Solve(head.position, head.forward, rig.position, rig.rotation, target.position, target.forward,
                 Lift + OperatorOffset, out Vector3 position, out Quaternion rotation);
             rig.SetPositionAndRotation(position, rotation);
             Fits++;
