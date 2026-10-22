@@ -520,10 +520,20 @@ namespace VRSurgery.EditorTools
             ConvertGltfMaterials(model);
             NormaliseHeartScale(model);
 
+            // The sick heart has to look sick to someone who has never seen one: dilated —
+            // larger and rounder — and dull and dark, where the donor's is a vivid red.
+            Dilate(model, SickLengthening, SickWidening);
+            Tint(model, SickTint, 0.22f);
+
             // Left of the midline and slightly toward the feet, with the apex pointing down-left
             // and forward — where a heart sits, not centred in the chest like a textbook diagram.
             root.transform.rotation = Quaternion.Euler(90f, 0f, 22f);
             root.transform.position = thorax + new Vector3(-0.025f, 0.01f, -0.02f);
+
+            // Dilated, it reaches the left wall of the cage; the seat stays where a heart sits and
+            // only the muscle moves in, by what it overflows.
+            GameObject cage = GameObject.Find("Ribcage");
+            if (cage != null) { KeepInside(model, WorldBounds(cage), 0.001f); }
 
             DressAsGrabbable(root, model);
 
@@ -654,6 +664,7 @@ namespace VRSurgery.EditorTools
             model.name = "DonorHeartModel";
             ConvertGltfMaterials(model);
             NormaliseHeartScale(model);
+            Tint(model, DonorTint, 0.55f);
 
             DressAsGrabbable(organ, model);
             organ.AddComponent<Heartbeat>().Bind(model.transform);
@@ -1525,6 +1536,12 @@ namespace VRSurgery.EditorTools
 
             // Out of the chest, the sick heart lies still in its own basin across the table.
             heart.GetComponent<GrabbableOrgan>().BindRemovalBasin(BuildRemovalBasin(_thorax));
+
+            // The first time each heart is picked up, one line says what is in the hand.
+            GameObject heartInfo = new GameObject("InfoDosCoracoes");
+            heartInfo.AddComponent<OrganInfoPopups>().Bind(
+                new[] { heart.GetComponent<GrabbableOrgan>(), donor.GetComponent<GrabbableOrgan>() },
+                session, EnsureLayer(OperatorLayer));
 
             foreach (VesselAnastomosis vessel in vessels)
             {
@@ -2579,6 +2596,82 @@ namespace VRSurgery.EditorTools
         /// Escala uniforme, nunca por eixo: distorcer um órgão para caber é o tipo de coisa que
         /// passa despercebida na tela e um médico enxerga na hora.
         /// </summary>
+        /// <summary>
+        /// How much bigger the sick heart is along its long axis, and across it. Dilated
+        /// cardiomyopathy rounds the heart out more than it lengthens it: about 1.2x overall,
+        /// within what the ribcage still holds (ReportFit checks it at every build).
+        /// </summary>
+        private const float SickLengthening = 1.08f;
+        private const float SickWidening = 1.15f;
+
+        /// <summary>Multiplies the sick heart's colours: darker, greyer, a little purple.</summary>
+        private static readonly Color SickTint = new Color(0.6f, 0.47f, 0.5f);
+
+        /// <summary>Multiplies the donor heart's colours: a vivid, healthy red.</summary>
+        private static readonly Color DonorTint = new Color(1.0f, 0.72f, 0.7f);
+
+        /// <summary>
+        /// Scales a heart model more across than along, about the centre of its own bounds, so it
+        /// stays where it was placed.
+        /// </summary>
+        private static void Dilate(GameObject model, float along, float across)
+        {
+            Transform parent = model.transform.parent;
+            Bounds before = LocalBounds(model, parent);
+
+            Bounds local = LocalBounds(model, model.transform);
+            Vector3 size = local.size;
+            int longest = size.x >= size.y && size.x >= size.z ? 0 : size.y >= size.z ? 1 : 2;
+            Vector3 factor = Vector3.one * across;
+            factor[longest] = along;
+            model.transform.localScale = Vector3.Scale(model.transform.localScale, factor);
+
+            Bounds after = LocalBounds(model, parent);
+            model.transform.localPosition += before.center - after.center;
+
+            Debug.Log($"[Transplante] coração doente dilatado: {before.size * 100f} -> {after.size * 100f} cm");
+        }
+
+        /// <summary>
+        /// Moves a model by the least it takes for its bounds to sit inside <paramref name="room"/>
+        /// with a margin, on every axis where it is small enough to fit at all.
+        /// </summary>
+        private static void KeepInside(GameObject model, Bounds room, float margin)
+        {
+            Bounds b = WorldBounds(model);
+            Vector3 shift = Vector3.zero;
+            for (int axis = 0; axis < 3; axis++)
+            {
+                if (b.size[axis] + 2f * margin > room.size[axis]) { continue; }
+                float low = room.min[axis] + margin - b.min[axis];
+                float high = room.max[axis] - margin - b.max[axis];
+                shift[axis] = low > 0f ? low : high < 0f ? high : 0f;
+            }
+
+            if (shift == Vector3.zero) { return; }
+            model.transform.position += shift;
+            Debug.Log($"[Transplante] coração doente ajustado {shift * 100f} cm para caber no gradil");
+        }
+
+        /// <summary>Gives a heart its own copies of its materials, tinted and with the given wetness.</summary>
+        private static void Tint(GameObject model, Color tint, float smoothness)
+        {
+            foreach (Renderer renderer in model.GetComponentsInChildren<Renderer>(true))
+            {
+                Material[] materials = renderer.sharedMaterials;
+                for (int i = 0; i < materials.Length; i++)
+                {
+                    if (materials[i] == null) { continue; }
+                    Material copy = new Material(materials[i]) { name = materials[i].name + "_" + model.name };
+                    if (copy.HasProperty("_BaseColor")) { copy.SetColor("_BaseColor", copy.GetColor("_BaseColor") * tint); }
+                    if (copy.HasProperty("_Smoothness")) { copy.SetFloat("_Smoothness", smoothness); }
+                    materials[i] = copy;
+                }
+
+                renderer.sharedMaterials = materials;
+            }
+        }
+
         private static void NormaliseHeartScale(GameObject model)
         {
             Bounds local = LocalBounds(model, model.transform);

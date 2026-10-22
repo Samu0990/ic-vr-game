@@ -1,0 +1,7 @@
+# Textos novos do estande, num lugar só, para revisão do orientador.
+# Formato: chave<TAB>texto. "\n" quebra a linha. Linhas começando com # são ignoradas.
+# Depois de editar: salvar, voltar à Unity e reconstruir a cena (os rótulos são gravados nela).
+popup_coracao_doente	Coração doente\ndilatado e fraco, não bombeia direito
+popup_coracao_doador	Coração do doador\nsaudável
+rotulo_bacia_doador	DOADOR
+rotulo_cuba_retirada	RETIRADO

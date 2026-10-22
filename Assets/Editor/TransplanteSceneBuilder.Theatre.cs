@@ -2014,6 +2014,20 @@ namespace VRSurgery.EditorTools
 
             // Iodine-prepped skin, not bare skin: brownish orange, and slightly wet.
             Material prepped = Paint("prepSkin", new Color(0.78f, 0.5f, 0.34f), 0f, 0.5f);
+
+            // The whole body in the window's own material. The body kept the material converted
+            // from its glTF, which came out grey, and its edge against the prepped window read as
+            // a seam where the two met.
+            GameObject body = GameObject.Find("Body_Skin");
+            if (body != null)
+            {
+                foreach (Renderer r in body.GetComponentsInChildren<Renderer>(true))
+                {
+                    Material[] same = new Material[r.sharedMaterials.Length];
+                    for (int i = 0; i < same.Length; i++) { same[i] = prepped; }
+                    r.sharedMaterials = same;
+                }
+            }
             // The cut face shows the layers: skin, dermis, yellow fat, fascia, muscle. White base
             // colour so the texture's own colours come through; wet, so fairly glossy.
             Material wound = DoubleSided(Dress(Paint("woundLayers", Color.white, 0f, 0.72f), _woundLayers, new Vector2(1f, 3f), 0.8f));
@@ -2990,6 +3004,36 @@ namespace VRSurgery.EditorTools
             stand.transform.position = basinSpot - new Vector3(0f, 0.89f, 0f);
 
             Debug.Log($"[Transplante] coração doador na bacia da mesa lateral em {basinSpot}");
+            if (basin != null) { BasinLabel(basin.parent, StandTexts.Get("rotulo_bacia_doador", "DOADOR"), _thorax, basin.position); }
+        }
+
+        /// <summary>
+        /// The basin's name on a small white card standing behind it, turned to where the visitor
+        /// stands: "DOADOR" over the new heart, "RETIRADO" over the old one. The words come from
+        /// the stand's text file, where the advisor reviews them.
+        /// </summary>
+        private static void BasinLabel(Transform basinRoot, string text, Vector3 thorax, Vector3? at = null)
+        {
+            Vector3 centre = at ?? basinRoot.position;
+            Vector3 eye = Stance(thorax) + new Vector3(0f, 1.55f, 0f);
+            Vector3 away = centre - eye;
+            away.y = 0f;
+            Vector3 back = away.sqrMagnitude > 1e-6f ? away.normalized : Vector3.forward;
+
+            GameObject card = new GameObject("Rotulo");
+            card.transform.SetParent(basinRoot, true);
+            card.transform.position = centre + back * 0.11f + Vector3.up * 0.06f;
+            card.transform.rotation = Quaternion.LookRotation(back, Vector3.up);
+
+            Material white = Paint("labelCard", new Color(0.95f, 0.95f, 0.93f), 0f, 0.2f);
+            Part(PrimitiveType.Cube, "Cartao", card.transform, new Vector3(0f, 0f, 0.002f),
+                new Vector3(0.13f, 0.04f, 0.003f), white, null, false, false);
+
+            TextMesh label = BuildScreenText(card.transform, "Texto", new Vector3(0f, 0f, -0.001f), 0.024f);
+            label.transform.localRotation = Quaternion.identity;
+            label.text = text;
+            label.color = new Color(0.12f, 0.12f, 0.14f);
+            Debug.Log($"[Transplante] rótulo '{text}' na bacia em {centre}");
         }
 
         /// <summary>
@@ -3017,6 +3061,8 @@ namespace VRSurgery.EditorTools
             rest.SetParent(root.transform, false);
             rest.localPosition = new Vector3(0f, 0.08f, 0f);
             rest.localRotation = Quaternion.Euler(0f, 0f, 12f);
+
+            BasinLabel(root.transform, StandTexts.Get("rotulo_cuba_retirada", "RETIRADO"), thorax);
 
             Debug.Log($"[Transplante] cuba de retirada em {root.transform.position}, do outro lado da mesa");
             return rest;
