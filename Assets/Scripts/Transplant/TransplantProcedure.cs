@@ -216,9 +216,49 @@ namespace VRSurgery.Transplant
         /// </summary>
         public void SetUrgentInstruction(string text) => _urgent = text ?? string.Empty;
 
+        /// <summary>How long a notice stays up before the stage's own instruction comes back.</summary>
+        public const float NoticeSeconds = 4f;
+
+        /// <summary>What the room says on Fácil when the visitor reaches the pump the team already ran.</summary>
+        public const string TeamOnBypassNotice = "A equipe já colocou o paciente em bomba";
+
+        private string _notice = string.Empty;
+        private float _noticeLeft;
+
+        /// <summary>
+        /// A passing message that stands in for the instruction for a few seconds: a refusal, or
+        /// what the team did. It goes by itself, and at the next stage at the latest, because an
+        /// instruction that outlives its moment sits over the one the visitor needs next — on the
+        /// monitor and on the card alike. Fibrillation is not a notice: it stays until a shock
+        /// clears it (SetUrgentInstruction).
+        /// </summary>
+        public void ShowNotice(string text, float seconds = NoticeSeconds)
+        {
+            _notice = text ?? string.Empty;
+            _noticeLeft = string.IsNullOrEmpty(_notice) ? 0f : Mathf.Max(0.1f, seconds);
+        }
+
+        private void Update() => Tick(Time.deltaTime);
+
+        /// <summary>Ages the notice. Stepped by hand in tests.</summary>
+        public void Tick(float deltaTime)
+        {
+            if (_noticeLeft <= 0f) { return; }
+
+            _noticeLeft -= Mathf.Max(0f, deltaTime);
+            if (_noticeLeft <= 0f) { _notice = string.Empty; }
+        }
+
         public event Action<TransplantStage> StageChanged;
         public event Action<int, int> VesselConnected;
         public event Action ProcedureCompleted;
+
+        /// <summary>
+        /// A stage finished, and whether the team finished it before the visitor got there (the
+        /// pump on Fácil) rather than the visitor's hands. Raised before the next stage begins,
+        /// so the last stage is counted before the operation is declared complete.
+        /// </summary>
+        public event Action<TransplantStage, bool> StageCompleted;
 
         public void Begin()
         {
@@ -228,6 +268,7 @@ namespace VRSurgery.Transplant
             Plan = BypassPlan.For(difficulty);
             RebuildOrder();
             _urgent = string.Empty;
+            ShowNotice(null);
             VesselsConnected = 0;
             Bypass.Reset();
 
@@ -242,7 +283,7 @@ namespace VRSurgery.Transplant
 
             // On a level where the team already went on bypass, the GoOnBypass stage passes its
             // own check the moment it is reached, because Bypass.IsArrested is already true. It is
-            // satisfied by asking the pump, never skipped.
+            // satisfied by asking the pump, never skipped (see MoveOnFrom).
             SetStage(_order[0]);
         }
 
@@ -256,6 +297,7 @@ namespace VRSurgery.Transplant
         public void ResetProcedure()
         {
             _urgent = string.Empty;
+            ShowNotice(null);
             VesselsConnected = 0;
             Bypass.Reset();
             SetStage(TransplantStage.Idle);
@@ -293,9 +335,36 @@ namespace VRSurgery.Transplant
                 return false;
             }
 
-            SetStage(index + 1 < _order.Count ? _order[index + 1] : TransplantStage.Complete);
+            StageCompleted?.Invoke(stage, false);
+            MoveOnFrom(index);
             return true;
         }
+
+        /// <summary>
+        /// Goes to the stage after the one at <paramref name="index"/>, completing on arrival any
+        /// the team has already done. On Fácil the patient comes in on the pump, and the only
+        /// gesture the visitor has there is coming OFF it — refused before the implant, rightly —
+        /// so nothing could ever finish GoOnBypass and the operation stopped after the
+        /// pericardium. It is finished by asking the pump whether the patient is arrested, the
+        /// same check CompleteStage makes, and the room says why it went by.
+        /// </summary>
+        private void MoveOnFrom(int index)
+        {
+            string notice = null;
+            TransplantStage next = After(index);
+
+            while (next == TransplantStage.GoOnBypass && Bypass.IsArrested)
+            {
+                StageCompleted?.Invoke(next, true);
+                notice = TeamOnBypassNotice;
+                next = After(_order.IndexOf(next));
+            }
+
+            SetStage(next, notice);
+        }
+
+        private TransplantStage After(int index) =>
+            index + 1 < _order.Count ? _order[index + 1] : TransplantStage.Complete;
 
         /// <summary>One vessel anastomosed. Advances the stage once all of them are done.</summary>
         public bool ConnectVessel()
@@ -317,7 +386,13 @@ namespace VRSurgery.Transplant
         }
 
         /// <summary>What the room should be telling the visitor to do right now, in pt-BR.</summary>
-        public string CurrentInstruction => !string.IsNullOrEmpty(_urgent) ? _urgent : Stage switch
+        public string CurrentInstruction =>
+            !string.IsNullOrEmpty(_urgent) ? _urgent :
+            !string.IsNullOrEmpty(_notice) ? _notice :
+            StageInstruction;
+
+        /// <summary>The stage's own instruction, without urgencies or passing notices.</summary>
+        public string StageInstruction => Stage switch
         {
             TransplantStage.SkinIncision => "Pegue o bisturi e corte a pele sobre a linha roxa",
             // The scene that adds the scalpel and the needle also puts a sternal saw on the tray.
@@ -335,7 +410,7 @@ namespace VRSurgery.Transplant
             _ => "Aguardando",
         };
 
-        private void SetStage(TransplantStage next)
+        private void SetStage(TransplantStage next, string notice = null)
         {
             if (next == Stage)
             {
@@ -343,6 +418,10 @@ namespace VRSurgery.Transplant
             }
 
             Stage = next;
+
+            // A notice belongs to the stage it was raised in; the new one starts clean, or with
+            // what the team did on the way to it.
+            ShowNotice(notice);
             StageChanged?.Invoke(Stage);
 
             if (Stage == TransplantStage.Complete)

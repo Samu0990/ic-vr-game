@@ -24,6 +24,12 @@ namespace VRSurgery.Feedback
         [Tooltip("Optional: the reperfused heart's fibrillation and the shocks that end it.")]
         [SerializeField] private DefibrillationWorker defibrillation;
 
+        [Tooltip("Optional: the pericardial seat. Only a heart this close to it is in the patient, " +
+                 "and only a heart in the patient sets the trace.")]
+        [SerializeField] private Transform seat;
+
+        [SerializeField, Min(0.01f)] private float inPatientRadius = 0.12f;
+
         [Header("Screen")]
         [SerializeField] private LineRenderer ecg;
         [SerializeField] private LineRenderer pleth;
@@ -163,13 +169,24 @@ namespace VRSurgery.Feedback
             }
         }
 
-        /// <summary>The beating heart the visitor can actually see, if any: the new one first.</summary>
+        /// <summary>The beating heart in the patient, if any: the new one first.</summary>
         private Heartbeat VisibleHeart()
         {
-            if (donorHeart != null && donorHeart.IsBeating && donorHeart.isActiveAndEnabled) { return donorHeart; }
-            if (nativeHeart != null && nativeHeart.IsBeating && nativeHeart.isActiveAndEnabled) { return nativeHeart; }
+            if (Follows(donorHeart)) { return donorHeart; }
+            if (Follows(nativeHeart)) { return nativeHeart; }
             return null;
         }
+
+        /// <summary>
+        /// Beating, and inside the patient. A heart in a basin or in a hand is not the patient's
+        /// circulation, however it moves.
+        /// </summary>
+        private bool Follows(Heartbeat heart) =>
+            heart != null && heart.IsBeating && heart.isActiveAndEnabled &&
+            (seat == null || (heart.transform.position - seat.position).sqrMagnitude <= inPatientRadius * inPatientRadius);
+
+        /// <summary>The pericardial seat: only a heart near it sets the trace.</summary>
+        public void BindSeat(Transform pericardialSeat) => seat = pericardialSeat;
 
         /// <summary>True if going from <paramref name="from"/> to <paramref name="to"/> passed <paramref name="mark"/>, wrapping at 1.</summary>
         private static bool Crossed(float from, float to, float mark)

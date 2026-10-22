@@ -28,14 +28,20 @@ namespace VRSurgery.Transplant
             if (heart != null) { heart.Configure(beatsPerMinute, strength, irregularity); }
         }
 
+        /// <summary>Pump steps up to and including cardioplegia: cannulate, cross-clamp, cardioplegia.</summary>
+        private const int StepsToArrest = 3;
+
         private void Update() => Tick();
 
         public void Tick()
         {
             if (heart == null) { return; }
 
-            // Beats until the pump has arrested it; the next visitor's patient beats again.
-            bool shouldBeat = procedure == null || !procedure.Bypass.IsArrested && !procedure.Bypass.IsOff;
+            // Beats until cardioplegia arrests it, and never again this round; the next visitor's
+            // patient beats again. Asking only "is the pump arrested now" brought it back to life
+            // the moment the cross-clamp came off — by then it was out of the body, in the basin,
+            // and the monitor could follow its beat instead of the new heart's.
+            bool shouldBeat = procedure == null || procedure.Bypass.CompletedSteps < StepsToArrest;
 
             if (shouldBeat && !heart.IsBeating) { heart.StartBeating(); }
             else if (!shouldBeat && heart.IsBeating) { heart.StopBeating(); }

@@ -20,6 +20,12 @@ namespace VRSurgery.Interaction
         /// <summary>True once the tool has been released at least once and is falling freely.</summary>
         public bool IsFalling { get; private set; }
 
+        /// <summary>
+        /// Kept where it is by something else — an organ seated in the chest or lying in its
+        /// basin. While set, letting go does not drop it.
+        /// </summary>
+        public bool Hold { get; set; }
+
         private bool _dropPending;
 
         private void Awake()
@@ -66,6 +72,7 @@ namespace VRSurgery.Interaction
             if (!_dropPending) { return; }
 
             _dropPending = false;
+            if (Hold) { return; }
             ApplyDrop();
         }
 

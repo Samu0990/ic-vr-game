@@ -2037,17 +2037,51 @@ namespace VRSurgery.EditorTools
             return patch;
         }
 
-        /// <summary>An open bowl of red tissue under the window: what the wound looks into.</summary>
+        /// <summary>
+        /// How far each half of the ribcage moves out at full opening. RibcageSpreader's own
+        /// default; the cavity has to clear it.
+        /// </summary>
+        private const float RibSpreadPerSide = 0.055f;
+
+        /// <summary>World Y of the open chest's floor (FundoCavidade), for the body volume.</summary>
+        private static float _chestFloorY;
+
+        /// <summary>
+        /// An open bowl of red tissue under the window: what the wound looks into, and what hides
+        /// the hollow inside of the body mesh.
+        ///
+        /// It wraps the opened ribcage instead of cutting through it. It used to be a bowl the
+        /// width of the window (14 cm) around a cage of 24 cm whose halves the retractor moves out
+        /// 5.5 cm each: once the sternum opened, the ribs were behind its walls and vanished — how
+        /// much stayed in sight depended on where the head was, so "the ribcage disappears
+        /// sometimes". Now it reaches past the opened cage, and its rim follows the skin so the
+        /// wider bowl never shows through the body: only the window looks into it.
+        /// </summary>
         private static GameObject BuildCavity(Transform parent, Vector3 thorax)
         {
             float rimY = SkinTopAt(_window.Center.x, _window.Center.z) - 0.012f;
-            float depth = Mathf.Max(0.08f, rimY - (thorax.y - 0.05f));
-            float rx = _window.HalfWidth * 0.95f;
-            float rz = _window.IncisionHalfLength + 0.01f;
+            float bottomY = thorax.y - 0.05f;
+            float depth = Mathf.Max(0.08f, rimY - bottomY);
+            bottomY = rimY - depth;
+            float rx = _window.HalfWidth + RibSpreadPerSide + 0.025f;
+            float rz = _window.HalfLength + 0.035f;
+
+            // The fat, the pooled blood and the floor stay where the narrow bowl had them: under
+            // the heart, in the middle of the wound.
+            float innerRx = _window.HalfWidth * 0.95f;
+            float innerRz = _window.IncisionHalfLength + 0.01f;
 
             const int around = 40, down = 10;
             List<Vector3> vertices = new List<Vector3>();
             List<int> triangles = new List<int>();
+
+            float[] rimAt = new float[around];
+            for (int i = 0; i < around; i++)
+            {
+                float phi = i / (float)around * Mathf.PI * 2f;
+                float skin = SkinTopAt(_window.Center.x + rx * Mathf.Cos(phi), _window.Center.z + rz * Mathf.Sin(phi));
+                rimAt[i] = Mathf.Max(bottomY + 0.04f, Mathf.Min(rimY, skin - 0.012f));
+            }
 
             for (int d = 0; d <= down; d++)
             {
@@ -2055,7 +2089,8 @@ namespace VRSurgery.EditorTools
                 for (int i = 0; i < around; i++)
                 {
                     float phi = i / (float)around * Mathf.PI * 2f;
-                    vertices.Add(new Vector3(rx * Mathf.Cos(phi) * Mathf.Cos(a), -depth * Mathf.Sin(a), rz * Mathf.Sin(phi) * Mathf.Cos(a)));
+                    float y = rimAt[i] - (rimAt[i] - bottomY) * Mathf.Sin(a) - rimY;
+                    vertices.Add(new Vector3(rx * Mathf.Cos(phi) * Mathf.Cos(a), y, rz * Mathf.Sin(phi) * Mathf.Cos(a)));
                 }
             }
 
@@ -2082,14 +2117,14 @@ namespace VRSurgery.EditorTools
 
             // Pericardial fat and the pale fascia over the sternum, as flat patches at the bottom.
             Material fat = Paint("fat", new Color(0.88f, 0.76f, 0.45f), 0f, 0.6f);
-            Box("Gordura", cavity.transform, new Vector3(0f, -depth * 0.55f, 0.03f), new Vector3(rx * 0.9f, 0.004f, rz * 0.8f), fat, null, false);
+            Box("Gordura", cavity.transform, new Vector3(0f, -depth * 0.55f, 0.03f), new Vector3(innerRx * 0.9f, 0.004f, innerRz * 0.8f), fat, null, false);
 
             // Blood lying in the bottom of the cavity: a thin film at rest, rising while a vessel
             // leaks. Wet and dark, the most reflective thing in the wound.
             Material pooled = Paint("bloodPool", new Color(0.28f, 0.01f, 0.02f), 0f, 0.97f);
             GameObject pool = Part(PrimitiveType.Cylinder, "PoçaSangue", cavity.transform, Vector3.zero, Vector3.one, pooled, null, false, false);
             _bloodPool = pool.AddComponent<CavityBloodPool>();
-            _bloodPool.Bind(null, rx, rz, depth);
+            _bloodPool.Bind(null, innerRx, innerRz, depth);
 
             // A solid floor to the open chest: a heart set down in it rests there instead of
             // dropping through the patient. Flat and low, so it never overlaps the heart already
@@ -2098,7 +2133,11 @@ namespace VRSurgery.EditorTools
             floor.transform.SetParent(cavity.transform, false);
             floor.transform.localPosition = new Vector3(0f, -depth * 0.97f, 0f);
             BoxCollider floorBox = floor.AddComponent<BoxCollider>();
-            floorBox.size = new Vector3(rx * 1.6f, 0.01f, rz * 1.6f);
+            floorBox.size = new Vector3(innerRx * 1.6f, 0.01f, innerRz * 1.6f);
+            _chestFloorY = rimY - depth * 0.97f + 0.005f;
+
+            Debug.Log($"[Transplante] cavidade torácica de {rx * 200f:F0} x {rz * 200f:F0} cm, fundo em y={bottomY:F3}, " +
+                      "por trás do gradil aberto e com a borda sob a pele");
 
             cavity.SetActive(false);
             return cavity;
@@ -2951,6 +2990,73 @@ namespace VRSurgery.EditorTools
             stand.transform.position = basinSpot - new Vector3(0f, 0.89f, 0f);
 
             Debug.Log($"[Transplante] coração doador na bacia da mesa lateral em {basinSpot}");
+        }
+
+        /// <summary>
+        /// A cuba de retirada: onde o coração doente fica depois de sair do peito, à vista, do
+        /// outro lado da mesa e na direção dos pés — o caminho de um órgão explantado até a
+        /// patologia. Sem ela o lugar "de volta" do coração era o próprio assento no tórax, e um
+        /// coração retirado e largado longe reaparecia dentro do peito.
+        /// Returns the point the heart lies at, a little above the bottom of the basin.
+        /// </summary>
+        private static Transform BuildRemovalBasin(Vector3 thorax)
+        {
+            float x = thorax.x - TableHalfWidth - 0.20f;
+            float z = thorax.z - 0.30f;
+            float top = TableTopY + 0.05f;
+
+            GameObject root = new GameObject("CubaRetirada");
+            root.transform.position = new Vector3(x, top, z);
+
+            Material steel = Paint("steel", new Color(0.78f, 0.8f, 0.82f), 0.9f, 0.7f);
+            Rod("Poste", root.transform, new Vector3(0f, -top * 0.5f, 0f), 0.016f, top - 0.02f, steel);
+            Box("Base", root.transform, new Vector3(0f, 0.015f - top, 0f), new Vector3(0.22f, 0.02f, 0.22f), steel);
+            Part(PrimitiveType.Cylinder, "Bacia", root.transform, Vector3.zero, new Vector3(0.24f, 0.03f, 0.24f), steel);
+
+            Transform rest = new GameObject("LugarDoCoracao").transform;
+            rest.SetParent(root.transform, false);
+            rest.localPosition = new Vector3(0f, 0.08f, 0f);
+            rest.localRotation = Quaternion.Euler(0f, 0f, 12f);
+
+            Debug.Log($"[Transplante] cuba de retirada em {root.transform.position}, do outro lado da mesa");
+            return rest;
+        }
+
+        /// <summary>
+        /// The patient's body as a volume the runtime can ask about (PatientBodyVolume): the skin's
+        /// top surface on a 2 cm grid, the operative window and the floor of the open chest.
+        /// Sampled from the untouched skin, so the window's own column has its real height.
+        /// </summary>
+        private static PatientBodyVolume BakeBodyVolume(GameObject systems)
+        {
+            const float cell = 0.02f;
+            int columns = Mathf.CeilToInt(_bodyBounds.size.x / cell) + 1;
+            int rows = Mathf.CeilToInt(_bodyBounds.size.z / cell) + 1;
+            Vector2 corner = new Vector2(_bodyBounds.min.x - cell * 0.5f, _bodyBounds.min.z - cell * 0.5f);
+
+            float[] heights = new float[columns * rows];
+            int covered = 0;
+            for (int iz = 0; iz < rows; iz++)
+            {
+                for (int ix = 0; ix < columns; ix++)
+                {
+                    float top = _surface != null
+                        ? _surface.Top(corner.x + (ix + 0.5f) * cell, corner.y + (iz + 0.5f) * cell, 1)
+                        : float.NegativeInfinity;
+                    bool skin = !float.IsNegativeInfinity(top) && top > TableTopY;
+                    heights[iz * columns + ix] = skin ? top : PatientBodyVolume.NoSkin;
+                    if (skin) { covered++; }
+                }
+            }
+
+            PatientBodyVolume volume = systems.AddComponent<PatientBodyVolume>();
+            volume.Bake(corner, cell, columns, rows, heights, TableTopY,
+                new Vector2(_window.Center.x, _window.Center.z), new Vector2(_window.HalfWidth, _window.HalfLength),
+                _chestFloorY);
+
+            Debug.Log($"[Transplante] volume do corpo: {columns}x{rows} células de {cell * 100f:F0} cm, " +
+                      $"{covered} com pele; fundo do tórax aberto em y={_chestFloorY:F3}");
+            return volume;
         }
 
         private static GameObject GrabbableTool(string name, string id, string label, ToolType type, ToolCapability capability,

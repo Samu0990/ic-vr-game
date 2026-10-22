@@ -133,7 +133,7 @@ namespace VRSurgery.EditorTools
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
         /// is asked to rebuild when the Editor opens (TransplantSceneFreshness).
         /// </summary>
-        public const int BuildVersion = 35;
+        public const int BuildVersion = 36;
 
         private static Vector3 _thorax;
 
@@ -191,6 +191,7 @@ namespace VRSurgery.EditorTools
             BuildTheatre(thorax);
             WireHeadsetPostProcessing();
             WireGrabOutlines();
+            WireBodyIntrusionWarning(systems);
             ApplyStaticAndShadowFlags();
             BakeRoomReflections(thorax);
 
@@ -1502,19 +1503,20 @@ namespace VRSurgery.EditorTools
             heart.GetComponent<GrabbableOrgan>().Bind(OrganRole.Native, seat.transform, procedure);
             donor.GetComponent<GrabbableOrgan>().Bind(OrganRole.Donor, seat.transform, procedure);
 
+            // Out of the chest, the sick heart lies still in its own basin across the table.
+            heart.GetComponent<GrabbableOrgan>().BindRemovalBasin(BuildRemovalBasin(_thorax));
+
             foreach (VesselAnastomosis vessel in vessels)
             {
                 vessel.Bind(vessel.Site, procedure, 0.022f);
             }
 
-            // The payoff: the donor heart starts once the operation is finished. Wired here rather
-            // than inside Heartbeat so the organ knows nothing about the procedure that installed
-            // it, and can be reused wherever a beating heart is wanted.
-            // The beat waits for the pump, not for the last stage. Coming off bypass is what
-            // hands the circulation back; declaring the operation finished is bookkeeping that
-            // happens afterwards.
+            // The payoff: the donor heart starts beating when the pump hands the circulation back
+            // (TransplantRoundBridge), or when the paddles convert it where it fibrillates. It is
+            // not wired here as a closure on the pump's event: a closure made in the Editor is not
+            // saved with the scene, and in the game the new heart then only ever beat after a shock
+            // — never on Fácil, which has none.
             Heartbeat beat = donor.GetComponent<Heartbeat>();
-            procedure.Bypass.WeanedOff += () => beat.StartBeating();
 
             // Everything in this operation is worked with the hands: there is no instrument to
             // pick up, so the workers need a tip that tracks the surgeon rather than one attached
@@ -1592,6 +1594,15 @@ namespace VRSurgery.EditorTools
                 out SutureWorker suture, out ChestSkinPatch skinPatch, out SurgicalInteractable scalpel,
                 out SurgicalInteractable needleHolder, out StageResultPopup resultPopup);
             bridge.BindSkinStages(incision, skinPatch, suture);
+
+            // The body as a volume: a heart that falls through the skin into the closed body is
+            // lost, and pops back to its basin instead of lying hidden on the table inside it.
+            PatientBodyVolume bodyVolume = BakeBodyVolume(systems);
+            foreach (GameObject organ in new[] { heart, donor })
+            {
+                ReturnHomeOnRelease recovery = organ.GetComponent<ReturnHomeOnRelease>();
+                if (recovery != null) { recovery.UseBodyVolume(bodyVolume); }
+            }
 
             // Guides only in their own stage: the gold ring for the sternotomy, the cuffs for the
             // vessels, the amber rings for the pump.
@@ -1696,10 +1707,12 @@ namespace VRSurgery.EditorTools
             VitalSignsMonitor anaesthesiaMonitor = BuildVitalsMonitor(_thorax, procedure, beat, sewing);
             anaesthesiaMonitor.BindNativeHeart(nativeBeat);
             anaesthesiaMonitor.BindDefibrillation(_defibrillation);
+            anaesthesiaMonitor.BindSeat(seat.transform);
 
             VitalSignsMonitor wallMonitor = BuildVitalsMonitor(_thorax, procedure, beat, sewing);
             wallMonitor.BindNativeHeart(nativeBeat);
             wallMonitor.BindDefibrillation(_defibrillation);
+            wallMonitor.BindSeat(seat.transform);
             MountVitalsOnWall(wallMonitor, _thorax);
 
             // A leaking join fills the open chest; the pool reads the same joins the monitor does.
@@ -2174,6 +2187,23 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[Transplante] {marked} renderer(s) marcados static, " +
                       $"{unshadowed} deixaram de lançar sombra");
+        }
+
+        /// <summary>
+        /// A red rim and a buzz on whatever a hand carries into the closed body. A warning rather
+        /// than colliders: the heart is wider than the operative window, so any wall that kept it
+        /// out of the body would also keep it in the chest (see BodyIntrusionWarning).
+        /// </summary>
+        private static void WireBodyIntrusionWarning(GameObject systems)
+        {
+            PatientBodyVolume body = systems.GetComponent<PatientBodyVolume>();
+            GrabOutlines rim = Object.FindFirstObjectByType<GrabOutlines>();
+            SurgicalInteractable[] carried =
+                Object.FindObjectsByType<SurgicalInteractable>(FindObjectsInactive.Include, FindObjectsSortMode.InstanceID);
+
+            systems.AddComponent<BodyIntrusionWarning>().Bind(body, carried, rim);
+            Debug.Log($"[Transplante] aviso de corpo fechado em {carried.Length} objeto(s) de pegar " +
+                      $"(volume do corpo={(body != null)}, contorno={(rim != null)})");
         }
 
         /// <summary>

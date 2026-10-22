@@ -50,6 +50,11 @@ namespace VRSurgery.Interaction
                  "where a dropped instrument would lie unseen.")]
         [SerializeField] private Bounds[] lostZones = new Bounds[0];
 
+        [Tooltip("Optional. The patient's body: anything lying under its skin, outside the open " +
+                 "chest, is lost — the skin has no collider, so a drop there ends on the table, " +
+                 "inside the closed body.")]
+        [SerializeField] private VRSurgery.Transplant.PatientBodyVolume body;
+
         [SerializeField, Min(0.05f)] private float popSeconds = 0.25f;
 
         private Vector3 _homePosition;
@@ -64,11 +69,31 @@ namespace VRSurgery.Interaction
         private bool _loose;
         private float _lostFor;
         private float _pop = -1f;
+        private bool _hold;
+        private RigidbodyInterpolation _interpolation;
 
         public bool IsReturning => mode == ReleaseMode.Glide && _sinceRelease >= delay;
 
         /// <summary>True while the instrument is lying or falling somewhere other than its place.</summary>
         public bool IsLoose => _loose;
+
+        /// <summary>
+        /// Kept where it is by something else — an organ seated in the chest or lying in the
+        /// removal basin. While set, a release neither drops it nor ever sends it home.
+        /// </summary>
+        public bool Hold
+        {
+            get => _hold;
+            set
+            {
+                _hold = value;
+                if (!value) { return; }
+                _dropFrames = 0;
+                _loose = false;
+                _lostFor = 0f;
+                _sinceRelease = -1f;
+            }
+        }
 
         public ReleaseMode Mode => mode;
 
@@ -79,6 +104,7 @@ namespace VRSurgery.Interaction
         {
             if (interactable == null) { interactable = GetComponent<SurgicalInteractable>(); }
             _body = GetComponent<Rigidbody>();
+            _interpolation = _body != null ? _body.interpolation : RigidbodyInterpolation.None;
             _homePosition = transform.position;
             _homeRotation = transform.rotation;
             _homeScale = transform.localScale;
@@ -105,6 +131,13 @@ namespace VRSurgery.Interaction
             _loose = false;
             _lostFor = 0f;
             EndPop();
+            RestoreInterpolation();
+        }
+
+        /// <summary>Smooth again in the hand or in the air; it was turned off while it rested.</summary>
+        private void RestoreInterpolation()
+        {
+            if (_body != null) { _body.interpolation = _interpolation; }
         }
 
         private void HandleReleased(SurgicalInteractable tool, IHandInteractor hand)
@@ -173,6 +206,14 @@ namespace VRSurgery.Interaction
                 if (t >= 1f) { EndPop(); }
             }
 
+            // The release may have been heard after whatever pinned it: undo it here.
+            if (_hold)
+            {
+                _dropFrames = 0;
+                _loose = false;
+                return;
+            }
+
             if (_dropFrames > 0)
             {
                 _dropFrames--;
@@ -180,6 +221,7 @@ namespace VRSurgery.Interaction
                 {
                     _body.isKinematic = false;
                     _body.useGravity = true;
+                    RestoreInterpolation();
                 }
             }
 
@@ -199,6 +241,7 @@ namespace VRSurgery.Interaction
         public bool IsReachable(Vector3 point)
         {
             if (point.y < lostBelowY) { return false; }
+            if (body != null && body.Hides(point)) { return false; }
             if (lostZones != null)
             {
                 for (int i = 0; i < lostZones.Length; i++)
@@ -237,6 +280,13 @@ namespace VRSurgery.Interaction
 
                 _body.isKinematic = true;
                 _body.useGravity = false;
+
+                // Through the body too, and with interpolation off while it rests: on an
+                // interpolated body the next frame writes the last simulated pose back over the
+                // move, and the "respawned" object is back where it was lost.
+                _body.interpolation = RigidbodyInterpolation.None;
+                _body.position = _homePosition;
+                _body.rotation = _homeRotation;
             }
 
             transform.SetPositionAndRotation(_homePosition, _homeRotation);
@@ -267,5 +317,8 @@ namespace VRSurgery.Interaction
             lostBelowY = floorY;
             lostZones = hidden ?? new Bounds[0];
         }
+
+        /// <summary>Counts anything lying inside the patient's closed body as lost.</summary>
+        public void UseBodyVolume(VRSurgery.Transplant.PatientBodyVolume patient) => body = patient;
     }
 }

@@ -144,7 +144,8 @@ namespace VRSurgery.Transplant
             }
 
             bool held = paddles == null || paddles.IsHeld;
-            bool onHeart = paddleCentre != null && (paddleCentre.position - HeartCentre()).sqrMagnitude <= radius * radius;
+            bool onHeart = HeartInItsSeat() && paddleCentre != null &&
+                           (paddleCentre.position - HeartCentre()).sqrMagnitude <= radius * radius;
 
             if (!held || !onHeart)
             {
@@ -247,6 +248,33 @@ namespace VRSurgery.Transplant
 
         private Renderer _body;
         private Transform _bodyOf;
+
+        /// <summary>How far from its seat the heart may be and still be the patient's, in metres.</summary>
+        private const float SeatedWithin = 0.05f;
+
+        private GrabbableOrgan _organ;
+        private Transform _organOf;
+
+        /// <summary>
+        /// The paddles treat the patient only through a heart that is in the patient. A heart on
+        /// the bench or in a hand could be shocked back to rhythm before, and the operation went
+        /// on as if the patient had been. A heart with no seat to check against is taken as in.
+        /// </summary>
+        private bool HeartInItsSeat()
+        {
+            Transform organ = heart != null ? heart : donorHeart != null ? donorHeart.transform : null;
+            if (organ == null) { return true; }
+
+            if (_organOf != organ)
+            {
+                _organOf = organ;
+                _organ = organ.GetComponent<GrabbableOrgan>();
+            }
+
+            if (_organ == null) { return true; }
+            float distance = _organ.DistanceFromSeat;
+            return distance < 0f || distance <= SeatedWithin;
+        }
 
         /// <summary>Whether the pump may take this step: not while the heart fibrillates.</summary>
         public string Blocks(BypassStep step)

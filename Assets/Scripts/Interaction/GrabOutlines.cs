@@ -52,18 +52,21 @@ namespace VRSurgery.Interaction
 
                 _targets.Clear();
                 hand.GetValidTargets(_targets);
-                InteractableOutline next = FirstFree(_targets);
+                InteractableOutline next = FirstFree(_targets, hand as IXRSelectInteractor);
                 if (next != null && !_wanted.Contains(next)) { _wanted.Add(next); }
             }
 
             Apply(_wanted);
         }
 
-        private static InteractableOutline FirstFree(List<IXRInteractable> targets)
+        private static InteractableOutline FirstFree(List<IXRInteractable> targets, IXRSelectInteractor hand)
         {
             for (int i = 0; i < targets.Count; i++)
             {
                 if (!(targets[i] is IXRSelectInteractable selectable) || selectable.isSelected) { continue; }
+
+                // Something that would refuse this hand — a heart before its stage — is not offered.
+                if (hand != null && !selectable.IsSelectableBy(hand)) { continue; }
                 if (!(targets[i] is Component component) || component == null || !component.gameObject.activeInHierarchy) { continue; }
                 return OutlineOf(component.gameObject);
             }

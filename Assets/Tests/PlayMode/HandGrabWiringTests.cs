@@ -66,6 +66,26 @@ namespace VRSurgery.Tests
         public void TearDown() => SurgeryEvents.ResetAll();
 
         /// <summary>
+        /// Moves an organ the way a hand does, body and transform together. An organ is an
+        /// interpolated rigidbody: a transform-only move is undone by the interpolation on the
+        /// next frame, and the test then measures a heart that never left its seat.
+        /// </summary>
+        private static void Place(GameObject organ, Vector3 position)
+        {
+            Rigidbody body = organ.GetComponent<Rigidbody>();
+            if (body != null)
+            {
+                // A hand moves it by velocity; a test can only teleport it, and a teleport on an
+                // interpolated body is written over by the next frame's interpolation.
+                body.interpolation = RigidbodyInterpolation.None;
+                body.position = position;
+            }
+
+            organ.transform.position = position;
+            Physics.SyncTransforms();
+        }
+
+        /// <summary>
         /// The rig's grab interactors, which is where the adapter has to live: it requires an
         /// XRBaseInteractor on its own GameObject.
         ///
@@ -247,7 +267,7 @@ namespace VRSurgery.Tests
             yield return null;
 
             // Carried well clear of the pericardium — further than the explant threshold.
-            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
+            Place(_nativeHeart, _seat.position + new Vector3(0.6f, 0.1f, 0f));
             yield return null;
 
             Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
@@ -279,7 +299,7 @@ namespace VRSurgery.Tests
             yield return null;
 
             // Lowered exactly into the pericardium, but not let go of.
-            _donorHeart.transform.position = _seat.position;
+            Place(_donorHeart, _seat.position);
             yield return null;
             yield return null;
 
@@ -315,7 +335,7 @@ namespace VRSurgery.Tests
             organ.OnGrabbed(null);
             yield return null;
 
-            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
+            Place(_nativeHeart, _seat.position + new Vector3(0.6f, 0.1f, 0f));
             yield return null;
 
             Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
@@ -339,7 +359,7 @@ namespace VRSurgery.Tests
             yield return null;
 
             // Levantado, mas ainda dentro do tórax: não é cardiectomia, é hesitação.
-            _nativeHeart.transform.position = _seat.position + new Vector3(0.03f, 0.02f, 0f);
+            Place(_nativeHeart, _seat.position + new Vector3(0.03f, 0.02f, 0f));
             organ.OnReleased();
             yield return null;
 
@@ -360,7 +380,7 @@ namespace VRSurgery.Tests
             organ.OnGrabbed(null);
             yield return null;
 
-            _donorHeart.transform.position = _seat.position;
+            Place(_donorHeart, _seat.position);
             yield return null;
             yield return null;
 
@@ -390,13 +410,13 @@ namespace VRSurgery.Tests
             SurgicalInteractable interactable = _donorHeart.GetComponent<SurgicalInteractable>();
 
             interactable.OnGrabbed(null);
-            _donorHeart.transform.position = new Vector3(5f, 1.3f, 0.47f);
+            Place(_donorHeart, new Vector3(5f, 1.3f, 0.47f));
             interactable.OnReleased();
 
             returnHome.Tick(0.61f);
 
-            Assert.AreEqual(homePosition, _donorHeart.transform.position);
-            Assert.AreEqual(homeRotation, _donorHeart.transform.rotation);
+            Assert.Less(Vector3.Distance(homePosition, _donorHeart.transform.position), 1e-4f);
+            Assert.Less(Quaternion.Angle(homeRotation, _donorHeart.transform.rotation), 0.01f);
             Assert.IsFalse(returnHome.IsLoose);
             yield break;
         }

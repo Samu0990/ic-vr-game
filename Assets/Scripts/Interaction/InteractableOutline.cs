@@ -30,6 +30,9 @@ namespace VRSurgery.Interaction
         public void Show(bool on, Material material)
         {
             if (on && !_built) { Build(material); }
+
+            // The same rim in another colour — the warning's red over the grab's light blue.
+            if (on && material != null && material != _material) { Repaint(material); }
             if (on == IsShown) { return; }
 
             IsShown = on;
@@ -39,9 +42,24 @@ namespace VRSurgery.Interaction
             }
         }
 
+        private Material _material;
+
+        private void Repaint(Material material)
+        {
+            _material = material;
+            for (int i = 0; i < _shells.Count; i++)
+            {
+                if (_shells[i] == null) { continue; }
+                Material[] materials = _shells[i].sharedMaterials;
+                for (int m = 0; m < materials.Length; m++) { materials[m] = material; }
+                _shells[i].sharedMaterials = materials;
+            }
+        }
+
         private void Build(Material material)
         {
             _built = true;
+            _material = material;
             if (material == null) { return; }
 
             foreach (Renderer source in GetComponentsInChildren<Renderer>(true))

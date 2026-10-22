@@ -61,7 +61,12 @@ namespace VRSurgery.Transplant
 
         private void Subscribe()
         {
-            if (procedure != null) { procedure.ProcedureCompleted += HandleProcedureCompleted; }
+            if (procedure != null)
+            {
+                procedure.ProcedureCompleted += HandleProcedureCompleted;
+                procedure.Bypass.WeanedOff += HandleWeanedOff;
+            }
+
             if (session != null) { session.StateChanged += HandleSessionState; }
             if (sternotomyWorker != null) { sternotomyWorker.Started += HandleFirstGesture; }
             if (incision != null) { incision.Started += HandleFirstGesture; }
@@ -69,10 +74,29 @@ namespace VRSurgery.Transplant
 
         private void Unsubscribe()
         {
-            if (procedure != null) { procedure.ProcedureCompleted -= HandleProcedureCompleted; }
+            if (procedure != null)
+            {
+                procedure.ProcedureCompleted -= HandleProcedureCompleted;
+                procedure.Bypass.WeanedOff -= HandleWeanedOff;
+            }
+
             if (session != null) { session.StateChanged -= HandleSessionState; }
             if (sternotomyWorker != null) { sternotomyWorker.Started -= HandleFirstGesture; }
             if (incision != null) { incision.Started -= HandleFirstGesture; }
+        }
+
+        /// <summary>
+        /// Off bypass, the new heart has the circulation back, and it beats. Where the reperfused
+        /// heart fibrillated, the paddles have already started it; on Fácil there is no such
+        /// moment — unclamping, de-airing and weaning are one hold — and nothing else did. The
+        /// scene builder used to wire this as a closure on the pump's event, and a closure is not
+        /// saved with a scene: in the game the new heart only ever beat after a shock.
+        /// </summary>
+        private void HandleWeanedOff()
+        {
+            if (donorHeart == null || donorHeart.IsBeating) { return; }
+            if (defibrillation != null && defibrillation.IsFibrillating) { return; }
+            donorHeart.StartBeating();
         }
 
         private void Update() => Tick(Time.deltaTime);
