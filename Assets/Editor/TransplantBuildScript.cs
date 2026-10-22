@@ -17,13 +17,15 @@ namespace VRSurgery.EditorTools
     /// Uso por linha de comando:
     ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildWindowsFromCommandLine [-nivel Facil|Medio|Dificil]
     ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildLinuxFromCommandLine
-    ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildQuestFromCommandLine
-    /// The Linux and Quest builds are kept for the command line only: the stand is the PC.
+    ///   -executeMethod VRSurgery.EditorTools.TransplantBuildScript.BuildQuestFromCommandLine [-nivel Facil|Medio|Dificil]
+    /// The Quest build is an APK that runs on the headset alone, with no PC: no projector and no
+    /// queue monitor then. The Linux build is kept for the command line only.
     /// </summary>
     public static class TransplantBuildScript
     {
         private const string Scene = "Assets/Scenes/TransplanteCardiaco.unity";
         private const string WindowsPath = "Builds/Windows/MetaHealth.exe";
+        private const string QuestPath = "Builds/Quest/MetaHealth.apk";
 
         /// <summary>Where the level picked in the VRSurgery menu is remembered for the next build.</summary>
         public const string LevelPreference = "VRSurgery.NivelDaBuild";
@@ -46,12 +48,29 @@ namespace VRSurgery.EditorTools
 
         public static void BuildLinuxFromCommandLine() => RunFromCommandLine(() => Build(BuildTarget.StandaloneLinux64, "Builds/Linux/MetaHealth.x86_64"));
 
-        public static void BuildQuestFromCommandLine() => RunFromCommandLine(() => Build(BuildTarget.Android, "Builds/Quest/MetaHealth.apk"));
+        [MenuItem("Build/Meta Health — Quest (APK, sem cabo)")]
+        public static void BuildQuestFromMenu()
+        {
+            SurgicalDifficulty level = ChosenLevel();
+            bool ok = BuildQuest(level);
+            EditorUtility.DisplayDialog("Meta Health — Quest",
+                ok ? $"APK pronto no nível {level}:\n{Path.GetFullPath(QuestPath)}\n\n" +
+                     "Instale com: adb install -r Builds/Quest/MetaHealth.apk"
+                   : "A build falhou. O motivo está no Console ([Build]).", "OK");
+        }
+
+        public static void BuildQuestFromCommandLine() => RunFromCommandLine(() => BuildQuest(LevelFromArgs() ?? ChosenLevel()));
 
         public static bool BuildWindows(SurgicalDifficulty level)
         {
             EnsureSceneLevel(level);
             return Build(BuildTarget.StandaloneWindows64, WindowsPath);
+        }
+
+        public static bool BuildQuest(SurgicalDifficulty level)
+        {
+            EnsureSceneLevel(level);
+            return Build(BuildTarget.Android, QuestPath);
         }
 
         private static void RunFromCommandLine(Func<bool> build)

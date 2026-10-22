@@ -142,8 +142,11 @@ namespace VRSurgery.VR
 
             // At the stand the notebook may drive the projector alone ("second screen only", or
             // the lid closed): the one screen there is then the projector, and it shows the
-            // patient from above. P still swaps. Not in the Editor, whose Game view is one screen.
-            if (!Application.isEditor && !ProjectorConnected) { OnMainMonitor = true; }
+            // patient from above. P still swaps. Not in the Editor, whose Game view is one screen,
+            // and not on a Quest running alone: its one screen is the headset, and the overhead
+            // camera would render the patient a second time every frame for nobody.
+            bool questAlone = Application.platform == RuntimePlatform.Android;
+            if (!Application.isEditor && !questAlone && !ProjectorConnected) { OnMainMonitor = true; }
             Build();
             Apply();
         }
