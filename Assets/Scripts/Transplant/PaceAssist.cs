@@ -152,7 +152,10 @@ namespace VRSurgery.Transplant
             }
 
             if (total <= 0f) { return 0f; }
-            float round = session != null ? session.RoundSeconds : total / budgetFraction;
+            // Paced against the whole turn: with seconds won for every stage, the clock a turn
+            // starts with is shorter than the time it can actually run.
+            float round = session == null ? total / budgetFraction
+                : session.TurnLimitSeconds > 0f ? session.TurnLimitSeconds : session.RoundSeconds;
             return own * round * budgetFraction / total;
         }
 

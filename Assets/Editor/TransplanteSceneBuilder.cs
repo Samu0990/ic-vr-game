@@ -132,10 +132,20 @@ namespace VRSurgery.EditorTools
         }
 
         /// <summary>
-        /// Total length of a transplant round. One fixed value: difficulty levels are not
-        /// implemented, so the plan's own per-level round length no longer drives the clock.
+        /// Fallback length of a transplant round, for the session definition. At runtime
+        /// TimeScoring replaces it with the level's own start: MaxTurnSeconds less every bonus the
+        /// level can win.
         /// </summary>
         private const float RoundSeconds = 180f;
+
+        /// <summary>The longest a visitor's turn may last, counting every second it can win.</summary>
+        private const float MaxTurnSeconds = 240f;
+
+        /// <summary>Seconds won per stage the visitor completes.</summary>
+        private const float StageBonusSeconds = 10f;
+
+        /// <summary>Seconds lost per mistake.</summary>
+        private const float MistakePenaltySeconds = 5f;
 
         /// <summary>
         /// Bumped whenever the builder changes what it builds. A machine whose last build is older
@@ -1745,6 +1755,17 @@ namespace VRSurgery.EditorTools
             PaceAssist pace = systems.AddComponent<PaceAssist>();
             pace.Bind(session, procedure, worker, vessels);
 
+            // The clock as the score: seconds won per stage, lost per mistake; the turn starts with
+            // what leaves room for every bonus within the stand's limit.
+            TimeScoring scoring = systems.AddComponent<TimeScoring>();
+            scoring.Configure(StageBonusSeconds, MistakePenaltySeconds, 3f, MaxTurnSeconds);
+            scoring.Bind(session, procedure, tipObject.transform, telemetry);
+            scoring.BindSources(incision, vessels, worker, _defibrillation,
+                new[] { heart.GetComponent<GrabbableOrgan>(), donor.GetComponent<GrabbableOrgan>() });
+
+            GameObject popups = new GameObject("AjustesDeTempo");
+            popups.AddComponent<TimeAdjustmentPopups>().Bind(scoring, EnsureLayer(OperatorLayer));
+
             // The team's voice, from the head of the table where the anaesthetist stands.
             GameObject voice = new GameObject("VozEquipe");
             voice.transform.SetParent(systems.transform, true);
@@ -2138,8 +2159,9 @@ namespace VRSurgery.EditorTools
             }
 
             GameObject hud = new GameObject("HudMonitorFila", typeof(RectTransform));
-            hud.AddComponent<SpectatorHud>().Bind(systems.GetComponent<EventSessionController>(),
-                systems.GetComponent<TransplantProcedure>(), output);
+            SpectatorHud queue = hud.AddComponent<SpectatorHud>();
+            queue.Bind(systems.GetComponent<EventSessionController>(), systems.GetComponent<TransplantProcedure>(), output);
+            queue.BindScoring(systems.GetComponent<TimeScoring>());
 
             Debug.Log("[Transplante] monitor da fila (Display 1): visão do cirurgião + tempo, pontos, etapa e ±s; " +
                       "projetor (Display 2) com calibração C, troca de tela P, ajuda H");

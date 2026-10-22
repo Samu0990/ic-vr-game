@@ -77,15 +77,30 @@ namespace VRSurgery.Session
         [SerializeField] private SurgeryTelemetry telemetry;
 
         private float _stateElapsed;
+        private float _roundOverride;
+        private float _runSeconds;
 
         public SessionState State { get; private set; } = SessionState.Attract;
 
         /// <summary>Seconds left on the clock. Only moves while the round is running.</summary>
         public float RemainingSeconds { get; private set; }
 
-        public float RoundSeconds => definition != null ? definition.RoundSeconds : DefaultRoundSeconds;
+        /// <summary>
+        /// Seconds on the clock when a turn starts. The definition's, unless the turn's scoring set
+        /// its own: with seconds won and lost along the way, the start is what keeps a whole turn
+        /// within the stand's limit.
+        /// </summary>
+        public float RoundSeconds => _roundOverride > 0f ? _roundOverride
+            : definition != null ? definition.RoundSeconds : DefaultRoundSeconds;
 
-        public float ElapsedSeconds => Mathf.Max(0f, RoundSeconds - RemainingSeconds);
+        /// <summary>
+        /// Real seconds this turn has run. Not the clock's own count any more: the clock gains and
+        /// loses seconds as the visitor works, the visitor's time does not.
+        /// </summary>
+        public float ElapsedSeconds => _runSeconds;
+
+        /// <summary>Raised when seconds are added to or taken from a running clock, with the amount applied.</summary>
+        public event Action<float> TimeAdjusted;
 
         /// <summary>
         /// 0 when the round starts, 1 when the clock runs out. The single number the HUD, the
@@ -168,6 +183,7 @@ namespace VRSurgery.Session
                     break;
 
                 case SessionState.Running:
+                    _runSeconds += deltaTime;
                     RemainingSeconds = Mathf.Max(0f, RemainingSeconds - deltaTime);
                     if (RemainingSeconds <= 0f)
                     {
@@ -206,6 +222,7 @@ namespace VRSurgery.Session
             SessionCount++;
             HasResult = false;
             RemainingSeconds = RoundSeconds;
+            _runSeconds = 0f;
 
             if (resetController != null)
             {
@@ -224,8 +241,45 @@ namespace VRSurgery.Session
             }
 
             RemainingSeconds = RoundSeconds;
+            _runSeconds = 0f;
             SetState(SessionState.Running);
             RoundStarted?.Invoke();
+        }
+
+        /// <summary>
+        /// Sets how many seconds a turn starts with, overriding the definition. Takes effect at the
+        /// next turn; a clock that is not running is shown at the new length straight away.
+        /// </summary>
+        public void SetRoundSeconds(float seconds, float turnLimit = 0f)
+        {
+            _roundOverride = Mathf.Max(0f, seconds);
+            TurnLimitSeconds = Mathf.Max(0f, turnLimit);
+            if (State != SessionState.Running) { RemainingSeconds = RoundSeconds; }
+        }
+
+        /// <summary>
+        /// The longest a turn can last, counting every second it could win; 0 when nothing is won.
+        /// What the adaptive help paces the operation against.
+        /// </summary>
+        public float TurnLimitSeconds { get; private set; }
+
+        /// <summary>
+        /// Adds seconds to a running clock, or takes them away. Never below zero; a clock taken to
+        /// zero ends the turn as a loss, exactly as running out does. Does nothing while the clock
+        /// is not running — nothing is won or lost during the briefing.
+        /// Returns the seconds actually applied.
+        /// </summary>
+        public float AdjustTime(float seconds)
+        {
+            if (State != SessionState.Running || Mathf.Approximately(seconds, 0f)) { return 0f; }
+
+            float before = RemainingSeconds;
+            RemainingSeconds = Mathf.Max(0f, RemainingSeconds + seconds);
+            float applied = RemainingSeconds - before;
+            TimeAdjusted?.Invoke(applied);
+
+            if (RemainingSeconds <= 0f) { EndRound(false); }
+            return applied;
         }
 
         /// <summary>
@@ -267,7 +321,7 @@ namespace VRSurgery.Session
             float remaining = RemainingSeconds;
             int score = succeeded ? Mathf.RoundToInt(remaining * PointsPerSecondRemaining) : 0;
 
-            LastResult = new SessionResult(succeeded, RoundSeconds - remaining, remaining, score);
+            LastResult = new SessionResult(succeeded, _runSeconds, remaining, score);
             HasResult = true;
 
             SetState(succeeded ? SessionState.Success : SessionState.Failure);

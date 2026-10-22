@@ -267,5 +267,33 @@ namespace VRSurgery.Surgery
             procedure = transplant;
             projection = projector;
         }
+
+        [SerializeField] private TimeScoring scoring;
+        private TimeScoring _subscribedScoring;
+
+        private void OnEnable() => SubscribeScoring();
+
+        private void OnDisable()
+        {
+            if (_subscribedScoring != null) { _subscribedScoring.Adjusted -= HandleAdjusted; }
+            _subscribedScoring = null;
+        }
+
+        private void SubscribeScoring()
+        {
+            if (scoring == null || _subscribedScoring == scoring) { return; }
+            if (_subscribedScoring != null) { _subscribedScoring.Adjusted -= HandleAdjusted; }
+            _subscribedScoring = scoring;
+            _subscribedScoring.Adjusted += HandleAdjusted;
+        }
+
+        private void HandleAdjusted(TimeAdjustment adjustment) => ShowAdjustment(adjustment.Label, adjustment.Gained);
+
+        /// <summary>Every second won or lost, as it happens, on the queue's monitor too.</summary>
+        public void BindScoring(TimeScoring source)
+        {
+            scoring = source;
+            if (Application.isPlaying && isActiveAndEnabled) { SubscribeScoring(); }
+        }
     }
 }

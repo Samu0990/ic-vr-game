@@ -100,6 +100,12 @@ namespace VRSurgery.Interaction
         /// <summary>Raised when a lost instrument reappears in its place.</summary>
         public event Action Respawned;
 
+        /// <summary>
+        /// Raised when it is given up for lost — on the floor, out of reach, inside the body —
+        /// just before it reappears. Not raised when something sends it home on purpose.
+        /// </summary>
+        public event Action Lost;
+
         private void Awake()
         {
             if (interactable == null) { interactable = GetComponent<SurgicalInteractable>(); }
@@ -234,7 +240,11 @@ namespace VRSurgery.Interaction
             }
 
             _lostFor += deltaTime;
-            if (_lostFor >= lostSeconds) { Respawn(); }
+            if (_lostFor >= lostSeconds)
+            {
+                Lost?.Invoke();
+                Respawn();
+            }
         }
 
         /// <summary>Somewhere the visitor could pick it up from without taking a step.</summary>
