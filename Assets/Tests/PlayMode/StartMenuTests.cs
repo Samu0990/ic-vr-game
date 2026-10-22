@@ -29,10 +29,15 @@ namespace VRSurgery.Tests
         private Transform _button;
         private Transform _hand;
         private GameObject _room;
+        private bool _fog;
+
+        [SetUp]
+        public void SetUp() => _fog = RenderSettings.fog;
 
         [TearDown]
         public void TearDown()
         {
+            RenderSettings.fog = _fog;
             foreach (GameObject go in _spawned)
             {
                 if (go != null) { Object.DestroyImmediate(go); }
@@ -115,6 +120,7 @@ namespace VRSurgery.Tests
         [Test]
         public void NaEspera_OVisitanteVaiParaASalaDoMenu_EOBotaoComecaAVezNaSalaDeCirurgia()
         {
+            RenderSettings.fog = true;
             Bench(headset: true);
 
             Run(0.5f);
@@ -123,6 +129,7 @@ namespace VRSurgery.Tests
             Assert.IsTrue(_room.activeSelf, "A sala do menu aparece.");
             AssertOver(_head, _menuStance, "O visitante fica de pé no anel da sala do menu.");
             Assert.AreEqual(SessionState.Attract, _session.State, "Ninguém começa a vez sozinho.");
+            Assert.IsFalse(RenderSettings.fog, "Sem a neblina cinza da sala de cirurgia: o céu do menu fica escuro.");
 
             _hand.position = _button.position;
             Run(3f);
@@ -134,6 +141,7 @@ namespace VRSurgery.Tests
             Assert.IsNull(_fit.StanceOverride);
             AssertOver(_head, _surgeon, "De volta ao lugar do cirurgião, de frente para o paciente.");
             Assert.AreEqual(0f, _menu.Fade01, 1e-3f, "A transição clareia de novo.");
+            Assert.IsTrue(RenderSettings.fog, "A sala de cirurgia volta com a neblina que tinha.");
         }
 
         [Test]

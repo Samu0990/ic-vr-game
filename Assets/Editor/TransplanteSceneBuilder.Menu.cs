@@ -59,21 +59,27 @@ namespace VRSurgery.EditorTools
             dome.transform.SetParent(room.transform, false);
             dome.transform.localScale = Vector3.one * 20f;
             Material sky = MakeOpaqueUnlit(Color.white);
-            sky.SetTexture("_BaseMap", MenuTexture("MenuCeu.png", false));
+            sky.SetTexture("_BaseMap", MenuTexture("MenuCeu.png", false, 4096));
             sky.SetFloat("_Cull", (float)CullMode.Front);
             Quiet(dome.GetComponent<MeshRenderer>(), sky);
 
-            // The floor, with the ring the visitor stands in.
+            // The floor, out to the horizon: a 1 m grid near the visitor that fades into the dark.
             GameObject floor = GameObject.CreatePrimitive(PrimitiveType.Quad);
             floor.name = "ChaoDoMenu";
             Object.DestroyImmediate(floor.GetComponent<Collider>());
             floor.transform.SetParent(room.transform, false);
             floor.transform.localPosition = new Vector3(0f, 0.001f, 0f);
             floor.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
-            floor.transform.localScale = new Vector3(9f, 9f, 1f);
+            floor.transform.localScale = new Vector3(20f, 20f, 1f);
             Material ground = MakeOpaqueUnlit(Color.white);
             ground.SetTexture("_BaseMap", MenuTexture("MenuChao.png", true));
             Quiet(floor.GetComponent<MeshRenderer>(), ground);
+
+            // The lit ring the visitor stands in, and its glow on the floor.
+            Material ringLight = MakeOpaqueUnlit(new Color(0.66f, 0.36f, 1f));
+            GameObject ring = MeshPart("AnelDoMenu", room.transform, MakeRing(0.40f, 0.43f, 128), ringLight);
+            ring.transform.localPosition = new Vector3(0f, 0.004f, 0f);
+            Quiet(ring.GetComponent<MeshRenderer>(), ringLight);
 
             // Logo and button, set at the visitor's eyes by the menu at runtime.
             Transform layout = new GameObject("LogoEBotao").transform;
@@ -81,13 +87,17 @@ namespace VRSurgery.EditorTools
             layout.localPosition = new Vector3(0f, 1.6f, 0f);
 
             Texture2D glowTexture = MenuTexture("MenuBrilho.png", true);
-            Renderer logoGlow = MenuQuad("BrilhoDaLogo", layout, glowTexture, new Vector3(0f, 0.15f, 2.46f),
-                new Vector2(3.2f, 1.5f), new Color(MenuPurple.r, MenuPurple.g, MenuPurple.b, 0.35f), 3000);
+            Renderer ringGlow = MenuQuad("BrilhoDoAnel", room.transform, glowTexture, new Vector3(0f, 0.003f, 0f),
+                new Vector2(1.7f, 1.7f), new Color(MenuPurple.r, MenuPurple.g, MenuPurple.b, 0.5f), 3000);
+            ringGlow.transform.localRotation = Quaternion.Euler(90f, 0f, 0f);
+
+            Renderer logoGlow = MenuQuad("BrilhoDaLogo", layout, glowTexture, new Vector3(0f, 0.2f, 2.56f),
+                new Vector2(3.8f, 1.9f), new Color(MenuPurple.r, MenuPurple.g, MenuPurple.b, 0.45f), 3000);
 
             Texture2D logoTexture = MenuTexture("MenuLogo.png", true);
-            const float logoWidth = 1.7f;
-            float logoHeight = logoTexture != null ? logoWidth * logoTexture.height / logoTexture.width : 0.5f;
-            Renderer logo = MenuQuad("Logo", layout, logoTexture, new Vector3(0f, 0.15f, 2.4f),
+            const float logoWidth = 2.1f;
+            float logoHeight = logoTexture != null ? logoWidth * logoTexture.height / logoTexture.width : 0.6f;
+            Renderer logo = MenuQuad("Logo", layout, logoTexture, new Vector3(0f, 0.2f, 2.5f),
                 new Vector2(logoWidth, logoHeight), Color.white, 3001);
 
             // Within reach below the eyes, tilted to face them: touched like a real button.
@@ -107,7 +117,7 @@ namespace VRSurgery.EditorTools
             // The charge, a thin line under the button filling from the left.
             const float barWidth = 0.28f;
             MenuQuad("BarraFundo", button, null, new Vector3(0f, -0.078f, -0.001f), new Vector2(barWidth, 0.007f),
-                new Color(1f, 1f, 1f, 0.16f), 3001);
+                new Color(0.66f, 0.36f, 1f, 0.22f), 3001);
             Transform bar = new GameObject("BarraCarga").transform;
             bar.SetParent(button, false);
             bar.localPosition = new Vector3(-barWidth * 0.5f, -0.078f, -0.0015f);
@@ -182,21 +192,23 @@ namespace VRSurgery.EditorTools
         /// (no bleeding of the opposite edge into a transparent border), mipmapped, high-quality
         /// compression and alpha that blends cleanly.
         /// </summary>
-        private static Texture2D MenuTexture(string file, bool clamp)
+        private static Texture2D MenuTexture(string file, bool clamp, int largest = 2048)
         {
             string path = MenuTextureFolder + file;
             if (AssetImporter.GetAtPath(path) is TextureImporter importer)
             {
                 TextureWrapMode wrap = clamp ? TextureWrapMode.Clamp : TextureWrapMode.Repeat;
                 if (importer.wrapMode != wrap || !importer.alphaIsTransparency || !importer.mipmapEnabled ||
-                    importer.textureCompression != TextureImporterCompression.CompressedHQ || importer.anisoLevel != 4)
+                    importer.textureCompression != TextureImporterCompression.CompressedHQ || importer.anisoLevel != 8 ||
+                    importer.maxTextureSize != largest)
                 {
                     importer.textureType = TextureImporterType.Default;
                     importer.wrapMode = wrap;
                     importer.alphaIsTransparency = true;
                     importer.mipmapEnabled = true;
                     importer.textureCompression = TextureImporterCompression.CompressedHQ;
-                    importer.anisoLevel = 4;
+                    importer.anisoLevel = 8;
+                    importer.maxTextureSize = largest;
                     importer.SaveAndReimport();
                 }
             }

@@ -85,7 +85,7 @@ namespace VRSurgery.Surgery
         [SerializeField, Min(0f)] private float armSeconds = 0.8f;
 
         [Header("Look")]
-        [SerializeField] private Color glowColour = new Color(0.52f, 0.09f, 0.98f, 0.4f);
+        [SerializeField] private Color glowColour = new Color(0.52f, 0.09f, 0.98f, 0.45f);
 
         [Tooltip("Eye height used while nobody is measured: the room was laid out for it.")]
         [SerializeField] private float defaultEyeHeight = 1.6f;
@@ -104,6 +104,7 @@ namespace VRSurgery.Surgery
         private float _eyeTarget;
         private float _hover;
         private float _sinceOpened;
+        private bool _fogBefore;
 
         /// <summary>The menu is the screen right now (whether or not anyone was moved to it).</summary>
         public bool IsOpen { get; private set; }
@@ -221,6 +222,11 @@ namespace VRSurgery.Surgery
 
             if (Travels)
             {
+                // The theatre's grey fog is not felt across a table, but ten metres of it turn the
+                // menu's night sky grey. Off while the visitor is in the menu room, then put back.
+                if (!InRoom) { _fogBefore = RenderSettings.fog; }
+                RenderSettings.fog = false;
+
                 if (room != null) { room.SetActive(true); }
                 if (fit != null && stance != null)
                 {
@@ -245,6 +251,7 @@ namespace VRSurgery.Surgery
                 if (InRoom) { fit.Fit(); }
             }
 
+            if (InRoom) { RenderSettings.fog = _fogBefore; }
             InRoom = false;
             if (room != null) { room.SetActive(false); }
         }
