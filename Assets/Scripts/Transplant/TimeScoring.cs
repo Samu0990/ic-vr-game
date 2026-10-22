@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using UnityEngine;
 using VRSurgery.Interaction;
 using VRSurgery.Session;
@@ -78,11 +77,6 @@ namespace VRSurgery.Transplant
 
         [Tooltip("The longest a turn may last: its starting time plus every second it could win.")]
         [SerializeField, Min(30f)] private float maxTurnSeconds = 240f;
-
-        [Tooltip("Also append every adjustment to a CSV on the stand's PC, for the research.")]
-        [SerializeField] private bool writeCsv = true;
-
-        public const string CsvFileName = "ajustes_de_tempo.csv";
 
         private readonly Dictionary<string, float> _lastCounted = new Dictionary<string, float>();
         private readonly List<(ReturnHomeOnRelease recovery, Action lost)> _recoveries =
@@ -279,22 +273,6 @@ namespace VRSurgery.Transplant
                           $"restam {session.RemainingSeconds:F1} s";
             if (telemetry != null) { telemetry.Log("Ajuste de tempo: " + line); }
             else { Debug.Log("[Tempo] " + line); }
-
-            if (!writeCsv || !Application.isPlaying) { return; }
-
-            try
-            {
-                string path = Path.Combine(Application.persistentDataPath, CsvFileName);
-                bool header = !File.Exists(path);
-                using StreamWriter csv = new StreamWriter(path, true);
-                if (header) { csv.WriteLine("data_hora;vez;nivel;etapa;segundos;motivo;restante"); }
-                csv.WriteLine($"{a.At:yyyy-MM-dd HH:mm:ss};{session.SessionCount};{a.Level};{a.Stage};" +
-                              $"{a.Seconds:+0;-0};{a.Reason};{session.RemainingSeconds:F1}");
-            }
-            catch (Exception exception)
-            {
-                Debug.LogWarning($"[Tempo] não deu para gravar o ajuste no CSV: {exception.Message}");
-            }
         }
 
         /// <summary>Forgets the repeat gaps. A new visitor's first mistake always counts.</summary>

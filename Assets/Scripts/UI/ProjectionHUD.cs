@@ -211,7 +211,9 @@ namespace VRSurgery.Surgery
                     break;
 
                 case SessionState.Scoreboard:
-                    SetMessage("MELHORES TEMPOS", "Próximo da fila!");
+                    // A stand without a table has no times to show here, only the next turn.
+                    if (leaderboard != null) { SetMessage("MELHORES TEMPOS", "Próximo da fila!"); }
+                    else { SetMessage("PRÓXIMO DA FILA", string.Empty); }
                     break;
             }
         }

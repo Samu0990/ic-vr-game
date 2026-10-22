@@ -253,5 +253,45 @@ namespace VRSurgery.Tests
             StringAssert.Contains("R ", SpectatorHud.HelpText);
             StringAssert.Contains("N ", SpectatorHud.HelpText);
         }
+
+        // ------------------------------------------------------------------ sem placar
+
+        [UnityTest]
+        public IEnumerator OEstandeNaoTemPlacar_NemTecladoDeNome()
+        {
+            yield return HeadlessScene.Load(SceneName);
+
+            Assert.IsNull(Object.FindFirstObjectByType<Leaderboard>(FindObjectsInactive.Include),
+                "Sem placar no estande: nada guarda os tempos da fila.");
+            Assert.IsNull(Object.FindFirstObjectByType<NameEntryController>(FindObjectsInactive.Include),
+                "Sem placar, ninguém digita nome no fim da vez.");
+            Assert.IsNull(Object.FindFirstObjectByType<NameEntryKey>(FindObjectsInactive.Include),
+                "Nem teclado de nome ao lado do paciente.");
+        }
+
+        [Test]
+        public void ATelaDaPlateia_SemPlacar_SoChamaOProximoDaFila()
+        {
+            // Built inactive so the definition is in place before Awake reads the round length.
+            GameObject host = Spawn("Sessao");
+            host.SetActive(false);
+            EventSessionController session = host.AddComponent<EventSessionController>();
+            session.Bind(EventSessionDefinition.Create(round: 150f, resultHold: 4f, scoreboardHold: 6f), null);
+            host.SetActive(true);
+
+            GameObject screen = Spawn("Plateia");
+            screen.SetActive(false);
+            ProjectionHUD hud = screen.AddComponent<ProjectionHUD>();
+            hud.Bind(session, null, null);
+            screen.SetActive(true);
+
+            session.BeginSession();
+            session.StartRound();
+            SurgeryEvents.RaiseSurgeryCompleted();
+            for (int i = 0; i < 18; i++) { session.Tick(0.25f); }
+
+            Assert.AreEqual(SessionState.Scoreboard, session.State);
+            Assert.AreEqual("PRÓXIMO DA FILA", hud.Headline, "Sem placar não há 'melhores tempos' para mostrar.");
+        }
     }
 }

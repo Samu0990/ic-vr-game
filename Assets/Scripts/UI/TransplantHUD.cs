@@ -149,7 +149,8 @@ namespace VRSurgery.Surgery
                         return "TEMPO ESGOTADO";
 
                     case SessionState.Scoreboard:
-                        return "MELHORES TEMPOS";
+                        // No scoreboard at the stand: the pause between turns only hands over.
+                        return "PRÓXIMO DA FILA\nTire o visor";
                 }
             }
 

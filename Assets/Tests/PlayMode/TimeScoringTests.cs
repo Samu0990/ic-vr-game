@@ -307,21 +307,5 @@ namespace VRSurgery.Tests
                 "Tempo inicial + todos os bônus possíveis cabem no limite da vez.");
             Assert.AreEqual(240f, _session.TurnLimitSeconds);
         }
-
-        [Test]
-        public void OPlacarOrdenaPorPontos_QueJaContamBonusEPenalidades()
-        {
-            GameObject host = Spawn("Placar");
-            PlayerPrefs.DeleteKey("VRSurgery.Leaderboard");
-            Leaderboard board = host.AddComponent<Leaderboard>();
-            board.Clear();
-
-            // Mais rápido no relógio de parede, mas cheio de erros: menos segundos sobrando.
-            board.Submit("Rápido e errando", new SessionResult(true, 150f, 20f, 2000));
-            board.Submit("Com calma", new SessionResult(true, 170f, 45f, 4500));
-
-            Assert.AreEqual("Com calma", board.Best.Value.Name);
-            PlayerPrefs.DeleteKey("VRSurgery.Leaderboard");
-        }
     }
 }

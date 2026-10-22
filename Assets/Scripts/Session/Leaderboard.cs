@@ -178,13 +178,8 @@ namespace VRSurgery.Session
         /// </summary>
         private void SortEntries()
         {
-            // Points first: they are the seconds left on the clock, with every second won and lost
-            // along the way. Ranked on the visitor's own time instead, a fast run full of mistakes
-            // would beat a careful one, and the penalties would mean nothing on the board.
             _entries.Sort((a, b) =>
             {
-                int byPoints = b.Score.CompareTo(a.Score);
-                if (byPoints != 0) { return byPoints; }
                 int byTime = a.Milliseconds.CompareTo(b.Milliseconds);
                 return byTime != 0 ? byTime : a.AchievedAtTicks.CompareTo(b.AchievedAtTicks);
             });

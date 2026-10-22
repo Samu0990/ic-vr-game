@@ -20,7 +20,7 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
        **ativo** (botão "Definir como ativo"). Sem isso o jogo abre sem nada no óculos.
 3. [ ] Windows em **Estender** (tecla `Win+P` → Estender), com o projetor ligado.
        Tela principal = monitor da fila (Display 1); projetor = Display 2.
-       Um terceiro monitor (opcional) vira o placar (Display 3).
+       Um terceiro monitor (opcional) mostra o relógio grande para a plateia (Display 3).
 4. [ ] Teste de cabo do app (Dispositivos → o óculos → Teste de conexão USB) sem aviso.
 
 ## No óculos
@@ -53,11 +53,6 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
   reabrir o jogo. Sem segunda tela, `P` escolhe o que aparece na única tela.
 - **Imagem do projetor torta ou espelhada:** calibrar de novo com `C` e salvar com `Enter`.
 - **Mãos/controle não aparecem:** conferir se os controles estão ligados e pareados no óculos.
-
-## Dados da rodada (para a IC)
-
-- Cada ±segundo vai para `%USERPROFILE%\AppData\LocalLow\Meta Health\Meta Health\ajustes_de_tempo.csv`
-  (data e hora, vez, nível, etapa, segundos, motivo, tempo restante). Copiar no fim do dia.
 
 ## O que anotar para mim
 
