@@ -10,6 +10,7 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
       Sai em `Builds/Windows/`. O nível é o último escolhido em `VRSurgery → Transplante — nível …`
       (padrão: Médio); o Console diz qual nível foi.
 - [ ] Copiar a pasta `Builds/Windows/` **inteira** para um pendrive (o `.exe` sozinho não roda).
+      A subpasta `Meta Health_BurstDebugInformation_DoNotShip` não precisa ir.
 - [ ] Levar um cabo USB-C **de dados** (USB 3 de preferência). Cabo só de carga não funciona.
 
 ## No PC Windows
@@ -52,6 +53,11 @@ Para testar a build do estande no PC Windows do laboratório, com o Quest ligado
   reabrir o jogo. Sem segunda tela, `P` escolhe o que aparece na única tela.
 - **Imagem do projetor torta ou espelhada:** calibrar de novo com `C` e salvar com `Enter`.
 - **Mãos/controle não aparecem:** conferir se os controles estão ligados e pareados no óculos.
+
+## Dados da rodada (para a IC)
+
+- Cada ±segundo vai para `%USERPROFILE%\AppData\LocalLow\Meta Health\Meta Health\ajustes_de_tempo.csv`
+  (data e hora, vez, nível, etapa, segundos, motivo, tempo restante). Copiar no fim do dia.
 
 ## O que anotar para mim
 

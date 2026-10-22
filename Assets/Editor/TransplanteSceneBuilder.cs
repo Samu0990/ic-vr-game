@@ -774,7 +774,8 @@ namespace VRSurgery.EditorTools
 
             Debug.Log($"[Transplante] nível {plan.Difficulty}: {sites.Count} ponto(s) de CEC, " +
                       $"{plan.GestureSeconds:F0}s de gestos, {plan.DoneByTeam.Count} etapa(s) " +
-                      $"já feitas pela equipe, rodada de {RoundSeconds:F0}s");
+                      $"já feitas pela equipe; tempo inicial da vez calculado pelo TimeScoring " +
+                      $"(limite {MaxTurnSeconds:F0}s com os bônus)");
             return sites;
         }
 
@@ -1168,6 +1169,9 @@ namespace VRSurgery.EditorTools
                 donor != null ? donor.transform : null,
                 seat != null ? seat.transform : null,
                 arrow, label);
+
+            // While the new heart fibrillates, the place is the heart between the paddles.
+            step.BindDefibrillation(_defibrillation);
 
             // E o brilho pulsante por cima do objeto em si. A seta diz onde olhar; isto não
             // precisa nem ser lido.
@@ -2179,6 +2183,7 @@ namespace VRSurgery.EditorTools
             SpectatorHud queue = hud.AddComponent<SpectatorHud>();
             queue.Bind(systems.GetComponent<EventSessionController>(), systems.GetComponent<TransplantProcedure>(), output);
             queue.BindScoring(systems.GetComponent<TimeScoring>());
+            queue.BindVisitorFit(Object.FindFirstObjectByType<VisitorFit>());
 
             Debug.Log("[Transplante] monitor da fila (Display 1): visão do cirurgião + tempo, pontos, etapa e ±s; " +
                       "projetor (Display 2) com calibração C, troca de tela P, ajuda H");

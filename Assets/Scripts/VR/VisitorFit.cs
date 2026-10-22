@@ -19,7 +19,13 @@ namespace VRSurgery.VR
     /// Only the virtual floor moves; nothing is on it that anyone needs to reach.
     ///
     /// The operator can refit at any moment with R on the PC keyboard (or by calling Fit), e.g.
-    /// after helping someone adjust the strap.
+    /// after helping someone adjust the strap, and nudge the visitor up or down 2 cm with the
+    /// arrow keys between turns — never while the clock runs, and not while the arrows are
+    /// lining up the projector.
+    ///
+    /// Each visitor stands at their own height: the eyes are measured from the real floor, the
+    /// way every room-scale game does it. Locking everyone's eyes to one height put a child's
+    /// head and a tall adult's in the same place, and the table where neither expected it.
     /// </summary>
     public class VisitorFit : MonoBehaviour
     {
@@ -36,8 +42,8 @@ namespace VRSurgery.VR
         [SerializeField] private EventSessionController session;
 
         [Header("Eye height")]
-        [Tooltip("Puts the camera at exactly Locked Eye Height above the stance on every fit, so the headset starts where Play without a headset starts. Overrides short mode.")]
-        [SerializeField] private bool lockEyeHeight = true;
+        [Tooltip("Puts the camera at exactly Locked Eye Height above the stance on every fit, so the headset starts where Play without a headset starts. Overrides short mode. Off at the stand: every visitor at their real height.")]
+        [SerializeField] private bool lockEyeHeight = false;
 
         [Tooltip("Camera height above the stance in metres. Match the Main Camera Y when pressing Play without a headset.")]
         [SerializeField] private float lockedEyeHeight = 1.46144f;
@@ -60,6 +66,13 @@ namespace VRSurgery.VR
         [Tooltip("Seconds after the headset's presence sensor says someone put it on before fitting.")]
         [SerializeField, Min(0f)] private float putOnSettleSeconds = 1.2f;
 
+        [Header("Operator")]
+        [Tooltip("How far one press of the up or down arrow moves the visitor, in metres.")]
+        [SerializeField, Min(0.005f)] private float operatorStep = 0.02f;
+
+        [Tooltip("Most the operator can move a visitor either way, in metres.")]
+        [SerializeField, Min(0f)] private float operatorLimit = 0.2f;
+
         private const float MeasurableEye = 0.5f;
         private bool _eyeUnmeasured;
         private float _sinceBriefing = -1f;
@@ -68,6 +81,15 @@ namespace VRSurgery.VR
 
         /// <summary>How far the floor was lifted at the last fit, in metres.</summary>
         public float Lift { get; private set; }
+
+        /// <summary>
+        /// The operator's correction for this visitor, in metres: up or down in 2 cm steps, on top
+        /// of the measured height. Starts at zero for each new visitor.
+        /// </summary>
+        public float OperatorOffset { get; private set; }
+
+        /// <summary>Raised when the operator changes the correction.</summary>
+        public event System.Action<float> OperatorOffsetChanged;
 
         public int Fits { get; private set; }
 
@@ -84,6 +106,9 @@ namespace VRSurgery.VR
         private void HandleState(SessionState state)
         {
             if (state != SessionState.Briefing) { return; }
+
+            // A new visitor starts from their own measured height, not the last one's correction.
+            OperatorOffset = 0f;
 
             // A headset lying on the table is not a visitor: measure only a head that is in it.
             if (HeadsetOn()) { Fit(); }
@@ -107,7 +132,17 @@ namespace VRSurgery.VR
 
         private void Update()
         {
-            if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame) { Fit(); }
+            if (Keyboard.current != null)
+            {
+                if (Keyboard.current.rKey.wasPressedThisFrame) { Fit(); }
+
+                // The arrows belong to the projector while it is being calibrated.
+                if (!ProjectionOutput.AnyCalibrating)
+                {
+                    if (Keyboard.current.upArrowKey.wasPressedThisFrame) { Nudge(1); }
+                    if (Keyboard.current.downArrowKey.wasPressedThisFrame) { Nudge(-1); }
+                }
+            }
 
             // The head became measurable after the last fit (tracking arrived late): fit again.
             if (lockEyeHeight && _eyeUnmeasured && MayFit && head != null && rig != null
@@ -162,10 +197,29 @@ namespace VRSurgery.VR
                 Lift = shortMode && floorTracking ? LiftFor(eye) : 0f;
             }
 
-            Solve(head.position, head.forward, rig.position, rig.rotation, stance.position, stance.forward, Lift,
-                out Vector3 position, out Quaternion rotation);
+            Solve(head.position, head.forward, rig.position, rig.rotation, stance.position, stance.forward,
+                Lift + OperatorOffset, out Vector3 position, out Quaternion rotation);
             rig.SetPositionAndRotation(position, rotation);
             Fits++;
+        }
+
+        /// <summary>
+        /// The operator's arrow keys: one step up or down for the visitor in the headset, applied
+        /// at once. Refused while the clock runs — the table moving under someone's hands
+        /// mid-incision is worse than a slightly low table. Returns whether it moved.
+        /// </summary>
+        public bool Nudge(int steps)
+        {
+            if (!MayFit || steps == 0 || rig == null) { return false; }
+
+            float before = OperatorOffset;
+            OperatorOffset = Mathf.Clamp(OperatorOffset + steps * operatorStep, -operatorLimit, operatorLimit);
+            float moved = OperatorOffset - before;
+            if (Mathf.Approximately(moved, 0f)) { return false; }
+
+            rig.position += Vector3.up * moved;
+            OperatorOffsetChanged?.Invoke(OperatorOffset);
+            return true;
         }
 
         /// <summary>How far to lift a visitor whose eyes are this high above the real floor.</summary>

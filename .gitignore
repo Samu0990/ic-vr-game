@@ -42,3 +42,7 @@ crashlytics-build.properties
 
 # Dumps de crash do editor
 mono_crash.*.blob
+
+# Gerador de vozes (Tools/voz/gerar_vozes.sh): ambiente Python e modelos baixados
+/Tools/voz/.venv/
+/Tools/voz/modelos/

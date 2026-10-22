@@ -90,7 +90,11 @@ namespace VRSurgery.Feedback
                 session.RoundEnded += HandleRoundEnded;
             }
 
-            if (procedure != null) { procedure.StageChanged += HandleStage; }
+            if (procedure != null)
+            {
+                procedure.StageChanged += HandleStage;
+                procedure.StageCompleted += HandleStageCompleted;
+            }
 
             if (incision != null)
             {
@@ -126,7 +130,11 @@ namespace VRSurgery.Feedback
                 session.RoundEnded -= HandleRoundEnded;
             }
 
-            if (procedure != null) { procedure.StageChanged -= HandleStage; }
+            if (procedure != null)
+            {
+                procedure.StageChanged -= HandleStage;
+                procedure.StageCompleted -= HandleStageCompleted;
+            }
 
             if (incision != null)
             {
@@ -172,7 +180,26 @@ namespace VRSurgery.Feedback
         {
             // During the briefing the patient is being reset; the welcome covers it.
             if (session != null && session.State == SessionState.Briefing) { return; }
-            Say(StageLine(stage));
+
+            // Where coming off bypass is one hold (Fácil), "retire o clampe" is only its start.
+            Say(stage == TransplantStage.Restart && ExitIsOneHold() ? "etapa_sair_bomba_facil" : StageLine(stage));
+        }
+
+        /// <summary>On Fácil the team put the patient on the pump; the room says so as it goes by.</summary>
+        private void HandleStageCompleted(TransplantStage stage, bool byTeam)
+        {
+            if (byTeam && stage == TransplantStage.GoOnBypass) { Say("equipe_bomba"); }
+        }
+
+        private bool ExitIsOneHold()
+        {
+            if (procedure == null || procedure.Plan == null) { return false; }
+            foreach (BypassGesture gesture in procedure.Plan.Gestures)
+            {
+                if (gesture.Steps.Length > 1 && gesture.Steps[0] == BypassStep.Unclamp) { return true; }
+            }
+
+            return false;
         }
 
         private void HandleRoundEnded(SessionResult result)
@@ -198,7 +225,11 @@ namespace VRSurgery.Feedback
         private void SayBlade() => Say("dica_lamina");
         private void SayOffLine() => Say("fora_da_linha");
         private void SayTooDeep() => Say("profundo_demais");
-        private void SayFibrillation() => Say("fibrilacao", true);
+        private void SayFibrillation()
+        {
+            Say("fibrilacao", true);
+            Say("desfibrilar_aqui");
+        }
         private void SayClear() => Say("afastar", true);
 
         /// <summary>The line that announces a stage, or null for stages that need none.</summary>

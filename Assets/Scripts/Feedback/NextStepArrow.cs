@@ -26,6 +26,9 @@ namespace VRSurgery.Feedback
         [SerializeField] private BypassWorker bypass;
         [SerializeField] private VesselAnastomosis[] vessels;
 
+        [Tooltip("Optional: while the new heart fibrillates, the place is the heart, between the paddles.")]
+        [SerializeField] private DefibrillationWorker defibrillation;
+
         [Header("Alvos")]
         [Tooltip("A linha do esterno: onde o corte da pele e a serra acontecem.")]
         [SerializeField] private Transform midline;
@@ -114,6 +117,14 @@ namespace VRSurgery.Feedback
 
                 case TransplantStage.GoOnBypass:
                 case TransplantStage.Restart:
+                    // A fibrillating heart is the step now, not the next pump site: the pump
+                    // refuses to go on until the paddles have brought the rhythm back.
+                    if (defibrillation != null && defibrillation.IsFibrillating && donorHeart != null)
+                    {
+                        say = "Segure o coração entre as pás";
+                        return donorHeart;
+                    }
+
                     say = "Encoste aqui e segure";
                     return bypass != null ? bypass.NextPoint : null;
 
@@ -166,6 +177,9 @@ namespace VRSurgery.Feedback
         }
 
         /// <summary>Liga a seta ao resto da cena, a partir do construtor.</summary>
+        /// <summary>The reperfusion fibrillation, so the arrow points at the heart while it lasts.</summary>
+        public void BindDefibrillation(DefibrillationWorker worker) => defibrillation = worker;
+
         public void Bind(TransplantProcedure transplant, BypassWorker pump, VesselAnastomosis[] joins,
             Transform sternalLine, Transform sick, Transform donor, Transform seat,
             Transform arrowObject, TextMesh text)

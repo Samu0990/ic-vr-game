@@ -245,6 +245,11 @@ namespace VRSurgery.Surgery
                 _ => string.Empty,
             };
 
+            float offset = fit != null ? fit.OperatorOffset : 0f;
+            _hint.text = Mathf.Abs(offset) > 0.001f
+                ? $"H — teclas do operador   ·   altura do visitante {offset * 100f:+0;-0} cm"
+                : "H — teclas do operador";
+
             _calibration.text = projection != null && projection.Calibrating
                 ? "CALIBRAÇÃO DO PROJETOR — setas movem · + − escala · [ ] gira · X Y espelham · Enter salva · C sai\n" +
                   $"deslocamento {projection.Calibration.offsetX:+0.000;-0.000} {projection.Calibration.offsetY:+0.000;-0.000} · " +
@@ -270,6 +275,12 @@ namespace VRSurgery.Surgery
 
         [SerializeField] private TimeScoring scoring;
         private TimeScoring _subscribedScoring;
+
+        [Tooltip("Optional: the visitor's fit, to show the operator's height correction.")]
+        [SerializeField] private VisitorFit fit;
+
+        /// <summary>Shows the operator's ↑/↓ correction for the visitor in the headset.</summary>
+        public void BindVisitorFit(VisitorFit visitorFit) => fit = visitorFit;
 
         private void OnEnable() => SubscribeScoring();
 

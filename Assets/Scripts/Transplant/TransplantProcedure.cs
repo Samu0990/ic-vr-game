@@ -400,15 +400,38 @@ namespace VRSurgery.Transplant
                 ? "Cauterize os pontos que sangram e abra o esterno com a serra na marca dourada"
                 : "Abra o esterno: pressione a mão sobre a marca dourada",
             TransplantStage.OpenPericardium => "Abra o pericárdio: bisturi elétrico sobre a linha tracejada",
-            TransplantStage.GoOnBypass => Bypass.CurrentInstruction,
+            TransplantStage.GoOnBypass => PumpInstruction(),
             TransplantStage.RemoveNativeHeart => "Retire o coração doente",
             TransplantStage.PlaceDonorHeart => "Posicione o coração do doador",
             TransplantStage.ConnectVessels => $"Conecte os vasos — {VesselsConnected}/{vesselCount}",
-            TransplantStage.Restart => Bypass.CurrentInstruction,
+            TransplantStage.Restart => PumpInstruction(),
             TransplantStage.CloseSkin => "Coração batendo! Feche a pele: porta-agulha nos pontos azuis",
             TransplantStage.Complete => "Coração batendo",
             _ => "Aguardando",
         };
+
+        /// <summary>
+        /// The pump's next step — or, where the level folds several steps into one hold, that
+        /// hold. On Fácil the way off bypass is a single hold that unclamps, de-airs and weans;
+        /// telling the visitor only "retire o clampe" left them waiting for steps that never came.
+        /// </summary>
+        private string PumpInstruction()
+        {
+            BypassStep next = Bypass.NextStep;
+            if (Plan != null)
+            {
+                for (int i = 0; i < Plan.Gestures.Count; i++)
+                {
+                    BypassGesture gesture = Plan.Gestures[i];
+                    if (gesture.Steps.Length > 1 && gesture.Steps[0] == next)
+                    {
+                        return $"{gesture.Label}: encoste a mão no ponto âmbar e segure";
+                    }
+                }
+            }
+
+            return Bypass.CurrentInstruction;
+        }
 
         private void SetStage(TransplantStage next, string notice = null)
         {

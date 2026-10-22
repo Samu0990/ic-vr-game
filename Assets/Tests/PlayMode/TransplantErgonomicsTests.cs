@@ -152,6 +152,40 @@ namespace VRSurgery.Tests
             yield break;
         }
 
+        /// <summary>
+        /// Each visitor now stands at their own height (VisitorFit no longer locks the eyes to one
+        /// height), so the layout has to work for the heights that come to the stand, not only for
+        /// the camera the scene happens to load with: the head over the stance, facing the patient,
+        /// at a short adult's, an average adult's and a tall adult's eye height. A child is lifted
+        /// to the design height by the short mode, which the middle case covers.
+        /// </summary>
+        [UnityTest]
+        public IEnumerator NaAlturaRealDeCadaVisitante_TudoFicaAoAlcance([Values(1.50f, 1.62f, 1.75f)] float eyeHeight)
+        {
+            GameObject stanceObject = GameObject.Find("PosicaoCirurgiao");
+            Assert.IsNotNull(stanceObject, "Sem a posição do cirurgião na cena.");
+            Transform stance = stanceObject.transform;
+
+            Vector3 eye = stance.position + Vector3.up * eyeHeight;
+            Quaternion head = Quaternion.LookRotation(stance.forward, Vector3.up);
+            Vector3 left = ReachEnvelope.ShoulderPosition(eye, head, true);
+            Vector3 right = ReachEnvelope.ShoulderPosition(eye, head, false);
+
+            List<string> failures = new List<string>();
+            foreach ((string name, Vector3 point) in InteractionPoints())
+            {
+                float nearest = Mathf.Min(Vector3.Distance(left, point), Vector3.Distance(right, point));
+                if (ReachEnvelope.Classify(nearest) == ReachClass.OutOfReach)
+                {
+                    failures.Add($"'{name}' a {nearest:F3} m do ombro mais perto, para olhos a {eyeHeight:F2} m: " +
+                                 "fora do alcance sem dar um passo.");
+                }
+            }
+
+            Assert.IsEmpty(failures, string.Join("\n", failures));
+            yield break;
+        }
+
         [UnityTest]
         public IEnumerator NothingEssential_SitsBeyondNinetyDegreesOfGaze()
         {
