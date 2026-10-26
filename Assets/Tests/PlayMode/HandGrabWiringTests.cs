@@ -281,6 +281,7 @@ namespace VRSurgery.Tests
             // Lowered exactly into the pericardium, but not let go of.
             _donorHeart.transform.position = _seat.position;
             yield return null;
+            _donorHeart.transform.position = _seat.position;
             yield return null;
 
             Assert.IsFalse(organ.Satisfied,
@@ -312,6 +313,9 @@ namespace VRSurgery.Tests
             AdvanceToExplant();
 
             SurgicalInteractable organ = _nativeHeart.GetComponent<SurgicalInteractable>();
+            // A XRI mantém o rigidbody preso à mão. Como este teste chama o contrato diretamente
+            // (sem óculos), replica essa parte para a gravidade não mover o órgão entre frames.
+            _nativeHeart.GetComponent<Rigidbody>().isKinematic = true;
             organ.OnGrabbed(null);
             yield return null;
 
@@ -357,6 +361,9 @@ namespace VRSurgery.Tests
             SurgicalInteractable organ = _donorHeart.GetComponent<SurgicalInteractable>();
             GrabbableOrgan grabbable = _donorHeart.GetComponent<GrabbableOrgan>();
 
+            // No jogo, XRGrabInteractable segura o corpo na pose da mão. Em headless não existe
+            // mão XR, portanto o teste precisa impedir a queda livre enquanto simula o agarre.
+            _donorHeart.GetComponent<Rigidbody>().isKinematic = true;
             organ.OnGrabbed(null);
             yield return null;
 
@@ -367,11 +374,16 @@ namespace VRSurgery.Tests
             Assert.IsFalse(grabbable.Satisfied,
                 "Um coração ainda preso à mão do cirurgião não está implantado.");
 
+            // O assento acompanha a animação ainda terminando de abrir o tórax; a mão real
+            // acompanharia esse movimento. Reaplica a pose atual antes de simular a soltura.
+            _donorHeart.transform.position = _seat.position;
             organ.OnReleased();
             yield return null;
             yield return null;
 
-            Assert.IsTrue(grabbable.Satisfied, "Pousado no lugar certo e solto: aí sim.");
+            Assert.IsTrue(grabbable.Satisfied,
+                $"Pousado no lugar certo e solto: aí sim. active={grabbable.isActiveAndEnabled} " +
+                $"held={grabbable.IsHeld} distance={grabbable.DistanceFromSeat:F4}m");
             Assert.AreEqual(TransplantStage.ConnectVessels, _procedure.Stage);
         }
 
@@ -399,6 +411,104 @@ namespace VRSurgery.Tests
             Assert.AreEqual(homeRotation, _donorHeart.transform.rotation);
             Assert.IsFalse(returnHome.IsLoose);
             yield break;
+        }
+
+        [UnityTest]
+        public IEnumerator ACenaCompletaVaiDaCanulacaoAteOFechamento()
+        {
+            ChestSkinPatch patch = Object.FindFirstObjectByType<ChestSkinPatch>();
+            SternotomyController sternum = Object.FindFirstObjectByType<SternotomyController>();
+            BypassWorker bypass = Object.FindFirstObjectByType<BypassWorker>();
+            ChestClosure closure = Object.FindFirstObjectByType<ChestClosure>();
+            SutureWorker suture = Object.FindFirstObjectByType<SutureWorker>();
+
+            Assert.IsNotNull(patch);
+            Assert.IsNotNull(sternum);
+            Assert.IsNotNull(bypass);
+            Assert.IsNotNull(closure);
+            Assert.IsNotNull(suture);
+
+            _procedure.Begin();
+            Assert.AreEqual(SurgicalDifficulty.Medio, _procedure.Plan.Difficulty,
+                "A cena foi construída como Médio e precisa reabrir com o mesmo plano.");
+
+            // A pele e o osso ficam realmente abertos, para também validar o fechamento no fim.
+            patch.Open();
+            patch.Tick(2f);
+            Assert.IsTrue(_procedure.CompleteStage(TransplantStage.SkinIncision));
+            sternum.Open();
+            sternum.Tick(2f);
+            Assert.AreEqual(TransplantStage.OpenPericardium, _procedure.Stage);
+            Assert.IsTrue(_procedure.CompleteStage(TransplantStage.OpenPericardium));
+            Assert.AreEqual(TransplantStage.GoOnBypass, _procedure.Stage);
+
+            // O gesto Médio precisa sobreviver à gravação da cena como a cadeia completa.
+            CollectionAssert.AreEqual(new[]
+            {
+                BypassStep.Cannulate, BypassStep.ClampAorta, BypassStep.Cardioplegia,
+            }, bypass.Sites[0].Chain);
+            bypass.Sites[0].Point.parent.parent.Find("SurgeonHandTip").position = bypass.Sites[0].Point.position;
+            bypass.Tick(bypass.Sites[0].Seconds + 0.1f);
+            Assert.AreEqual(TransplantStage.RemoveNativeHeart, _procedure.Stage,
+                "Canular, clampear e dar cardioplegia precisa liberar a retirada do coração.");
+
+            SurgicalInteractable native = _nativeHeart.GetComponent<SurgicalInteractable>();
+            native.OnGrabbed(null);
+            _nativeHeart.transform.position = _seat.position + new Vector3(0.6f, 0.1f, 0f);
+            native.OnReleased();
+            Assert.AreEqual(TransplantStage.PlaceDonorHeart, _procedure.Stage);
+
+            SurgicalInteractable donor = _donorHeart.GetComponent<SurgicalInteractable>();
+            donor.OnGrabbed(null);
+            _donorHeart.transform.position = _seat.position;
+            donor.OnReleased();
+            yield return null;
+            Assert.AreEqual(TransplantStage.ConnectVessels, _procedure.Stage);
+
+            foreach (VesselAnastomosis vessel in
+                     Object.FindObjectsByType<VesselAnastomosis>(FindObjectsInactive.Include, FindObjectsSortMode.None))
+            {
+                vessel.Work(vessel.transform.position, 2f);
+            }
+            Assert.AreEqual(TransplantStage.Restart, _procedure.Stage,
+                "As cinco anastomoses precisam liberar a saída da circulação extracorpórea.");
+
+            // A fibrilação tem testes próprios; aqui isolamos o encadeamento completo da cena.
+            DefibrillationWorker defib = Object.FindFirstObjectByType<DefibrillationWorker>();
+            Assert.IsNotNull(defib);
+            defib.Configure(0f, 1f, 1);
+
+            Transform handTip = bypass.Sites[0].Point.parent.parent.Find("SurgeonHandTip");
+            for (int i = 1; i < bypass.Sites.Count; i++)
+            {
+                handTip.position = bypass.Sites[i].Point.position;
+                bypass.Tick(bypass.Sites[i].Seconds + 0.1f);
+                if (i == 1) { defib.Tick(0.1f); }
+            }
+            Assert.AreEqual(TransplantStage.CloseSkin, _procedure.Stage);
+
+            sternum.Tick(2f);
+            closure.Tick();
+            patch.Tick(2f);
+            closure.Tick();
+            Assert.IsTrue(patch.IsClosed, "O tórax e a pele precisam voltar à posição de fechamento.");
+
+            SurgicalInteractable holder = GameObject.Find("PortaAgulha").GetComponent<SurgicalInteractable>();
+            Transform needle = GameObject.Find("NeedleTip").transform;
+            holder.OnGrabbed(null);
+            for (int stitch = 0; stitch < suture.StitchCount; stitch++)
+            {
+                for (int phase = 0; phase < 2; phase++)
+                {
+                    needle.position = suture.MarkPosition(stitch, phase);
+                    suture.Tick(0.5f);
+                }
+            }
+            holder.OnReleased();
+
+            Assert.IsTrue(suture.IsComplete, "Os cinco pontos precisam terminar a sutura.");
+            Assert.IsTrue(_procedure.IsComplete,
+                "Depois de fechar os ossos e suturar a pele, a cirurgia precisa terminar.");
         }
 
     }

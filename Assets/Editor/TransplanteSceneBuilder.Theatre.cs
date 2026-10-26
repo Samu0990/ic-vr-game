@@ -2602,6 +2602,9 @@ namespace VRSurgery.EditorTools
                 fit = rig.GetComponent<VisitorFit>();
                 if (fit == null) { fit = rig.AddComponent<VisitorFit>(); }
                 fit.Bind(rig.transform, head.transform, point.transform, session);
+                // The generated stand must also start at a usable pose without a headset. A
+                // VisitorFit added elsewhere remains adaptive by default.
+                fit.ConfigureEyeHeight(true, 1.36144f);
                 headTransform = head.transform;
             }
             else

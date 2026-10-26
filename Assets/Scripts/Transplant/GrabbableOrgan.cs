@@ -137,6 +137,9 @@ namespace VRSurgery.Transplant
             if (!Satisfied && seat != null && DistanceFromSeat <= seatTolerance)
             {
                 SnapToSeat();
+                // Report in the same frame as the release. Waiting for Update left a window in
+                // which recovery/physics could move a correctly placed heart away again.
+                Evaluate();
             }
         }
 
