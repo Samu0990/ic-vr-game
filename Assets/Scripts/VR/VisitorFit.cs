@@ -37,7 +37,7 @@ namespace VRSurgery.VR
 
         [Header("Eye height")]
         [Tooltip("Puts the camera at exactly Locked Eye Height above the stance on every fit, so the headset starts where Play without a headset starts. Overrides short mode.")]
-        [SerializeField] private bool lockEyeHeight;
+        [SerializeField] private bool lockEyeHeight = true;
 
         [Tooltip("Camera height above the stance in metres. Match the Main Camera Y when pressing Play without a headset.")]
         [SerializeField] private float lockedEyeHeight = 1.46144f;
@@ -212,13 +212,6 @@ namespace VRSurgery.VR
             stance = stancePoint;
             session = controller;
             if (live) { OnEnable(); }
-        }
-
-        /// <summary>Locks the camera for desktop/demo play, or keeps real visitor height in VR.</summary>
-        public void ConfigureEyeHeight(bool locked, float height = 1.36144f)
-        {
-            lockEyeHeight = locked;
-            lockedEyeHeight = Mathf.Max(MeasurableEye, height);
         }
     }
 }

@@ -327,13 +327,6 @@ namespace VRSurgery.Transplant
         {
             LetGo();
             _along = 1f;
-            // The first pass advances the procedure out of SkinIncision. Resetting only the
-            // mesh leaves the pilot waiting forever for a stage that can no longer return.
-            if (procedure != null)
-            {
-                procedure.ResetProcedure();
-                if (beginProcedure) { procedure.Begin(); }
-            }
             if (incision != null) { incision.ResetIncision(); }
             if (patch != null) { patch.ResetClosed(); }
             if (scalpel != null && _bound) { scalpel.SetPositionAndRotation(_restPose.position, _restPose.rotation); }
